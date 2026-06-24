@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Kunzera · Instagram Stories v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #070003;
+    --bg-2: #140003;
+    --red-400: #ff5f5f;
+    --red-500: #ff2a2a;
+    --red-600: #ef1313;
+    --red-700: #c50c0c;
+    --red-950: #4a0404;
+    --white: #ffffff;
+    --muted: #a79b9b;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:#111; color:#fff; font-family:'Inter',sans-serif;}
+
+  .page{
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+  .page h1{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900;
+    letter-spacing: .04em;
+    margin-bottom: 8px;
+  }
+  .page p.lead{
+    color:#aaa;
+    margin-bottom: 32px;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 28px;
+  }
+
+  /* ---------- STORY CANVAS ---------- */
+  .story-wrap{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .story-wrap .label{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 12px;
+    color:#bbb;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+  }
+  .story{
+    width: 100%;
+    aspect-ratio: 9 / 16;       /* 1080x1920 */
+    position: relative;
+    overflow: hidden;
+    border-radius: 14px;
+    color:#fff;
+    container-type: inline-size; /* permite cqw/cqh */
+    background:
+      radial-gradient(120% 80% at 50% 0%, rgba(239,19,19,.28) 0%, transparent 60%),
+      radial-gradient(100% 70% at 50% 100%, rgba(74,4,4,.6) 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg) 0%, #0a0002 60%, var(--bg) 100%);
+    box-shadow:
+      0 10px 50px rgba(239,19,19,.15),
+      inset 0 0 0 1px rgba(239,19,19,.15);
+  }
+  /* grid pattern (sutil, cyberpunk) */
+  .story::before{
+    content:'';
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(239,19,19,.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(239,19,19,.08) 1px, transparent 1px);
+    background-size: 8cqw 8cqw;
+    mask-image: radial-gradient(ellipse at center, #000 30%, transparent 85%);
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 85%);
+    pointer-events:none;
+  }
+  /* scanline fino */
+  .story::after{
+    content:'';
+    position:absolute; inset:0;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0 1px, transparent 1px 3px);
+    pointer-events:none;
+    mix-blend-mode: overlay;
+  }
+
+  /* HEADER progress bar estilo IG */
+  .ig-header{
+    position:absolute; top:0; left:0; right:0;
+    padding: 3cqw 4cqw 0;
+    display:flex; flex-direction:column; gap:2cqw;
+    z-index: 5;
+  }
+  .ig-bars{ display:flex; gap:0.6cqw; }
+  .ig-bar{
+    flex:1; height: 0.5cqw;
+    background: rgba(255,255,255,.35);
+    border-radius: 999px;
+  }
+  .ig-bar.active{ background:#fff; }
+  .ig-user{
+    display:flex; align-items:center; gap:2cqw;
+    font-family:'Inter',sans-serif;
+    font-size: 2.6cqw; font-weight:600;
+  }
+  .ig-user .avatar{
+    width: 6cqw; height: 6cqw;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--red-500), var(--red-700));
+    border: 0.3cqw solid rgba(255,255,255,.2);
+  }
+  .ig-user .time{ color: rgba(255,255,255,.6); font-weight:400; }
+
+  /* CORE CONTAINERS */
+  .inner{
+    position:absolute; inset:0;
+    padding: 14cqw 7cqw 11cqw;
+    display:flex; flex-direction:column;
+    justify-content: center;
+    gap: 3cqw;
+    z-index: 3;
+  }
+
+  /* BADGES */
+  .badge{
+    display:inline-flex; align-items:center; gap:1.2cqw;
+    padding: 1.2cqw 2.4cqw;
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.2cqw; font-weight:700;
+    letter-spacing: .14em; text-transform: uppercase;
+    border-radius: 999px;
+    background: rgba(239,19,19,.12);
+    border: 1px solid rgba(239,19,19,.45);
+    color: var(--red-400);
+    width: fit-content;
+  }
+  .badge .dot{
+    width:1.2cqw; height:1.2cqw; border-radius:50%;
+    background: var(--red-500);
+    box-shadow: 0 0 2cqw var(--red-500);
+    animation: pulse 1.8s infinite;
+  }
+  @keyframes pulse{
+    0%,100%{opacity:1;} 50%{opacity:.3;}
+  }
+
+  /* HEADLINES */
+  .h-display{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900;
+    letter-spacing: .02em;
+    line-height: .95;
+    text-transform: uppercase;
+  }
+  .h-xl{ font-size: 11cqw; }
+  .h-lg{ font-size: 9cqw; }
+  .h-md{ font-size: 7cqw; }
+
+  .text-gradient{
+    background: linear-gradient(180deg, #ffffff 0%, #ff9b9b 60%, var(--red-600) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 1.5cqw rgba(239,19,19,.35));
+  }
+  .text-red{
+    color: var(--red-500);
+    text-shadow: 0 0 3cqw rgba(239,19,19,.6);
+  }
+
+  .subtitle{
+    font-family:'Inter',sans-serif;
+    font-weight: 400;
+    font-size: 3.2cqw;
+    line-height: 1.35;
+    color: #e8dcdc;
+    max-width: 85%;
+  }
+
+  .kicker{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.4cqw;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.55);
+  }
+
+  /* PRICE CARD */
+  .price-card{
+    background: linear-gradient(135deg, rgba(20,0,0,.9), rgba(40,0,0,.75));
+    border: 1px solid rgba(239,19,19,.3);
+    border-radius: 4cqw;
+    padding: 5cqw;
+    box-shadow: 0 0 8cqw rgba(239,19,19,.15);
+    position: relative;
+    overflow: hidden;
+  }
+  .price-card::before{
+    content:''; position:absolute; inset:-1px;
+    background: linear-gradient(135deg, rgba(239,19,19,.6), transparent 40%, rgba(239,19,19,.4));
+    border-radius: inherit;
+    z-index:-1;
+    padding:1px;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+  }
+  .price-card .name{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900;
+    font-size: 7cqw;
+    line-height: 1;
+  }
+  .price-card .tag{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.4cqw;
+    color: var(--red-400);
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    margin-top: 1cqw;
+  }
+  .price-card .price{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900;
+    font-size: 11cqw;
+    line-height: 1;
+    margin-top: 3cqw;
+    color: #fff;
+    text-shadow: 0 0 4cqw rgba(239,19,19,.55);
+  }
+  .price-card .price small{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.6cqw;
+    color: rgba(255,255,255,.6);
+    font-weight: 500;
+    letter-spacing: .1em;
+    display:block;
+    margin-top: 1cqw;
+  }
+  .price-card ul{
+    margin-top: 4cqw;
+    list-style:none;
+    display:flex; flex-direction:column; gap: 2cqw;
+  }
+  .price-card li{
+    display:flex; align-items:flex-start; gap: 2cqw;
+    font-size: 3cqw;
+    color:#eadada;
+    line-height: 1.3;
+  }
+  .price-card li::before{
+    content:'›';
+    color: var(--red-500);
+    font-family:'Orbitron',sans-serif;
+    font-weight:900;
+    font-size: 3.6cqw;
+    line-height: 1;
+  }
+
+  .ribbon{
+    position:absolute; top: 4cqw; right: -10cqw;
+    transform: rotate(35deg);
+    background: linear-gradient(90deg, var(--red-500), var(--red-700));
+    color:#fff;
+    font-family:'JetBrains Mono',monospace;
+    font-weight:700;
+    font-size: 2cqw;
+    letter-spacing: .2em;
+    padding: 1cqw 12cqw;
+    text-transform: uppercase;
+    box-shadow: 0 0 4cqw rgba(239,19,19,.5);
+  }
+
+  /* CTA */
+  .cta{
+    margin-top: 2cqw;
+    display:flex; align-items:center; justify-content:center; gap: 2.4cqw;
+    padding: 4cqw 6cqw;
+    background: linear-gradient(90deg, var(--red-500), var(--red-700));
+    border-radius: 999px;
+    font-family:'Orbitron',sans-serif;
+    font-weight: 800;
+    font-size: 4cqw;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    box-shadow: 0 0 6cqw rgba(239,19,19,.6), inset 0 0 2cqw rgba(255,255,255,.15);
+    color:#fff;
+    width: fit-content;
+    align-self:center;
+  }
+  .cta .arrow{
+    display:inline-block;
+    transform: translateX(0);
+    animation: arrow 1.6s infinite ease-in-out;
+  }
+  @keyframes arrow{
+    0%,100%{transform: translateX(0);}
+    50%{transform: translateX(1cqw);}
+  }
+
+  .footer-note{
+    position:absolute; bottom: 3cqw; left:0; right:0;
+    text-align:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.2cqw;
+    letter-spacing: .25em;
+    color: rgba(255,255,255,.35);
+    text-transform: uppercase;
+  }
+
+  /* SCREW: side neon lines */
+  .side-lines{
+    position:absolute; top:12%; bottom:12%; width: 0.3cqw;
+    background: linear-gradient(180deg, transparent, var(--red-500), transparent);
+    opacity:.6;
+  }
+  .side-lines.l{ left: 3cqw; }
+  .side-lines.r{ right: 3cqw; }
+
+  /* STAT ROW */
+  .stats-row{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3cqw;
+    margin-top: 4cqw;
+  }
+  .stat{
+    background: linear-gradient(135deg, rgba(239,19,19,.12), rgba(20,0,0,.5));
+    border: 1px solid rgba(239,19,19,.3);
+    border-radius: 3cqw;
+    padding: 4cqw 3cqw;
+    text-align:center;
+  }
+  .stat .n{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900;
+    font-size: 10cqw;
+    color:#fff;
+    line-height:1;
+    text-shadow: 0 0 3cqw rgba(239,19,19,.5);
+  }
+  .stat .l{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.2cqw;
+    color: var(--red-400);
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    margin-top: 1.5cqw;
+  }
+
+  /* BIG FPS DIFF */
+  .fps-diff{
+    display:flex; align-items:center; justify-content:center; gap: 3cqw;
+    margin: 4cqw 0;
+  }
+  .fps-val{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900;
+    font-size: 14cqw;
+    line-height: 1;
+  }
+  .fps-val.before{ color: rgba(255,255,255,.35); text-decoration: line-through; text-decoration-thickness: .4cqw; text-decoration-color: rgba(255,255,255,.25); }
+  .fps-val.after{
+    background: linear-gradient(180deg, #fff, var(--red-500));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color:transparent;
+    filter: drop-shadow(0 0 3cqw rgba(239,19,19,.55));
+  }
+  .fps-arrow{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900;
+    font-size: 10cqw;
+    color: var(--red-500);
+    text-shadow: 0 0 3cqw rgba(239,19,19,.6);
+  }
+
+  .quote{
+    font-family:'Inter',sans-serif;
+    font-weight: 500;
+    font-style: italic;
+    font-size: 3.4cqw;
+    line-height: 1.4;
+    color:#eadada;
+    border-left: 0.5cqw solid var(--red-500);
+    padding-left: 3cqw;
+    margin-top: 3cqw;
+  }
+  .quote-author{
+    margin-top: 2cqw;
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.4cqw;
+    color: rgba(255,255,255,.5);
+    letter-spacing: .1em;
+    padding-left: 3cqw;
+  }
+
+  /* FEATURES LIST 8 AREAS */
+  .areas{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2.5cqw;
+    margin-top: 4cqw;
+  }
+  .area{
+    background: rgba(20,0,0,.6);
+    border: 1px solid rgba(239,19,19,.25);
+    border-radius: 2.5cqw;
+    padding: 3cqw;
+    display:flex; flex-direction:column; gap: 1cqw;
+  }
+  .area .n{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2cqw;
+    color: var(--red-400);
+    letter-spacing: .15em;
+  }
+  .area .t{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 700;
+    font-size: 3.2cqw;
+    color:#fff;
+  }
+
+  /* URL BAR */
+  .url-bar{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.4cqw;
+    color: var(--red-400);
+    letter-spacing: .15em;
+    text-align:center;
+    margin-top: 2cqw;
+  }
+
+  /* WATERMARK · drop3d · anti-theft tiled pattern */
+  .watermark{
+    position:absolute; inset:0;
+    pointer-events:none;
+    z-index: 50;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'><g transform='rotate(-28 150 150)'><text x='150' y='158' fill='white' fill-opacity='0.09' font-family='monospace' font-size='26' font-weight='800' letter-spacing='4' text-anchor='middle'>drop3d</text></g></svg>");
+    background-repeat: repeat;
+    background-size: 32cqw 32cqw;
+    mix-blend-mode: screen;
+  }
+  .watermark-corner{
+    position:absolute;
+    bottom: 6cqw;
+    right: 4cqw;
+    z-index: 51;
+    pointer-events:none;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 2cqw;
+    font-weight: 700;
+    letter-spacing: .2em;
+    color: rgba(255,255,255,.35);
+    text-transform: lowercase;
+    padding: 1cqw 2cqw;
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 999px;
+    background: rgba(0,0,0,.35);
+    backdrop-filter: blur(4px);
+  }
+  .watermark-corner::before{
+    content: '©';
+    margin-right: .6cqw;
+    color: var(--red-400);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>KUNZERA · Instagram Stories v1</h1>
+  <p class="lead">Formato 1080×1920 · Paleta real de marca (rojo #ef1313 + negro #070003) · Tipografías: Orbitron / Inter / JetBrains Mono. Para exportar: screenshot de cada tarjeta o abrir en pestaña y capturar.</p>
+
+  <div class="grid">
+
+    <!-- ========== 1 · HOOK ========== -->
+    <div class="story-wrap">
+      <span class="label">01 · Hook principal</span>
+      <div class="story">
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar active"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+        <div class="side-lines l"></div>
+        <div class="side-lines r"></div>
+
+        <div class="inner" style="justify-content:center; align-items:center; text-align:center;">
+          <span class="badge"><span class="dot"></span>PC OPTIMIZER · +6000 CLIENTES</span>
+
+          <div class="h-display h-xl text-gradient">EXPRIMÍ<br/>CADA FPS<br/>DE TU PC</div>
+
+          <p class="subtitle" style="text-align:center;">Optimización profesional y <b style="color:#fff">100% remota</b>. Más de 30 tweaks, tuning de BIOS y overclock para dejar tu equipo volando.</p>
+
+          <div class="stats-row" style="width:100%;">
+            <div class="stat"><div class="n">6K+</div><div class="l">clientes</div></div>
+            <div class="stat"><div class="n">99%</div><div class="l">éxito</div></div>
+          </div>
+
+          <div class="cta">Deslizá → reservá <span class="arrow">›</span></div>
+        </div>
+        <div class="footer-note">@ezekunnnn · kunzera.pc</div>
+      </div>
+    </div>
+
+    <!-- ========== 2 · PACK PLATINO ========== -->
+    <div class="story-wrap">
+      <span class="label">02 · Pack Platino</span>
+      <div class="story">
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar"></div><div class="ig-bar active"></div><div class="ig-bar"></div>
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner">
+          <span class="kicker">Pack · 01 / 02</span>
+          <div class="h-display h-lg">
+            <span style="color:#fff">PACK</span>
+            <span class="text-red"> PLATINO</span>
+          </div>
+          <p class="subtitle">+FPS · −Input Lag · ~15 min</p>
+
+          <div class="price-card">
+            <div class="name">$35.000</div>
+            <div class="tag">ARS · pago único · USD $30</div>
+            <ul>
+              <li>Limpieza profunda + Ultra-Debloat</li>
+              <li>Zero-Telemetry (Microsoft OFF)</li>
+              <li>Hardware Max-Performance</li>
+              <li>Reducción de Input Lag</li>
+              <li>Network Stability Pro</li>
+              <li>Tweaks de registro avanzados</li>
+            </ul>
+          </div>
+
+          <div class="cta">Reservar Platino <span class="arrow">›</span></div>
+        </div>
+        <div class="footer-note">Sin formateo · 100% reversible</div>
+      </div>
+    </div>
+
+    <!-- ========== 3 · PACK DIAMANTE ========== -->
+    <div class="story-wrap">
+      <span class="label">03 · Pack Diamante (destacado)</span>
+      <div class="story">
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar active"></div>
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner">
+          <span class="kicker">Pack · 02 / 02 · Más elegido</span>
+          <div class="h-display h-lg">
+            <span style="color:#fff">PACK</span>
+            <span class="text-red"> DIAMANTE</span>
+          </div>
+          <p class="subtitle">Elite Hardware Tuning · BIOS + Overclock · ~30 min</p>
+
+          <div class="price-card">
+            <div class="ribbon">Más elegido</div>
+            <div class="name">$55.000</div>
+            <div class="tag">ARS · pago único · USD $50</div>
+            <ul>
+              <li><b style="color:#fff">Todo lo del Pack Platino</b></li>
+              <li>Configuración profesional de BIOS</li>
+              <li>Undervolt de precisión · −°C / +FPS</li>
+              <li>Overclock seguro y estable</li>
+              <li>Control térmico garantizado</li>
+              <li>Core-Priority Mapping para gaming</li>
+            </ul>
+          </div>
+
+          <div class="cta">Reservar Diamante <span class="arrow">›</span></div>
+        </div>
+        <div class="footer-note">Sin programas milagrosos · lógica, no magia</div>
+      </div>
+    </div>
+
+    <!-- ========== 4 · ANTES / DESPUÉS ========== -->
+    <div class="story-wrap">
+      <span class="label">04 · Antes / Después (testimonio real)</span>
+      <div class="story">
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+            <div class="ig-bar active"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner" style="justify-content:center; align-items:center; text-align:center;">
+          <span class="badge"><span class="dot"></span>CASO REAL · VALORANT</span>
+
+          <div class="h-display h-md" style="color:#fff;">ANTES / DESPUÉS</div>
+
+          <div class="fps-diff">
+            <div>
+              <div class="fps-val before">180</div>
+              <div class="kicker" style="margin-top:1cqw;">fps</div>
+            </div>
+            <div class="fps-arrow">›</div>
+            <div>
+              <div class="fps-val after">340</div>
+              <div class="kicker" style="margin-top:1cqw; color: var(--red-400)">fps</div>
+            </div>
+          </div>
+
+          <div class="quote" style="text-align:left;">"Pasé de 180 a 340 FPS en Valorant. Se nota clarísimo la mejora en el input lag, parece otra PC."</div>
+          <div class="quote-author" style="text-align:left; align-self:flex-start;">— TOMÁS R. · i5 12400F · RTX 3060</div>
+
+          <div class="cta">Quiero lo mismo <span class="arrow">›</span></div>
+        </div>
+        <div class="footer-note">+6000 casos reales · 99% de éxito</div>
+      </div>
+    </div>
+
+    <!-- ========== 5 · 8 ÁREAS ========== -->
+    <div class="story-wrap">
+      <span class="label">05 · Qué optimizamos (educativa)</span>
+      <div class="story">
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+            <div class="ig-bar"></div><div class="ig-bar active"></div><div class="ig-bar"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner">
+          <span class="kicker">8 áreas · Un servicio</span>
+          <div class="h-display h-lg">
+            <span style="color:#fff">TODO LO QUE</span><br/>
+            <span class="text-red">OPTIMIZAMOS</span>
+          </div>
+          <p class="subtitle">Cada parte de tu sistema, afinada con criterio profesional.</p>
+
+          <div class="areas">
+            <div class="area"><span class="n">01</span><span class="t">CPU</span></div>
+            <div class="area"><span class="n">02</span><span class="t">GPU · Drivers</span></div>
+            <div class="area"><span class="n">03</span><span class="t">RAM · Timings</span></div>
+            <div class="area"><span class="n">04</span><span class="t">Teclado + Mouse</span></div>
+            <div class="area"><span class="n">05</span><span class="t">Debloat · Telemetría</span></div>
+            <div class="area"><span class="n">06</span><span class="t">Registro</span></div>
+            <div class="area"><span class="n">07</span><span class="t">Windows 10 / 11</span></div>
+            <div class="area"><span class="n">08</span><span class="t">Testeo + fine-tune</span></div>
+          </div>
+
+          <div class="cta">Ver packs <span class="arrow">›</span></div>
+        </div>
+        <div class="footer-note">+30 tweaks · 100% reversible · sin formateo</div>
+      </div>
+    </div>
+
+    <!-- ========== 6 · CTA FINAL ========== -->
+    <div class="story-wrap">
+      <span class="label">06 · CTA final</span>
+      <div class="story">
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar active"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner" style="justify-content:center; align-items:center; text-align:center;">
+          <span class="badge"><span class="dot"></span>DISPONIBLE HOY · 100% REMOTO</span>
+
+          <div class="h-display h-xl text-gradient">TU PC,<br/>VOLANDO.<br/>HOY.</div>
+
+          <p class="subtitle" style="text-align:center;">Reservá tu turno por WhatsApp. Pago único, proceso transparente, soporte después de la sesión.</p>
+
+          <div class="stats-row" style="width:100%;">
+            <div class="stat"><div class="n">15'</div><div class="l">Platino</div></div>
+            <div class="stat"><div class="n">30'</div><div class="l">Diamante</div></div>
+          </div>
+
+          <div class="cta">Reservá por WhatsApp <span class="arrow">›</span></div>
+          <div class="url-bar">wa.me/5493382677871</div>
+        </div>
+        <div class="footer-note">@ezekunnnn · discord.gg/8etjdmy3</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<script>
+  document.querySelectorAll('.story').forEach(story => {
+    const tile = document.createElement('div');
+    tile.className = 'watermark';
+    story.appendChild(tile);
+    const corner = document.createElement('div');
+    corner.className = 'watermark-corner';
+    corner.textContent = 'drop3d';
+    story.appendChild(corner);
+  });
+</script>
+</body>
+</html>

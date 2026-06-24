@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8" /><title>Video 05 · Glitch CTA</title>
+<link rel="stylesheet" href="_shared.css">
+<script src="_timeline.js"></script>
+<style>
+.v5-kicker{
+  font-family:'JetBrains Mono',monospace;
+  font-size: 30px; letter-spacing: .3em; text-transform:uppercase;
+  color: var(--red-400);
+}
+.v5-title{
+  font-family:'Orbitron',sans-serif; font-weight:900;
+  font-size: 168px; line-height:.9; text-transform:uppercase;
+  letter-spacing: .01em;
+  background: linear-gradient(180deg, #fff 0%, var(--red-500) 100%);
+  -webkit-background-clip: text; background-clip: text; color:transparent;
+  filter: drop-shadow(0 0 28px var(--red-500));
+  position: relative;
+  text-align:center;
+}
+.v5-title::before, .v5-title::after{
+  content: attr(data-text);
+  position: absolute; top:0; left:0; width:100%; height:100%;
+}
+.v5-title::before{
+  color: var(--red-500); opacity: 0;
+  background: none; -webkit-text-fill-color: var(--red-500);
+}
+.v5-title::after{
+  color: #00e0ff; opacity: 0;
+  background: none; -webkit-text-fill-color: #00e0ff;
+}
+.v5-wa{
+  display:inline-flex; align-items:center; gap: 26px;
+  padding: 36px 60px;
+  background: linear-gradient(90deg, var(--red-500), var(--red-700));
+  border-radius: 999px;
+  font-family:'Orbitron',sans-serif; font-weight:800;
+  font-size: 44px; letter-spacing: .1em; text-transform:uppercase;
+  box-shadow: 0 0 72px rgba(239,19,19,.6);
+}
+.v5-wa .ic{ font-size: 48px;}
+.v5-url{
+  font-family:'JetBrains Mono',monospace;
+  font-size: 30px; color: rgba(255,255,255,.6);
+  letter-spacing: .2em; margin-top: 10px;
+}
+</style>
+</head><body>
+<div class="canvas video">
+  <div class="side-lines l"></div><div class="side-lines r"></div>
+
+  <div class="ig-header">
+    <div class="ig-bars">
+      <div class="ig-bar" id="bar0"></div><div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+    </div>
+    <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+  </div>
+
+  <div class="inner center">
+    <div class="v5-kicker" id="kicker" style="opacity:0;">· disponible hoy ·</div>
+    <div class="v5-title" id="title" data-text="TU PC VOLANDO. HOY." style="opacity:0;">TU PC<br/>VOLANDO.<br/>HOY.</div>
+    <div class="v5-wa" id="wa" style="opacity:0;"><span class="ic">›</span>KUNZERA.COM</div>
+    <div class="v5-url" id="url" style="opacity:0;">entrá a la web · reservá en 2 clicks</div>
+  </div>
+
+  <div class="footer-note">@ezekunnnn · kunzera.com</div>
+  <div class="watermark"></div>
+  <div class="watermark-corner">drop3d</div>
+</div>
+<script>
+const D = 5.5;
+const $ = id => document.getElementById(id);
+const kicker = $('kicker'), title = $('title'), wa = $('wa'), url = $('url'), bar0 = $('bar0');
+
+// Pseudo-element ghost opacities controlled via CSS vars
+function setGhosts(title, rOp, bOp, shiftR, shiftB) {
+  title.style.setProperty('--r-op', rOp);
+  title.style.setProperty('--b-op', bOp);
+  title.style.setProperty('--r-shift', shiftR + 'px');
+  title.style.setProperty('--b-shift', shiftB + 'px');
+}
+
+// inject style for ghost pseudo
+const st = document.createElement('style');
+st.textContent = `
+.v5-title::before{ opacity: var(--r-op, 0); transform: translateX(var(--r-shift, 0)); }
+.v5-title::after { opacity: var(--b-op, 0); transform: translateX(var(--b-shift, 0)); }
+`;
+document.head.appendChild(st);
+
+__startLoop(D, t => {
+  const {seg, clamp, lerp, fadeHold} = TL;
+
+  // IG progress
+  const fill = clamp(t / D, 0, 1);
+  bar0.style.background = `linear-gradient(90deg, #fff ${fill*100}%, rgba(255,255,255,.35) ${fill*100}%)`;
+
+  // Kicker blink
+  const kOp = fadeHold(t, 0.1, 0.5, D-0.3, D);
+  const blink = (Math.sin(t * 3.5) > -0.2) ? 1 : 0.25;
+  kicker.style.opacity = kOp * blink;
+
+  // Title appear + glitch pulses
+  const tOp = fadeHold(t, 0.5, 1.0, D-0.3, D);
+  title.style.opacity = tOp;
+
+  // Glitch events at specific times
+  let shake = 0, rOp = 0, bOp = 0, rShift = 0, bShift = 0;
+  const glitchAt = [1.2, 2.6, 4.2];
+  glitchAt.forEach(gt => {
+    const d = t - gt;
+    if (d >= 0 && d < 0.25) {
+      const p = d / 0.25;
+      shake += Math.sin(p * 30) * 8 * (1 - p);
+      rOp = Math.max(rOp, 0.8 * (1 - p));
+      bOp = Math.max(bOp, 0.55 * (1 - p));
+      rShift = Math.sin(p * 28) * 12;
+      bShift = -Math.sin(p * 28) * 12;
+    }
+  });
+  title.style.transform = `translate(${shake}px, 0)`;
+  setGhosts(title, rOp, bOp, rShift, bShift);
+
+  // WhatsApp btn
+  const wOp = fadeHold(t, 2.0, 2.4, D-0.3, D);
+  wa.style.opacity = wOp;
+  const pulse = 1 + Math.sin((t - 2.4) * 3.5) * 0.045 * (t > 2.4 ? 1 : 0);
+  wa.style.transform = `scale(${lerp(0.85, 1, wOp) * pulse})`;
+  wa.style.boxShadow = `0 0 ${60 + pulse*40}px rgba(239,19,19,${0.55 + pulse*0.2})`;
+
+  // URL
+  const uOp = fadeHold(t, 2.4, 2.8, D-0.3, D);
+  url.style.opacity = uOp;
+});
+</script>
+</body></html>

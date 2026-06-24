@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8" /><title>Video 04 · Pricing Reveal</title>
+<link rel="stylesheet" href="_shared.css">
+<script src="_timeline.js"></script>
+<style>
+.v4-title{
+  font-family:'Orbitron',sans-serif; font-weight:900;
+  font-size: 86px; text-align:center; line-height: 1;
+  letter-spacing: .02em; text-transform: uppercase;
+  text-shadow: 0 4px 24px rgba(0,0,0,.7);
+}
+.cards{ display:flex; flex-direction:column; gap: 42px; width:100%;}
+.card{
+  position:relative;
+  background: linear-gradient(135deg, rgba(20,0,0,.92), rgba(40,0,0,.82));
+  border: 1px solid rgba(239,19,19,.4);
+  border-radius: 38px;
+  padding: 44px 52px;
+  box-shadow: 0 0 60px rgba(239,19,19,.18), inset 0 0 0 1px rgba(239,19,19,.12);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.card-head{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+}
+.card .name{
+  font-family:'Orbitron',sans-serif; font-weight:900;
+  font-size: 78px; line-height:.95;
+  letter-spacing: .02em;
+}
+.card .badge-small{
+  font-family:'JetBrains Mono',monospace;
+  font-size: 22px; font-weight: 700;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--red-400);
+  padding: 8px 16px;
+  border: 1px solid rgba(239,19,19,.4);
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.card .sub{
+  font-family:'JetBrains Mono',monospace;
+  font-size: 26px;
+  letter-spacing:.16em; text-transform:uppercase;
+  color: #d6b9b9;
+}
+.card .price-row{
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(239,19,19,.2);
+}
+.card .price{
+  font-family:'Orbitron', sans-serif; font-weight:900;
+  font-size: 118px; line-height:1; color:#fff;
+  text-shadow: 0 0 40px rgba(239,19,19,.55);
+  letter-spacing: -0.01em;
+}
+.card .ars{
+  font-family:'JetBrains Mono',monospace;
+  font-size: 24px;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: rgba(255,255,255,.55);
+}
+.stamp{
+  position:absolute; top: -18px; right: -14px;
+  padding: 14px 28px;
+  background: linear-gradient(90deg, var(--red-500), var(--red-700));
+  font-family:'JetBrains Mono',monospace; font-weight:700;
+  font-size: 22px; letter-spacing: .22em; text-transform:uppercase;
+  border-radius: 16px;
+  box-shadow: 0 0 36px rgba(239,19,19,.8);
+  color: #fff;
+}
+</style>
+</head><body>
+<div class="canvas video">
+  <div class="side-lines l"></div><div class="side-lines r"></div>
+
+  <div class="inner center" style="gap: 50px;">
+    <div class="v4-title" id="title" style="opacity:0;">
+      <span style="color:#fff">ELEGÍ TU </span><span class="text-red">PACK</span>
+    </div>
+
+    <div class="cards">
+      <!-- PLATINO -->
+      <div class="card" id="cardP" style="opacity:0; transform: translateX(-100%);">
+        <div class="card-head">
+          <div class="name" style="color:#fff;">PLATINO</div>
+          <div class="badge-small">15'</div>
+        </div>
+        <div class="sub">+FPS · −INPUT LAG · REMOTO</div>
+        <div class="price-row">
+          <div class="price" id="priceP">$0</div>
+          <div class="ars">ARS</div>
+        </div>
+      </div>
+
+      <!-- DIAMANTE -->
+      <div class="card" id="cardD" style="opacity:0; transform: translateX(100%);">
+        <div class="stamp" id="stamp" style="opacity:0; transform: rotate(8deg) scale(0);">Más elegido</div>
+        <div class="card-head">
+          <div class="name text-red">DIAMANTE</div>
+          <div class="badge-small" style="border-color: rgba(239,19,19,.6); color: #fff;">30'</div>
+        </div>
+        <div class="sub">BIOS · OVERCLOCK · UNDERVOLT</div>
+        <div class="price-row">
+          <div class="price" id="priceD">$0</div>
+          <div class="ars">ARS</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cta" id="cta" style="opacity:0;">Reservá turno ›</div>
+  </div>
+
+  <div class="footer-note">Pago único · sin letra chica · 100% remoto</div>
+  <div class="watermark"></div>
+  <div class="watermark-corner">drop3d</div>
+</div>
+<script>
+const D = 8;
+const $ = id => document.getElementById(id);
+const title = $('title'), cardP = $('cardP'), cardD = $('cardD');
+const priceP = $('priceP'), priceD = $('priceD'), stamp = $('stamp');
+const cta = $('cta');
+
+__startLoop(D, t => {
+  const {seg, clamp, lerp, fadeHold, easeOutBack, easeOutCubic} = TL;
+
+  // Title
+  const tOp = fadeHold(t, 0.2, 0.7, D-0.3, D);
+  title.style.opacity = tOp;
+  title.style.transform = `translateY(${(1-tOp) * -30}px)`;
+
+  // Card Platino (slides from left)
+  const pP = clamp((t - 0.9) / 0.8, 0, 1);
+  const pEase = easeOutCubic(pP);
+  cardP.style.opacity = pEase;
+  cardP.style.transform = `translateX(${(1-pEase) * -120}%)`;
+
+  // Price Platino counts up 0 → 35.000
+  const pCountP = clamp((t - 1.7) / 1.0, 0, 1);
+  priceP.textContent = TL.formatARS(lerp(0, 35000, easeOutCubic(pCountP)));
+
+  // Card Diamante (slides from right)
+  const dP = clamp((t - 2.9) / 0.8, 0, 1);
+  const dEase = easeOutCubic(dP);
+  cardD.style.opacity = dEase;
+  cardD.style.transform = `translateX(${(1-dEase) * 120}%)`;
+
+  // Price Diamante counts up 0 → 55.000
+  const pCountD = clamp((t - 3.7) / 1.0, 0, 1);
+  priceD.textContent = TL.formatARS(lerp(0, 55000, easeOutCubic(pCountD)));
+
+  // Stamp (bounce in)
+  const sP = clamp((t - 4.6) / 0.5, 0, 1);
+  const sEase = easeOutBack(sP, 2.2);
+  stamp.style.opacity = clamp(sP * 2, 0, 1);
+  stamp.style.transform = `rotate(8deg) scale(${lerp(0, 1, sEase)})`;
+
+  // CTA
+  const cOp = fadeHold(t, 5.4, 5.9, D-0.3, D);
+  cta.style.opacity = cOp;
+  cta.style.transform = `translateY(${(1-cOp) * 30}px)`;
+  const pulse = 1 + Math.sin((t - 5.9) * 4) * 0.05 * (t > 5.9 ? 1 : 0);
+  cta.style.boxShadow = `0 0 ${60 + pulse*40}px rgba(239,19,19,${0.6 + pulse*0.2}), inset 0 0 20px rgba(255,255,255,.15)`;
+});
+</script>
+</body></html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8" /><title>Video 03 · Antes/Después Wipe</title>
+<link rel="stylesheet" href="_shared.css">
+<script src="_timeline.js"></script>
+<style>
+.half{
+  position:absolute; top:0; bottom:0; width: 100%;
+  display:flex; flex-direction:column; justify-content:center; align-items:center;
+  text-align:center; padding: 80px;
+  z-index: 5;
+}
+.half.before{
+  background:
+    linear-gradient(135deg, #0a0000 0%, #1a0000 100%);
+}
+.half.after{
+  background:
+    radial-gradient(100% 70% at 50% 50%, rgba(239,19,19,.28), transparent 70%),
+    linear-gradient(135deg, #1a0000 0%, #4a0404 100%);
+}
+.half .big{
+  font-family:'Orbitron', sans-serif; font-weight:900;
+  font-size: 120px; line-height:1; letter-spacing: .02em;
+}
+.before .big{ color: rgba(255,255,255,.5);}
+.after .big{
+  background: linear-gradient(180deg, #fff, var(--red-500));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 36px rgba(239,19,19,.65));
+}
+.fps-big{
+  font-family:'Orbitron',sans-serif; font-weight:900;
+  font-size: 260px; line-height:1; margin-top: 40px;
+}
+.before .fps-big{
+  color: rgba(255,255,255,.35); text-decoration: line-through;
+  text-decoration-thickness: 10px;
+}
+.after .fps-big{ color: #fff; text-shadow: 0 0 64px rgba(239,19,19,.7);}
+.unit{
+  font-family:'JetBrains Mono',monospace;
+  font-size: 30px; letter-spacing: .25em; text-transform:uppercase;
+  margin-top: 18px;
+}
+.before .unit{ color: rgba(255,255,255,.4);}
+.after .unit{ color: var(--red-400);}
+
+.stutter-line{
+  position:absolute; left:0; right:0; height: 22px;
+  background: rgba(255,255,255,.15);
+  top: 38%;
+}
+.divider{
+  position:absolute; top:0; bottom:0; left: 0;
+  width: 8px;
+  background: linear-gradient(180deg, transparent, var(--red-500), transparent);
+  box-shadow: 0 0 60px var(--red-500);
+  z-index: 20;
+}
+.caption-bar{
+  position:absolute; bottom: 120px; left:0; right:0;
+  z-index: 25; text-align:center;
+  font-family:'JetBrains Mono',monospace;
+  font-size: 32px; color:#fff;
+  letter-spacing: .22em; text-transform:uppercase;
+  text-shadow: 0 4px 18px rgba(0,0,0,.85);
+}
+</style>
+</head><body>
+<div class="canvas video" style="padding:0;">
+  <!-- BEFORE (always visible as base) -->
+  <div class="half before">
+    <div class="stutter-line" id="stutter"></div>
+    <span class="kicker" style="margin-bottom:16px;">· antes ·</span>
+    <div class="big">LAGGY.</div>
+    <div class="fps-big">60</div>
+    <div class="unit">fps · stutters</div>
+  </div>
+
+  <!-- AFTER (revealed by wipe) -->
+  <div class="half after" id="afterHalf" style="clip-path: inset(0 100% 0 0);">
+    <span class="kicker" style="margin-bottom:16px; color: var(--red-400);">· después ·</span>
+    <div class="big">VOLANDO.</div>
+    <div class="fps-big">240</div>
+    <div class="unit">fps · smooth</div>
+  </div>
+
+  <div class="divider" id="divider"></div>
+
+  <!-- IG header overlay -->
+  <div class="ig-header" style="z-index: 30;">
+    <div class="ig-bars">
+      <div class="ig-bar" id="bar0"></div><div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+    </div>
+    <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+  </div>
+
+  <div class="caption-bar" id="caption" style="opacity:0;">Misma PC · otra experiencia</div>
+
+  <div class="watermark"></div>
+  <div class="watermark-corner">drop3d</div>
+</div>
+<script>
+const D = 6;
+const $ = id => document.getElementById(id);
+const afterHalf = $('afterHalf'), divider = $('divider'), caption = $('caption'), bar0 = $('bar0');
+const stutter = $('stutter');
+
+__startLoop(D, t => {
+  const {seg, clamp, lerp, fadeHold, easeInOutCubic, easeOutCubic} = TL;
+  const easeInOut = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+
+  // IG progress
+  const fill = clamp(t / D, 0, 1);
+  bar0.style.background = `linear-gradient(90deg, #fff ${fill*100}%, rgba(255,255,255,.35) ${fill*100}%)`;
+
+  // Stutter on before side (jittery)
+  const jitter = Math.sin(t * 40) * 4 + Math.sin(t * 17) * 6;
+  stutter.style.top = (38 + jitter * 0.1) + '%';
+  stutter.style.background = `rgba(255,255,255,${0.12 + Math.abs(Math.sin(t*30))*0.08})`;
+
+  // Wipe from left to right between 1.0s and 3.5s, hold until 5.4s, out at 5.7s
+  let wipeP;
+  if (t < 1.0) wipeP = 0;
+  else if (t < 3.5) wipeP = easeInOut((t - 1.0) / 2.5);
+  else if (t < 5.4) wipeP = 1;
+  else wipeP = 1; // keep
+  afterHalf.style.clipPath = `inset(0 ${(1-wipeP)*100}% 0 0)`;
+
+  // Divider follows wipe
+  divider.style.left = (wipeP * 100) + '%';
+  divider.style.opacity = (t > 0.8 && t < 5.6) ? 1 : 0;
+
+  // Caption
+  const cOp = fadeHold(t, 3.6, 4.2, D-0.3, D);
+  caption.style.opacity = cOp;
+  caption.style.transform = `translateY(${(1-cOp) * 20}px)`;
+});
+</script>
+</body></html>

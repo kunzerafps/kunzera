@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>KUNZERA · Entrega · 10 stories + 5 videos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #070003;
+    --red-400: #ff5f5f;
+    --red-500: #ff2a2a;
+    --red-600: #ef1313;
+    --red-700: #c50c0c;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{ background: #0a0507; color:#fff; font-family:'Inter',sans-serif; min-height: 100vh;}
+  body{
+    background:
+      radial-gradient(80% 50% at 50% 0%, rgba(239,19,19,.14), transparent 60%),
+      linear-gradient(180deg, #0a0507 0%, #050002 100%);
+    padding: 50px 30px 120px;
+  }
+  .wrap{ max-width: 1500px; margin: 0 auto;}
+
+  header.hero{
+    text-align: center;
+    padding: 60px 20px 100px;
+    border-bottom: 1px solid rgba(239,19,19,.2);
+    margin-bottom: 80px;
+    position: relative;
+  }
+  header.hero::before{
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(239,19,19,.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(239,19,19,.06) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%);
+    pointer-events:none;
+  }
+  header.hero .brand{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 14px; letter-spacing: .3em;
+    color: var(--red-400); text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  header.hero h1{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900; font-size: 72px; line-height: .95;
+    letter-spacing: .02em; text-transform: uppercase;
+    background: linear-gradient(180deg, #fff 0%, var(--red-500) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 24px rgba(239,19,19,.4));
+  }
+  header.hero p{
+    color: #ccc; max-width: 720px; margin: 24px auto 0;
+    font-size: 18px; line-height: 1.5;
+  }
+  header.hero .stats{
+    display: flex; gap: 50px; justify-content: center;
+    margin-top: 48px; flex-wrap: wrap;
+  }
+  header.hero .stats div{ text-align: center;}
+  header.hero .stats .n{
+    font-family:'Orbitron',sans-serif; font-weight: 900;
+    font-size: 52px; color: #fff;
+    text-shadow: 0 0 16px rgba(239,19,19,.5);
+  }
+  header.hero .stats .l{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 12px; color: var(--red-400);
+    letter-spacing: .25em; text-transform: uppercase;
+    margin-top: 8px;
+  }
+
+  section{ margin-bottom: 120px;}
+
+  .section-head{
+    display:flex; align-items:baseline; gap: 20px;
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(239,19,19,.18);
+  }
+  .section-head .num{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900; font-size: 90px;
+    color: rgba(239,19,19,.18); line-height: 1;
+  }
+  .section-head .meta{ flex: 1;}
+  .section-head .kicker{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 13px; letter-spacing: .28em;
+    color: var(--red-400); text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .section-head h2{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 800; font-size: 38px;
+    letter-spacing: .02em; text-transform: uppercase;
+    line-height: 1;
+  }
+  .section-head p{ color: #aaa; font-size: 15px; margin-top: 10px; max-width: 720px; line-height: 1.5;}
+
+  .grid{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px;}
+
+  .card{
+    display: flex; flex-direction: column;
+    background: linear-gradient(135deg, rgba(20,0,0,.5), rgba(10,0,0,.3));
+    border: 1px solid rgba(239,19,19,.22);
+    border-radius: 20px;
+    overflow: hidden;
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .card:hover{
+    transform: translateY(-4px);
+    border-color: rgba(239,19,19,.5);
+    box-shadow: 0 20px 60px rgba(239,19,19,.15);
+  }
+  .card .media{
+    width: 100%; aspect-ratio: 9 / 16;
+    background: #000; display: block; position: relative;
+  }
+  .card img.media, .card video.media{
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .card .info{
+    padding: 20px 22px;
+    border-top: 1px solid rgba(239,19,19,.15);
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+    flex-wrap: wrap;
+  }
+  .card .info .num{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900; font-size: 26px; color: var(--red-500);
+  }
+  .card .info .title{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 12px; letter-spacing: .18em;
+    color: #ccc; text-transform: uppercase;
+    flex: 1; min-width: 110px;
+  }
+  .card .info .dur{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 11px; color: var(--red-400);
+    letter-spacing: .18em;
+  }
+  .card .info .dl{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 10px; letter-spacing: .2em;
+    color: var(--red-400); text-transform: uppercase;
+    text-decoration: none;
+    padding: 7px 12px;
+    border: 1px solid rgba(239,19,19,.4);
+    border-radius: 999px;
+    transition: all .15s ease;
+  }
+  .card .info .dl:hover{
+    background: var(--red-600); color:#fff; border-color: var(--red-600);
+  }
+
+  footer{
+    margin-top: 120px;
+    padding: 50px 20px;
+    border-top: 1px solid rgba(239,19,19,.2);
+    text-align: center;
+    font-family:'JetBrains Mono',monospace;
+    color: rgba(255,255,255,.4);
+    font-size: 13px; letter-spacing: .18em;
+  }
+  footer a{ color: var(--red-400); text-decoration:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="brand">· Kunzera · Propuesta de contenido ·</div>
+    <h1>10 Stories<br/>+ 5 Videos</h1>
+    <p>Paquete de contenido para Instagram. Formato 1080×1920, identidad de marca Kunzera, listo para publicar. Marca de agua <b style="color:var(--red-400)">drop3d</b> aplicada en las 15 piezas. Todos los CTAs redirigen a <b style="color:var(--red-400)">KUNZERA.COM</b>.</p>
+    <div class="stats">
+      <div><div class="n">15</div><div class="l">piezas</div></div>
+      <div><div class="n">1080×1920</div><div class="l">formato IG</div></div>
+      <div><div class="n">30 fps</div><div class="l">videos</div></div>
+      <div><div class="n">HD</div><div class="l">calidad</div></div>
+    </div>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <div class="num">01</div>
+      <div class="meta">
+        <div class="kicker">· Instagram Stories (PNG) ·</div>
+        <h2>10 historias estáticas</h2>
+        <p>5 historias estructurales + 5 historias con fotos reales (retrato y campeonato) para variedad visual. Instagram dibuja su UI encima automáticamente al publicarlas.</p>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <img class="media" src="stories/01-hook.png" alt="Hook" />
+        <div class="info"><span class="num">01</span><span class="title">Hook · "Exprimí cada FPS"</span><a class="dl" href="stories/01-hook.png" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <img class="media" src="stories/02-platino.png" alt="Pack Platino" />
+        <div class="info"><span class="num">02</span><span class="title">Pack Platino · $35.000</span><a class="dl" href="stories/02-platino.png" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <img class="media" src="stories/03-diamante.png" alt="Pack Diamante" />
+        <div class="info"><span class="num">03</span><span class="title">Pack Diamante · $55.000</span><a class="dl" href="stories/03-diamante.png" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <img class="media" src="stories/04-antes-despues.png" alt="Antes/Después" />
+        <div class="info"><span class="num">04</span><span class="title">Antes / Después · 180→340</span><a class="dl" href="stories/04-antes-despues.png" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <img class="media" src="stories/05-cta-campeon.png" alt="CTA · Campeón" />
+        <div class="info"><span class="num">05</span><span class="title">CTA · Ganar se configura</span><a class="dl" href="stories/05-cta-campeon.png" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <img class="media" src="stories/06-pro-player.png" alt="Pro Player" />
+        <div class="info"><span class="num">06</span><span class="title">Pro Player · CS2</span><a class="dl" href="stories/06-pro-player.png" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <img class="media" src="stories/07-ganar-configura.png" alt="Ganar se configura" />
+        <div class="info"><span class="num">07</span><span class="title">Ganar se configura · Autoridad</span><a class="dl" href="stories/07-ganar-configura.png" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <img class="media" src="stories/08-quote-eze.png" alt="Quote Eze" />
+        <div class="info"><span class="num">08</span><span class="title">Quote · Lógica, no magia</span><a class="dl" href="stories/08-quote-eze.png" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <img class="media" src="stories/09-numeros.png" alt="Números que importan" />
+        <div class="info"><span class="num">09</span><span class="title">Números que importan · 6K/99%/+30/0</span><a class="dl" href="stories/09-numeros.png" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <img class="media" src="stories/10-cta-personal.png" alt="CTA personal" />
+        <div class="info"><span class="num">10</span><span class="title">CTA personal · Reservá tu turno</span><a class="dl" href="stories/10-cta-personal.png" download>Descargar</a></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="num">02</div>
+      <div class="meta">
+        <div class="kicker">· Instagram Videos (MP4) ·</div>
+        <h2>5 videos animados</h2>
+        <p>Videos verticales listos para subir como historia o reel. Autoplay en loop. Botón de descarga en cada tarjeta.</p>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <video class="media" src="videos/01-fps-counter.mp4" loop muted autoplay playsinline></video>
+        <div class="info"><span class="num">01</span><span class="title">FPS Counter · 180→340</span><span class="dur">7s</span><a class="dl" href="videos/01-fps-counter.mp4" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <video class="media" src="videos/02-boot-sequence.mp4" loop muted autoplay playsinline></video>
+        <div class="info"><span class="num">02</span><span class="title">Boot Sequence · Reveal</span><span class="dur">7.5s</span><a class="dl" href="videos/02-boot-sequence.mp4" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <video class="media" src="videos/03-antes-despues-wipe.mp4" loop muted autoplay playsinline></video>
+        <div class="info"><span class="num">03</span><span class="title">Antes/Después · Wipe</span><span class="dur">6s</span><a class="dl" href="videos/03-antes-despues-wipe.mp4" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <video class="media" src="videos/04-pricing-reveal.mp4" loop muted autoplay playsinline></video>
+        <div class="info"><span class="num">04</span><span class="title">Pricing Reveal · Cards</span><span class="dur">8s</span><a class="dl" href="videos/04-pricing-reveal.mp4" download>Descargar</a></div>
+      </div>
+      <div class="card">
+        <video class="media" src="videos/05-glitch-cta.mp4" loop muted autoplay playsinline></video>
+        <div class="info"><span class="num">05</span><span class="title">Neon Glitch · KUNZERA.COM</span><span class="dur">5.5s</span><a class="dl" href="videos/05-glitch-cta.mp4" download>Descargar</a></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    © drop3d · Propuesta de contenido para Kunzera · Todos los CTAs redirigen a KUNZERA.COM<br/>
+    Análisis de negocio y calendario de publicación en <a href="analisis-negocio.md">analisis-negocio.md</a>
+  </footer>
+
+</div>
+</body>
+</html>

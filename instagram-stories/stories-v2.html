@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Kunzera · Instagram Stories v2 · con fotos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #070003;
+    --red-400: #ff5f5f;
+    --red-500: #ff2a2a;
+    --red-600: #ef1313;
+    --red-700: #c50c0c;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:#111; color:#fff; font-family:'Inter',sans-serif;}
+
+  .page{ max-width: 1400px; margin: 0 auto; padding: 40px 20px; }
+  .page h1{ font-family:'Orbitron',sans-serif; font-weight: 900; letter-spacing: .04em; margin-bottom: 8px;}
+  .page p.lead{ color:#aaa; margin-bottom: 32px;}
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 28px;
+  }
+  .story-wrap{ display:flex; flex-direction:column; gap:10px;}
+  .story-wrap .label{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 12px; color:#bbb;
+    text-transform: uppercase; letter-spacing: .1em;
+  }
+
+  /* ---------- STORY CANVAS ---------- */
+  .story{
+    width: 100%;
+    aspect-ratio: 9 / 16;
+    position: relative;
+    overflow: hidden;
+    border-radius: 14px;
+    color:#fff;
+    container-type: inline-size;
+    background: var(--bg);
+    box-shadow: 0 10px 50px rgba(239,19,19,.15), inset 0 0 0 1px rgba(239,19,19,.15);
+  }
+
+  /* PHOTO BACKGROUND */
+  .photo{
+    position:absolute; inset:0;
+    background-size: cover;
+    background-position: center;
+    z-index: 1;
+  }
+  .photo.duotone{
+    filter: contrast(1.15) saturate(0.7) brightness(0.85);
+  }
+  .photo.trophy{ background-image: url("../fondo/image.png"); }
+  .photo.portrait{ background-image: url("../fondo/kunzera.png"); }
+
+  /* OVERLAYS */
+  .overlay-bottom{
+    position:absolute; inset:0; z-index: 2;
+    background:
+      linear-gradient(180deg, transparent 0%, rgba(7,0,3,.2) 35%, rgba(7,0,3,.85) 70%, var(--bg) 100%),
+      radial-gradient(80% 50% at 50% 100%, rgba(239,19,19,.35) 0%, transparent 70%);
+  }
+  .overlay-full{
+    position:absolute; inset:0; z-index: 2;
+    background:
+      linear-gradient(180deg, rgba(7,0,3,.55) 0%, rgba(7,0,3,.75) 60%, rgba(7,0,3,.95) 100%),
+      radial-gradient(80% 60% at 50% 0%, rgba(239,19,19,.35) 0%, transparent 70%);
+  }
+  .overlay-side{
+    position:absolute; inset:0; z-index: 2;
+    background:
+      linear-gradient(180deg, rgba(7,0,3,.55) 0%, rgba(7,0,3,.2) 30%, rgba(7,0,3,.2) 60%, rgba(7,0,3,.9) 100%),
+      linear-gradient(90deg, rgba(7,0,3,.9) 0%, rgba(7,0,3,.3) 40%, transparent 55%);
+  }
+  .overlay-red-vignette{
+    position:absolute; inset:0; z-index: 2;
+    background:
+      radial-gradient(60% 50% at 50% 50%, transparent 0%, rgba(239,19,19,.15) 50%, rgba(7,0,3,.8) 100%);
+    mix-blend-mode: multiply;
+  }
+
+  /* grid sutil arriba de todo */
+  .grid-lines{
+    position:absolute; inset:0; z-index: 3;
+    background-image:
+      linear-gradient(rgba(239,19,19,.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(239,19,19,.06) 1px, transparent 1px);
+    background-size: 8cqw 8cqw;
+    mask-image: radial-gradient(ellipse at center, #000 20%, transparent 85%);
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 85%);
+    pointer-events:none;
+  }
+  .scanlines{
+    position:absolute; inset:0; z-index: 4;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0 1px, transparent 1px 3px);
+    pointer-events:none;
+    mix-blend-mode: overlay;
+  }
+
+  /* IG HEADER */
+  .ig-header{
+    position:absolute; top:0; left:0; right:0;
+    padding: 3cqw 4cqw 0;
+    display:flex; flex-direction:column; gap:2cqw;
+    z-index: 20;
+  }
+  .ig-bars{ display:flex; gap:0.6cqw;}
+  .ig-bar{ flex:1; height: 0.5cqw; background: rgba(255,255,255,.35); border-radius: 999px;}
+  .ig-bar.active{ background:#fff;}
+  .ig-user{
+    display:flex; align-items:center; gap:2cqw;
+    font-family:'Inter',sans-serif; font-size: 2.6cqw; font-weight:600;
+    text-shadow: 0 0 2cqw rgba(0,0,0,.8);
+  }
+  .ig-user .avatar{
+    width: 6cqw; height: 6cqw; border-radius: 50%;
+    background: linear-gradient(135deg, var(--red-500), var(--red-700));
+    border: 0.3cqw solid rgba(255,255,255,.2);
+  }
+  .ig-user .time{ color: rgba(255,255,255,.75); font-weight:400;}
+
+  .inner{
+    position:absolute; inset:0; z-index: 10;
+    padding: 14cqw 7cqw 11cqw;
+    display:flex; flex-direction:column;
+    justify-content: flex-end;
+    gap: 3cqw;
+  }
+  .inner.center{ justify-content: center;}
+
+  /* COMPONENTS */
+  .badge{
+    display:inline-flex; align-items:center; gap:1.2cqw;
+    padding: 1.2cqw 2.4cqw;
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.2cqw; font-weight:700;
+    letter-spacing: .14em; text-transform: uppercase;
+    border-radius: 999px;
+    background: rgba(239,19,19,.18);
+    border: 1px solid rgba(239,19,19,.55);
+    color: var(--red-400);
+    width: fit-content;
+    backdrop-filter: blur(4px);
+  }
+  .badge .dot{
+    width:1.2cqw; height:1.2cqw; border-radius:50%;
+    background: var(--red-500);
+    box-shadow: 0 0 2cqw var(--red-500);
+    animation: pulse 1.8s infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+  .h-display{
+    font-family:'Orbitron',sans-serif;
+    font-weight: 900; letter-spacing: .02em;
+    line-height: .95; text-transform: uppercase;
+    text-shadow: 0 0.3cqw 2cqw rgba(0,0,0,.65);
+  }
+  .h-xxl{ font-size: 13cqw;}
+  .h-xl{ font-size: 11cqw;}
+  .h-lg{ font-size: 9cqw;}
+  .h-md{ font-size: 7cqw;}
+
+  .text-red{ color: var(--red-500); text-shadow: 0 0 3cqw rgba(239,19,19,.65), 0 0.3cqw 2cqw rgba(0,0,0,.65);}
+  .text-gradient{
+    background: linear-gradient(180deg, #ffffff 0%, #ff9b9b 60%, var(--red-600) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 1.5cqw rgba(239,19,19,.45));
+  }
+
+  .subtitle{
+    font-family:'Inter',sans-serif; font-weight: 400;
+    font-size: 3.2cqw; line-height: 1.35;
+    color: #f0e6e6; max-width: 92%;
+    text-shadow: 0 0.2cqw 1.5cqw rgba(0,0,0,.7);
+  }
+  .kicker{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.4cqw; letter-spacing: .25em;
+    text-transform: uppercase; color: var(--red-400);
+    text-shadow: 0 0.2cqw 1cqw rgba(0,0,0,.7);
+  }
+
+  .quote-big{
+    font-family:'Inter',sans-serif;
+    font-weight: 500; font-style: italic;
+    font-size: 4.2cqw; line-height: 1.25;
+    color:#fff;
+    border-left: 0.6cqw solid var(--red-500);
+    padding-left: 3.5cqw;
+    text-shadow: 0 0.3cqw 2cqw rgba(0,0,0,.7);
+  }
+  .quote-author{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.4cqw; color: var(--red-400);
+    letter-spacing: .15em; padding-left: 4cqw;
+  }
+
+  .cta{
+    display:flex; align-items:center; justify-content:center; gap: 2.4cqw;
+    padding: 4cqw 6cqw;
+    background: linear-gradient(90deg, var(--red-500), var(--red-700));
+    border-radius: 999px;
+    font-family:'Orbitron',sans-serif;
+    font-weight: 800; font-size: 4cqw;
+    letter-spacing: .08em; text-transform: uppercase;
+    box-shadow: 0 0 6cqw rgba(239,19,19,.6), inset 0 0 2cqw rgba(255,255,255,.15), 0 0.5cqw 2cqw rgba(0,0,0,.4);
+    color:#fff;
+    width: fit-content; align-self:center;
+    margin-top: 2cqw;
+  }
+  .cta .arrow{ animation: arrow 1.6s infinite ease-in-out;}
+  @keyframes arrow{ 0%,100%{transform: translateX(0);} 50%{transform: translateX(1cqw);} }
+
+  .stats-row{ display:grid; grid-template-columns: 1fr 1fr; gap: 3cqw;}
+  .stat{
+    background: rgba(20,0,0,.65);
+    border: 1px solid rgba(239,19,19,.4);
+    border-radius: 3cqw;
+    padding: 4cqw 3cqw;
+    text-align:center;
+    backdrop-filter: blur(6px);
+  }
+  .stat .n{
+    font-family:'Orbitron',sans-serif; font-weight: 900;
+    font-size: 10cqw; color:#fff; line-height:1;
+    text-shadow: 0 0 3cqw rgba(239,19,19,.5);
+  }
+  .stat .l{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.2cqw; color: var(--red-400);
+    letter-spacing: .15em; text-transform: uppercase;
+    margin-top: 1.5cqw;
+  }
+
+  .signature{
+    display:flex; align-items:center; gap: 2.5cqw;
+    padding-left: .5cqw;
+  }
+  .signature .avatar-big{
+    width: 14cqw; height: 14cqw; border-radius: 50%;
+    background-image: url("../fondo/kunzera.png");
+    background-size: cover; background-position: center;
+    border: 0.4cqw solid var(--red-500);
+    box-shadow: 0 0 3cqw rgba(239,19,19,.6);
+    flex-shrink: 0;
+  }
+  .signature .info .name{
+    font-family:'Orbitron',sans-serif; font-weight: 800;
+    font-size: 4.2cqw; line-height:1;
+  }
+  .signature .info .role{
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.4cqw; color: var(--red-400);
+    letter-spacing: .15em; margin-top: 1cqw;
+    text-transform: uppercase;
+  }
+
+  .footer-note{
+    position:absolute; bottom: 3cqw; left:0; right:0; z-index:15;
+    text-align:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size: 2.2cqw; letter-spacing: .25em;
+    color: rgba(255,255,255,.45);
+    text-transform: uppercase;
+    text-shadow: 0 0.2cqw 1cqw rgba(0,0,0,.8);
+  }
+
+  /* SIDE MARKS */
+  .side-lines{
+    position:absolute; top:12%; bottom:12%; width: 0.3cqw;
+    background: linear-gradient(180deg, transparent, var(--red-500), transparent);
+    opacity:.7; z-index: 8;
+  }
+  .side-lines.l{ left: 3cqw;}
+  .side-lines.r{ right: 3cqw;}
+
+  /* TROPHY banner (para historia de campeonato) */
+  .champion-banner{
+    display:inline-flex; align-items:center; gap: 2cqw;
+    padding: 2cqw 4cqw;
+    background: linear-gradient(90deg, rgba(239,19,19,.35), rgba(239,19,19,.1));
+    border: 1px solid rgba(239,19,19,.6);
+    border-radius: 2cqw;
+    font-family:'JetBrains Mono',monospace;
+    font-weight:700; font-size: 2.6cqw;
+    letter-spacing: .2em; text-transform: uppercase;
+    align-self: flex-start;
+    backdrop-filter: blur(4px);
+  }
+  .champion-banner .trophy{ color: #ffd166; font-size: 3.2cqw;}
+
+  /* WATERMARK */
+  .watermark{
+    position:absolute; inset:0; pointer-events:none; z-index: 50;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'><g transform='rotate(-28 150 150)'><text x='150' y='158' fill='white' fill-opacity='0.09' font-family='monospace' font-size='26' font-weight='800' letter-spacing='4' text-anchor='middle'>drop3d</text></g></svg>");
+    background-repeat: repeat;
+    background-size: 32cqw 32cqw;
+    mix-blend-mode: screen;
+  }
+  .watermark-corner{
+    position:absolute; bottom: 6cqw; right: 4cqw; z-index: 51;
+    pointer-events:none;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 2cqw; font-weight: 700; letter-spacing: .2em;
+    color: rgba(255,255,255,.4); text-transform: lowercase;
+    padding: 1cqw 2cqw;
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 999px;
+    background: rgba(0,0,0,.4);
+    backdrop-filter: blur(4px);
+  }
+  .watermark-corner::before{
+    content: '©'; margin-right: .6cqw; color: var(--red-400);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>KUNZERA · Instagram Stories v2 · con fotos</h1>
+  <p class="lead">Fotos reales de <code style="color:#ff9b9b">/fondo/kunzera.png</code> (retrato) y <code style="color:#ff9b9b">/fondo/image.png</code> (campeonato) integradas como trasfondo con overlays rojos/negros para mantener la identidad. Mismo formato 1080×1920.</p>
+
+  <div class="grid">
+
+    <!-- ========== 1 · PRO PLAYER (retrato, full bleed) ========== -->
+    <div class="story-wrap">
+      <span class="label">01 · Pro player · intro</span>
+      <div class="story">
+        <div class="photo portrait duotone"></div>
+        <div class="overlay-bottom"></div>
+        <div class="overlay-red-vignette"></div>
+        <div class="grid-lines"></div>
+        <div class="scanlines"></div>
+        <div class="side-lines l"></div><div class="side-lines r"></div>
+
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar active"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+            <div class="ig-bar"></div><div class="ig-bar"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner">
+          <span class="badge"><span class="dot"></span>PRO PLAYER · CS2</span>
+          <div class="h-display h-xl">
+            <span style="color:#fff">NO ES UN</span><br/>
+            <span style="color:#fff">SERVICIO</span><br/>
+            <span class="text-red">GENÉRICO.</span>
+          </div>
+          <p class="subtitle">Es configuración hecha por alguien que <b style="color:#fff">compite al más alto nivel</b>. Sé lo que es perder una ronda por un micro-corte.</p>
+          <div class="cta">Optimizá tu PC <span class="arrow">›</span></div>
+        </div>
+        <div class="footer-note">@ezekunnnn · +6000 clientes</div>
+      </div>
+    </div>
+
+    <!-- ========== 2 · CAMPEÓN (trofeo, full bleed) ========== -->
+    <div class="story-wrap">
+      <span class="label">02 · Campeón · autoridad</span>
+      <div class="story">
+        <div class="photo trophy"></div>
+        <div class="overlay-bottom"></div>
+        <div class="overlay-red-vignette"></div>
+        <div class="grid-lines"></div>
+        <div class="scanlines"></div>
+        <div class="side-lines l"></div><div class="side-lines r"></div>
+
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar"></div><div class="ig-bar active"></div><div class="ig-bar"></div>
+            <div class="ig-bar"></div><div class="ig-bar"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner">
+          <span class="champion-banner"><span class="trophy">◆</span>CAMPEONES</span>
+          <div class="h-display h-xl">
+            <span style="color:#fff">GANAR</span><br/>
+            <span class="text-red">SE CONFIGURA.</span>
+          </div>
+          <p class="subtitle">La misma obsesión con el detalle que usamos para subir al podio, la aplicamos en <b style="color:#fff">cada PC que pasa por nuestras manos</b>.</p>
+          <div class="cta">Quiero esa ventaja <span class="arrow">›</span></div>
+        </div>
+        <div class="footer-note">El detalle es lo que separa al top del resto</div>
+      </div>
+    </div>
+
+    <!-- ========== 3 · QUOTE AUTORIDAD (retrato, overlay fuerte) ========== -->
+    <div class="story-wrap">
+      <span class="label">03 · Quote de autoridad</span>
+      <div class="story">
+        <div class="photo portrait duotone" style="filter: contrast(1.2) saturate(0.6) brightness(0.7);"></div>
+        <div class="overlay-full"></div>
+        <div class="grid-lines"></div>
+        <div class="scanlines"></div>
+        <div class="side-lines l"></div><div class="side-lines r"></div>
+
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar active"></div>
+            <div class="ig-bar"></div><div class="ig-bar"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner center">
+          <span class="kicker">Lógica · no magia</span>
+          <div class="quote-big">"Sé lo que es perder una ronda por un micro-corte. Por eso no uso programas milagrosos — uso <b style="color:var(--red-500)">lógica</b>."</div>
+          <div class="quote-author">— EZE · FUNDADOR DE KUNZERA</div>
+          <div class="signature" style="margin-top: 4cqw;">
+            <div class="avatar-big"></div>
+            <div class="info">
+              <div class="name">Eze</div>
+              <div class="role">Pro Player · PC Optimizer</div>
+            </div>
+          </div>
+        </div>
+        <div class="footer-note">100% transparente · vos ves todo en tiempo real</div>
+      </div>
+    </div>
+
+    <!-- ========== 4 · TROFEO + STATS (social proof doble) ========== -->
+    <div class="story-wrap">
+      <span class="label">04 · Trofeo + stats</span>
+      <div class="story">
+        <div class="photo trophy duotone" style="filter: contrast(1.1) saturate(0.65) brightness(0.75);"></div>
+        <div class="overlay-full"></div>
+        <div class="grid-lines"></div>
+        <div class="scanlines"></div>
+
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+            <div class="ig-bar active"></div><div class="ig-bar"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner center" style="align-items:center; text-align:center;">
+          <span class="badge"><span class="dot"></span>RESULTADOS REALES</span>
+          <div class="h-display h-xl text-gradient">NÚMEROS<br/>QUE<br/>IMPORTAN.</div>
+          <div class="stats-row" style="width: 100%;">
+            <div class="stat"><div class="n">6K+</div><div class="l">clientes</div></div>
+            <div class="stat"><div class="n">99%</div><div class="l">éxito</div></div>
+            <div class="stat"><div class="n">+30</div><div class="l">tweaks</div></div>
+            <div class="stat"><div class="n">0</div><div class="l">formateos</div></div>
+          </div>
+          <div class="cta">Sumate a la lista <span class="arrow">›</span></div>
+        </div>
+        <div class="footer-note">Pago único · Sin letra chica · 100% remoto</div>
+      </div>
+    </div>
+
+    <!-- ========== 5 · CTA PERSONAL (retrato split lateral) ========== -->
+    <div class="story-wrap">
+      <span class="label">05 · CTA personal</span>
+      <div class="story">
+        <div class="photo portrait" style="background-position: 70% center; filter: contrast(1.1) saturate(0.8);"></div>
+        <div class="overlay-side"></div>
+        <div class="grid-lines"></div>
+        <div class="scanlines"></div>
+        <div class="side-lines r"></div>
+
+        <div class="ig-header">
+          <div class="ig-bars">
+            <div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+            <div class="ig-bar"></div><div class="ig-bar active"></div>
+          </div>
+          <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+        </div>
+
+        <div class="inner">
+          <span class="kicker">Charlá directo conmigo</span>
+          <div class="h-display h-lg">
+            <span style="color:#fff">RESERVÁ</span><br/>
+            <span class="text-red">TU TURNO.</span>
+          </div>
+          <p class="subtitle">Te escribo por WhatsApp, coordinamos el día y te dejo la PC <b style="color:#fff">volando en 15 a 30 minutos</b>. Sin intermediarios.</p>
+          <div class="stats-row" style="width: 100%;">
+            <div class="stat"><div class="n">15'</div><div class="l">Platino</div></div>
+            <div class="stat"><div class="n">30'</div><div class="l">Diamante</div></div>
+          </div>
+          <div class="cta">WhatsApp <span class="arrow">›</span></div>
+        </div>
+        <div class="footer-note">wa.me/5493382677871 · @ezekunnnn</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<script>
+  document.querySelectorAll('.story').forEach(story => {
+    const tile = document.createElement('div');
+    tile.className = 'watermark';
+    story.appendChild(tile);
+    const corner = document.createElement('div');
+    corner.className = 'watermark-corner';
+    corner.textContent = 'drop3d';
+    story.appendChild(corner);
+  });
+</script>
+</body>
+</html>

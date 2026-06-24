@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8" /><title>Video 01 · FPS Counter</title>
+<link rel="stylesheet" href="_shared.css">
+<script src="_timeline.js"></script>
+</head><body>
+<div class="canvas video">
+  <div class="photo portrait duotone" id="bg" style="opacity:0; filter: contrast(1.2) saturate(.55) brightness(.55);"></div>
+  <div class="overlay-full" id="overlay" style="opacity:0;"></div>
+  <div class="overlay-red-vignette" id="vignette" style="opacity:0;"></div>
+  <div class="side-lines l"></div><div class="side-lines r"></div>
+
+  <div class="ig-header">
+    <div class="ig-bars">
+      <div class="ig-bar" id="bar0"></div><div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div><div class="ig-bar"></div>
+    </div>
+    <div class="ig-user"><div class="avatar"></div><span>ezekunnnn</span><span class="time">· ahora</span></div>
+  </div>
+
+  <div class="inner center">
+    <span class="badge" id="badge" style="opacity:0;"><span class="dot"></span>CASO REAL · VALORANT</span>
+    <div class="h-display h-md" id="title" style="color:#fff; opacity:0;">ANTES / DESPUÉS</div>
+
+    <div class="fps-diff" style="margin: 30px 0;">
+      <div style="display:flex; flex-direction:column; align-items:center;">
+        <div class="fps-val before" id="before" style="opacity:0;">180</div>
+        <div class="kicker" id="beforeLabel" style="margin-top:14px; opacity:0;">fps</div>
+      </div>
+      <div class="fps-arrow" id="arrow" style="opacity:0;">›</div>
+      <div style="display:flex; flex-direction:column; align-items:center;">
+        <div class="fps-val after" id="after">180</div>
+        <div class="kicker" id="afterLabel" style="margin-top:14px; opacity:0; color: var(--red-400);">fps</div>
+      </div>
+    </div>
+
+    <div style="width:100%; max-width: 860px; opacity:0;" id="quoteBox">
+      <div class="quote">"Parece otra PC."</div>
+      <div class="quote-author">— TOMÁS R. · i5 12400F · RTX 3060</div>
+    </div>
+  </div>
+  <div class="footer-note">+6000 casos reales · 99% de éxito</div>
+  <div class="watermark"></div>
+  <div class="watermark-corner">drop3d</div>
+</div>
+<script>
+const D = 7;
+const $ = id => document.getElementById(id);
+const bg = $('bg'), overlay = $('overlay'), vignette = $('vignette');
+const bar0 = $('bar0'), badge = $('badge'), title = $('title');
+const before = $('before'), beforeLabel = $('beforeLabel'), arrow = $('arrow');
+const after = $('after'), afterLabel = $('afterLabel');
+const quoteBox = $('quoteBox');
+
+__startLoop(D, t => {
+  const {seg, clamp, lerp, easeOutCubic, fadeHold} = TL;
+  bg.style.opacity = seg(t, 0, 0.6);
+  overlay.style.opacity = seg(t, 0, 0.6);
+  vignette.style.opacity = seg(t, 0, 0.8);
+  bar0.style.background = 'rgba(255,255,255,.35)';
+  const fill = clamp(t / D, 0, 1);
+  bar0.style.background = `linear-gradient(90deg, #fff ${fill*100}%, rgba(255,255,255,.35) ${fill*100}%)`;
+
+  // Badge
+  const bOp = fadeHold(t, 0.2, 0.7, D-0.3, D);
+  badge.style.opacity = bOp;
+  badge.style.transform = `translateY(${(1-bOp) * -20}px)`;
+
+  // Title
+  const tOp = fadeHold(t, 0.5, 1.0, D-0.3, D);
+  title.style.opacity = tOp;
+  title.style.transform = `translateY(${(1-tOp) * 20}px)`;
+
+  // Before number
+  const beOp = fadeHold(t, 0.9, 1.4, D-0.3, D);
+  before.style.opacity = beOp;
+  before.style.transform = `translateX(${(1-beOp) * -30}px)`;
+  beforeLabel.style.opacity = beOp;
+
+  // Arrow
+  const aOp = fadeHold(t, 1.3, 1.7, D-0.3, D);
+  const aPulse = 1 + Math.sin(t * 6) * 0.1 * (t > 1.6 ? 1 : 0);
+  arrow.style.opacity = aOp;
+  arrow.style.transform = `scale(${lerp(0.6, 1, aOp) * aPulse})`;
+
+  // Counter 180 → 340
+  const cStart = 1.8, cEnd = 4.6;
+  const p = clamp((t - cStart) / (cEnd - cStart), 0, 1);
+  const eased = easeOutCubic(p);
+  const val = Math.round(lerp(180, 340, eased));
+  after.textContent = val;
+  const afOp = fadeHold(t, 1.6, 1.9, D-0.3, D);
+  afterLabel.style.opacity = afOp;
+
+  // Quote
+  const qOp = fadeHold(t, 4.5, 5.1, D-0.3, D);
+  quoteBox.style.opacity = qOp;
+  quoteBox.style.transform = `translateX(${(1-qOp) * 25}px)`;
+});
+</script>
+</body></html>

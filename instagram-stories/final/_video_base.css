@@ -1,0 +1,19 @@
+/* Video-specific overrides */
+@import url('_shared.css');
+
+/* IG progress bar that fills with animation duration */
+.ig-bar.progress-fill{ background: rgba(255,255,255,.35);}
+.ig-bar.progress-fill::after{
+  content:''; position:absolute; inset:0;
+  background:#fff; transform-origin: left;
+  animation: ig-fill var(--vid-duration) linear forwards;
+}
+@keyframes ig-fill{ from{transform: scaleX(0);} to{transform: scaleX(1);} }
+
+/* Scanlines moving */
+.canvas.video::after{
+  animation: scan-move 4s linear infinite;
+}
+@keyframes scan-move{
+  from{background-position: 0 0;} to{background-position: 0 6px;}
+}
