@@ -1,0 +1,128 @@
+import { useCallback, useEffect, useReducer, useRef, useState } from "react"
+import {
+  FlowContext,
+  GREETING,
+  initialContext,
+  isExpanded,
+  reduce,
+} from "../lib/chatFlow"
+import type { FlowEvent } from "../types/order"
+import { canResume, clearDraft, loadDraft, saveDraft } from "../lib/storage"
+
+type FlowReturn = {
+  ctx: FlowContext
+  dispatch: (ev: FlowEvent) => void
+  typing: boolean
+  resumable: ReturnType<typeof loadDraft>
+  resumeDraft: () => void
+  discardDraft: () => void
+  open: boolean
+  setOpen: (open: boolean) => void
+  forceExpanded: boolean
+  setForceExpanded: (v: boolean) => void
+}
+
+// Envuelve el reducer y le agrega typing simulado + hidratación
+export function useChatFlow(): FlowReturn {
+  const [ctx, rawDispatch] = useReducer(reduce, undefined, initialContext)
+  const [typing, setTyping] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [forceExpanded, setForceExpanded] = useState(false)
+  const [resumable, setResumable] = useState(() => loadDraft())
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const greeted = useRef(false)
+
+  const dispatch = useCallback((ev: FlowEvent) => {
+    const isUserMove =
+      ev.type === "SELECT_CHIP" ||
+      ev.type === "FREE_TEXT" ||
+      ev.type === "PICK_PACK" ||
+      ev.type === "SET_NAME" ||
+      ev.type === "SET_WHATSAPP" ||
+      ev.type === "SET_DISCORD" ||
+      ev.type === "PICK_SLOT" ||
+      ev.type === "CONFIRM_REVIEW" ||
+      ev.type === "CONFIRM_PAYMENT"
+
+    if (isUserMove) {
+      if (typingTimer.current) clearTimeout(typingTimer.current)
+      setTyping(true)
+      typingTimer.current = setTimeout(() => {
+        rawDispatch(ev)
+        setTyping(false)
+      }, 600)
+    } else {
+      rawDispatch(ev)
+    }
+  }, [])
+
+  // Greet on first open
+  useEffect(() => {
+    if (open && !greeted.current && ctx.state === "idle") {
+      greeted.current = true
+      setTyping(true)
+      const t = setTimeout(() => {
+        rawDispatch({ type: "OPEN" })
+        setTyping(false)
+      }, 700)
+      return () => clearTimeout(t)
+    }
+  }, [open, ctx.state])
+
+  // Persist draft
+  useEffect(() => {
+    if (ctx.state !== "idle" && ctx.state !== "confirmed" && ctx.state !== "error") {
+      saveDraft(ctx.draft, ctx.state)
+    }
+    if (ctx.state === "confirmed") {
+      clearDraft()
+      setResumable(null)
+      const fbq = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq
+      if (typeof fbq === "function") {
+        fbq("track", "Purchase", {
+          value: ctx.draft.monto ?? 0,
+          currency: "ARS",
+          content_name: ctx.draft.pack,
+          content_type: "product",
+        })
+      }
+    }
+  }, [ctx.state, ctx.draft])
+
+  const resumeDraft = useCallback(() => {
+    const stored = loadDraft()
+    if (!stored || !canResume(stored.state)) return
+    rawDispatch({ type: "HYDRATE", draft: stored.draft, state: stored.state })
+    setResumable(null)
+    setOpen(true)
+  }, [])
+
+  const discardDraft = useCallback(() => {
+    clearDraft()
+    setResumable(null)
+    rawDispatch({ type: "RESET" })
+  }, [])
+
+  // Si hay draft pendiente, al abrir greet con el banner; manejamos en UI, acá solo exponemos.
+  useEffect(() => {
+    // Ensure greeting was injected even if we didn't go through OPEN (e.g. hydrate path)
+    if (open && ctx.messages.length === 0 && ctx.state === "idle") {
+      // nothing — greet handled in other effect
+    }
+  }, [open, ctx.messages.length, ctx.state])
+
+  return {
+    ctx: { ...ctx, mode: forceExpanded && ctx.state !== "idle" ? "expanded" : ctx.mode },
+    dispatch,
+    typing,
+    resumable,
+    resumeDraft,
+    discardDraft,
+    open,
+    setOpen,
+    forceExpanded,
+    setForceExpanded,
+  }
+}
+
+export { GREETING, isExpanded }
