@@ -97,16 +97,31 @@ export async function submitOrder(
 
 export async function getTakenSlots(): Promise<string[]> {
   const url = `${APPS_SCRIPT_URL}?action=getTakenSlots`
-  const result = await getJson<{ slots: string[] }>(url)
-  if (!result.ok) return []
-  return (result.slots || []).map(normalizeIso)
+  // Mismo bug de CORS intermitente que getOrders: reintentamos.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400))
+    const result = await getJson<{ slots: string[] }>(url)
+    if (result.ok) return (result.slots || []).map(normalizeIso)
+  }
+  return []
 }
 
 export async function getOrders(): Promise<Order[]> {
   const url = `${APPS_SCRIPT_URL}?action=getOrders&token=${encodeURIComponent(ADMIN_SECRET_TOKEN)}`
-  const result = await getJson<{ orders: Order[] }>(url)
-  if (!result.ok) return []
-  return result.orders || []
+  // Apps Script tiene un bug conocido: el redirect 302 a googleusercontent
+  // a veces NO trae el header CORS y el navegador bloquea la respuesta.
+  // El fallo es instantáneo, así que reintentamos varias veces: cada intento
+  // genera un request nuevo con otra chance de pasar. Timeout amplio cubre el
+  // "cold start" (15-30s) del primer intento.
+  let lastErr = "unknown"
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400))
+    const result = await getJson<{ orders: Order[] }>(url, 30000)
+    if (result.ok) return result.orders || []
+    lastErr = result.error
+  }
+  console.error("[getOrders] falló tras 4 intentos:", lastErr)
+  return []
 }
 
 export async function updateOrderStatus(

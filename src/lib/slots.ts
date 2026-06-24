@@ -42,13 +42,17 @@ type DayBlock = {
 }
 
 /**
- * Genera los N slots de un día "base" (15:00–01:30 del día siguiente).
- * Cada slot empieza a startHour + i * STEP_MIN, en minutos totales desde 15:00.
+ * Genera los turnos de un día "base" (14:00–20:40, cada SLOT_STEP_MIN).
+ * Cada slot empieza a SLOT_START_HOUR + i * STEP_MIN.
  */
 function generateDayBlock(dayKey: string): DayBlock {
   const slots: Date[] = []
-  const totalMin = (24 - SLOT_START_HOUR + SLOT_END_HOUR) * 60 // 11h = 660min
-  const count = Math.floor(totalMin / SLOT_STEP_MIN) // 19
+  // Ventana del día. Si END > START es mismo día; si no, cruza la medianoche.
+  const windowMin =
+    SLOT_END_HOUR > SLOT_START_HOUR
+      ? (SLOT_END_HOUR - SLOT_START_HOUR) * 60
+      : (24 - SLOT_START_HOUR + SLOT_END_HOUR) * 60
+  const count = Math.floor(windowMin / SLOT_STEP_MIN)
 
   for (let i = 0; i < count; i++) {
     const offsetMin = i * SLOT_STEP_MIN
@@ -65,21 +69,15 @@ function generateDayBlock(dayKey: string): DayBlock {
   return { dayKey, slots }
 }
 
-/**
- * Devuelve el día de la semana (0=Dom..6=Sáb) en zona horaria AR
- * para el dayKey "YYYY-MM-DD" recibido.
- */
-function weekdayAR(dayKey: string): number {
-  const d = new Date(`${dayKey}T12:00:00-03:00`)
-  return d.getUTCDay()
-}
-
 export type BlockedRange = { start: string; end: string }
 
+/** Cuántos días hacia adelante se pueden reservar, contando desde hoy. */
+export const RESERVATION_HORIZON_DAYS = 30
+
 /**
- * Genera todos los slots disponibles desde `now` hasta el final del
- * domingo de la semana actual (en hora AR). Filtra los que ya pasaron,
- * los que están en `takenIso` y los que caen dentro de `blockedRanges`.
+ * Genera todos los slots disponibles desde `now` hasta 30 días en el
+ * futuro (en hora AR). Filtra los que ya pasaron, los que están en
+ * `takenIso` y los que caen dentro de `blockedRanges`.
  */
 export function generateSlots(
   takenIso: string[] = [],
@@ -97,12 +95,11 @@ export function generateSlots(
   const todayKey = getDayKeyAR(now)
   const yesterdayKey = addDays(todayKey, -1) // por si son las 00:30 y queremos slots del "día anterior"
 
-  // Días que faltan hasta el domingo inclusive (lunes=7, ..., sábado=2, domingo=1)
-  const daysUntilSunday = ((0 - weekdayAR(todayKey) + 7) % 7) + 1
-  const lastDayKey = addDays(todayKey, daysUntilSunday - 1)
+  // Ventana de reserva: desde hoy hasta 30 días en el futuro (inclusive).
+  const lastDayKey = addDays(todayKey, RESERVATION_HORIZON_DAYS)
 
   const blocks: DayBlock[] = [generateDayBlock(yesterdayKey)]
-  for (let i = 0; i < daysUntilSunday; i++) {
+  for (let i = 0; i <= RESERVATION_HORIZON_DAYS; i++) {
     blocks.push(generateDayBlock(addDays(todayKey, i)))
   }
 

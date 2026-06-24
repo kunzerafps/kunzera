@@ -37,7 +37,6 @@ export default function OrderSummary({ draft, onConfirm, onBack }: Props) {
       <div className="space-y-1.5 text-sm text-white/80 border-t border-white/5 pt-3">
         <Row label="Nombre" value={draft.nombre || "-"} />
         <Row label="WhatsApp" value={draft.whatsapp || "-"} />
-        <Row label="Discord" value={draft.discord || "-"} />
         <Row label="Turno" value={formatSlotLabel(draft.turno)} highlight />
       </div>
 

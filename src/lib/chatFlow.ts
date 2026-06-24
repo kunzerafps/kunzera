@@ -134,22 +134,16 @@ function askWhatsappMessages(): ChatMessage[] {
   ]
 }
 
-function askDiscordMessages(): ChatMessage[] {
-  return [
-    bot("Último dato: ¿tu usuario de *Discord*?"),
-  ]
-}
-
 function pickSlotMessages(): ChatMessage[] {
   return [
-    bot("Elegí un turno de esta semana 👇"),
+    bot("Elegí el día y horario que prefieras 👇"),
   ]
 }
 
 function reviewMessages(draft: OrderDraft): ChatMessage[] {
   return [
     bot(
-      `Revisá tu pedido:\n\n${PACKS[draft.pack!].emoji} *${PACKS[draft.pack!].name}* — ${formatARS(draft.monto || 0)}\n👤 ${draft.nombre}\n📱 ${draft.whatsapp}\n🎮 ${draft.discord}\n📅 ${formatSlotLabel(draft.turno!)}\n\n¿Confirmás?`,
+      `Revisá tu pedido:\n\n${PACKS[draft.pack!].emoji} *${PACKS[draft.pack!].name}* — ${formatARS(draft.monto || 0)}\n👤 ${draft.nombre}\n📱 ${draft.whatsapp}\n📅 ${formatSlotLabel(draft.turno!)}\n\n¿Confirmás?`,
     ),
   ]
 }
@@ -175,7 +169,7 @@ function submittingMessages(): ChatMessage[] {
 function confirmedMessages(draft: OrderDraft, _fileUrl: string): ChatMessage[] {
   return [
     bot(
-      `¡Listo! 🎉 Tu turno quedó reservado para *${formatSlotLabel(draft.turno!)}*.\n\nTe escribo al WhatsApp 10 minutos antes para conectarnos por Anydesk.`,
+      `¡Listo! 🎉 Tu turno quedó reservado para *${formatSlotLabel(draft.turno!)}*.\n\nTe escribo al WhatsApp 10 minutos antes de la hora pactada. Mientras tanto, descargá AnyDesk desde anydesk.com. Si tu pack incluye optimización de BIOS, también te voy a mandar un link de Google Meet para que puedas enfocarme el monitor y configurarla juntos.`,
       { variant: "success" },
     ),
   ]
@@ -184,7 +178,7 @@ function confirmedMessages(draft: OrderDraft, _fileUrl: string): ChatMessage[] {
 function errorMessages(_error: string, draft: OrderDraft): ChatMessage[] {
   const fallbackMsg =
     `Hola! Quiero reservar el pack ${PACKS[draft.pack!]?.name || ""} — turno ${draft.turno ? formatSlotLabel(draft.turno) : ""}. ` +
-    `Nombre: ${draft.nombre || "-"}, Discord: ${draft.discord || "-"}.`
+    `Nombre: ${draft.nombre || "-"}.`
   return [
     bot(
       "Ups, hubo un problema al guardar tu reserva. Podés reintentar o continuar por WhatsApp con tus datos ya cargados.",
@@ -365,25 +359,18 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
     case "askWhatsapp":
       if (ev.type === "SET_WHATSAPP") {
         const withUser = pushUser(ctx, ev.value)
-        const withBot = pushMessages(withUser, askDiscordMessages())
-        return transition(
-          { ...withBot, draft: { ...ctx.draft, whatsapp: ev.value }, error: undefined },
-          "askDiscord",
-        )
-      }
-      if (ev.type === "BACK") return back(ctx, "askName")
-      break
-
-    case "askDiscord":
-      if (ev.type === "SET_DISCORD") {
-        const withUser = pushUser(ctx, ev.value)
         const withBot = pushMessages(withUser, pickSlotMessages())
+        // Discord se omite: se setea un placeholder para satisfacer el backend.
         return transition(
-          { ...withBot, draft: { ...ctx.draft, discord: ev.value }, error: undefined },
+          {
+            ...withBot,
+            draft: { ...ctx.draft, whatsapp: ev.value, discord: "-" },
+            error: undefined,
+          },
           "pickSlot",
         )
       }
-      if (ev.type === "BACK") return back(ctx, "askWhatsapp")
+      if (ev.type === "BACK") return back(ctx, "askName")
       break
 
     case "pickSlot":
@@ -393,7 +380,7 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
         const withBot = pushMessages(withUser, reviewMessages(draftNext))
         return transition({ ...withBot, draft: draftNext }, "review")
       }
-      if (ev.type === "BACK") return back(ctx, "askDiscord")
+      if (ev.type === "BACK") return back(ctx, "askWhatsapp")
       break
 
     case "review":

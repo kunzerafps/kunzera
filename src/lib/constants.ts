@@ -32,8 +32,8 @@ export const BINANCE_EMAIL = "ezepalmero@gmail.com"
 export const SLOT_SESSION_MIN = 20
 export const SLOT_BREAK_MIN = 0
 export const SLOT_STEP_MIN = SLOT_SESSION_MIN + SLOT_BREAK_MIN // 20
-export const SLOT_START_HOUR = 15 // 15:00
-export const SLOT_END_HOUR = 3 // 03:00 del día siguiente
+export const SLOT_START_HOUR = 14 // 14:00 (primer turno)
+export const SLOT_END_HOUR = 21 // 21:00 exclusivo → último turno 20:40
 export const TIMEZONE = "America/Argentina/Buenos_Aires"
 
 // ────────────────────────────────────────────────────────────

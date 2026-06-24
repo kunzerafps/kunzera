@@ -62,7 +62,7 @@ export default function SlotPicker({ slots, loading, error, onPick, onRefresh }:
   if (slots.length === 0) {
     return (
       <div className="mt-2 text-white/60 text-sm">
-        No hay turnos libres en lo que queda de la semana. Probá recargar en un rato.
+        No hay turnos libres en los próximos 30 días. Probá recargar en un rato.
       </div>
     )
   }
