@@ -33,7 +33,7 @@ export const SLOT_SESSION_MIN = 20
 export const SLOT_BREAK_MIN = 0
 export const SLOT_STEP_MIN = SLOT_SESSION_MIN + SLOT_BREAK_MIN // 20
 export const SLOT_START_HOUR = 14 // 14:00 (primer turno)
-export const SLOT_END_HOUR = 21 // 21:00 exclusivo → último turno 20:40
+export const SLOT_END_HOUR = 19 // 19:00 exclusivo → último turno 18:40
 export const TIMEZONE = "America/Argentina/Buenos_Aires"
 
 // ────────────────────────────────────────────────────────────
