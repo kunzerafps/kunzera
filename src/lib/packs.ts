@@ -4,14 +4,14 @@ export const PACKS: Record<Pack, PackInfo> = {
   platino: {
     id: "platino",
     name: "Platino",
-    price: 35000,
+    price: 50000,
     tagline: "Optimización Integral de Windows",
     emoji: "⚡",
   },
   diamante: {
     id: "diamante",
     name: "Diamante",
-    price: 55000,
+    price: 70000,
     tagline: "Elite Hardware Tuning (BIOS)",
     emoji: "💎",
   },

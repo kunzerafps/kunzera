@@ -5,8 +5,8 @@ export type PackPrices = { ars: number; usd: number }
 export type Prices = Record<Pack, PackPrices>
 
 export const DEFAULT_PRICES: Prices = {
-  platino: { ars: PACKS.platino.price, usd: 30 },
-  diamante: { ars: PACKS.diamante.price, usd: 50 },
+  platino: { ars: PACKS.platino.price, usd: 45 },
+  diamante: { ars: PACKS.diamante.price, usd: 65 },
 }
 
 let current: Prices = DEFAULT_PRICES

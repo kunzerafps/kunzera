@@ -34,8 +34,8 @@ export const DEFAULT_CLIENT_TEMPLATE =
 export const DEFAULT_SITE_CONFIG: SiteConfig = {
   clientTemplate: DEFAULT_CLIENT_TEMPLATE,
   prices: {
-    platino: { ars: PACKS.platino.price, usd: 30 },
-    diamante: { ars: PACKS.diamante.price, usd: 50 },
+    platino: { ars: PACKS.platino.price, usd: 45 },
+    diamante: { ars: PACKS.diamante.price, usd: 65 },
   },
   adminPasswordHash: "",
   blockedWindows: [],

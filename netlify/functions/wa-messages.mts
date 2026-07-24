@@ -18,8 +18,8 @@ const DEFAULTS = {
   clientTemplate:
     "¡Hola {nombre}! Soy Kun, de Kunzera. Gracias por reservar tu turno del pack {pack} para el {turno}. Te escribo para coordinar los detalles y comenzar la optimización de tu PC. ¿Te viene bien arrancar en ese horario?",
   prices: {
-    platino: { ars: 35000, usd: 30 } as PackPrices,
-    diamante: { ars: 55000, usd: 50 } as PackPrices,
+    platino: { ars: 50000, usd: 45 } as PackPrices,
+    diamante: { ars: 70000, usd: 65 } as PackPrices,
   },
   adminPasswordHash: "",
   blockedWindows: [] as BlockedWindow[],
