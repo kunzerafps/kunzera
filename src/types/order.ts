@@ -98,3 +98,4 @@ export type FlowEvent =
   | { type: "RESET" }
   | { type: "BACK" }
   | { type: "HYDRATE"; draft: OrderDraft; state: FlowState }
+  | { type: "MP_RETURN"; status: "success" | "failure"; draft: OrderDraft }

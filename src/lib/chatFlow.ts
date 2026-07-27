@@ -263,6 +263,21 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
     }
   }
 
+  if (ev.type === "MP_RETURN") {
+    const fresh = initialContext()
+    if (ev.status === "success") {
+      const withBot = pushMessages(fresh, confirmedMessages(ev.draft, ""))
+      return transition({ ...withBot, draft: ev.draft }, "confirmed")
+    }
+    const withPayment = pushMessages(fresh, paymentMessages(ev.draft))
+    const withError = pushMessages(withPayment, [
+      bot(
+        "El pago con Mercado Pago no se completó. Podés intentarlo de nuevo o elegir otro método de pago 👇",
+      ),
+    ])
+    return transition({ ...withError, draft: ev.draft }, "payment")
+  }
+
   if (ev.type === "OPEN" && ctx.state === "idle") {
     return transition(pushMessages(ctx, GREETING), "greeting")
   }

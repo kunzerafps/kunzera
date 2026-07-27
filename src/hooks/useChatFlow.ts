@@ -89,6 +89,30 @@ export function useChatFlow(): FlowReturn {
     }
   }, [ctx.state, ctx.draft])
 
+  // Detecta el regreso desde el checkout de Mercado Pago (?mp=success|pending|failure&ref=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const mp = params.get("mp")
+    if (!mp) return
+    const ref = params.get("ref")
+    // Limpiamos la URL para que un refresh no vuelva a disparar esto
+    window.history.replaceState(null, "", window.location.pathname)
+
+    const stored = loadDraft()
+    if (!stored || !stored.draft.idempotencyKey || stored.draft.idempotencyKey !== ref) return
+
+    clearDraft()
+    setResumable(null)
+    rawDispatch({
+      type: "MP_RETURN",
+      status: mp === "failure" ? "failure" : "success",
+      draft: stored.draft,
+    })
+    setOpen(true)
+    setForceExpanded(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const resumeDraft = useCallback(() => {
     const stored = loadDraft()
     if (!stored || !canResume(stored.state)) return
