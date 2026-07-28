@@ -103,6 +103,7 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
           draft={ctx.draft}
           onPaid={() => dispatch({ type: "CONFIRM_PAYMENT" })}
           onBack={() => dispatch({ type: "BACK" })}
+          onKeyReady={(key) => dispatch({ type: "SET_ORDER_KEY", key })}
         />
       )
 

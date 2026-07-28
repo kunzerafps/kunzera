@@ -416,6 +416,13 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
         const withBot = pushMessages(ctx, uploadProofMessages())
         return transition(withBot, "uploadProof")
       }
+      if (ev.type === "SET_ORDER_KEY") {
+        // Reservamos un idempotencyKey único apenas se entra a pagar, así los
+        // 3 métodos (transferencia/binance/MP) comparten el mismo si el
+        // cliente cambia de método a mitad de camino.
+        if (ctx.draft.idempotencyKey) return ctx
+        return { ...ctx, draft: { ...ctx.draft, idempotencyKey: ev.key } }
+      }
       if (ev.type === "BACK") return back(ctx, "review")
       break
 

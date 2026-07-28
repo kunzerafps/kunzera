@@ -1,20 +1,19 @@
 import type { Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { PACKS } from "../../src/lib/packs"
+import { mpTotal } from "../../src/lib/pricing"
 
-const MP_FEE_RATE = 0.0777
 const SITE_CONFIG_STORE = "site-config"
 const SITE_CONFIG_KEY = "site-config"
 
 type Pack = "platino" | "diamante"
 
-function corsHeaders(): HeadersInit {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "content-type",
-    "Cache-Control": "no-store",
-  }
+// Este endpoint solo lo llama el propio front, siempre same-origin (fetch a
+// "/api/..."), así que no necesita headers CORS permisivos — evita que
+// cualquier sitio externo pueda scriptear la creación de preferencias contra
+// la cuenta de Mercado Pago de Kunzera.
+function baseHeaders(): HeadersInit {
+  return { "Cache-Control": "no-store" }
 }
 
 // Los precios se pueden editar desde el panel admin (ver wa-messages.mts),
@@ -34,11 +33,8 @@ async function getBasePriceArs(pack: Pack): Promise<number> {
 }
 
 export default async (req: Request, _ctx: Context): Promise<Response> => {
-  const headers = corsHeaders()
+  const headers = baseHeaders()
 
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers })
-  }
   if (req.method !== "POST") {
     return Response.json({ ok: false, error: "method_not_allowed" }, { status: 405, headers })
   }
@@ -69,8 +65,7 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
   }
 
   const ars = await getBasePriceArs(pack)
-  // Comisión de Mercado Pago (7.77%) sumada arriba del precio, redondeada a la decena.
-  const total = Math.ceil((ars * (1 + MP_FEE_RATE)) / 10) * 10
+  const total = mpTotal(ars)
   const origin = new URL(req.url).origin
 
   const preference = {

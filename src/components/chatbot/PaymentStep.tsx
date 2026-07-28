@@ -1,6 +1,6 @@
 import { motion } from "framer-motion"
 import { ArrowLeft, Check, Copy, CreditCard, Landmark, Wallet } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { OrderDraft } from "../../types/order"
 import { BINANCE_EMAIL, MP_ALIAS } from "../../lib/constants"
 import { formatARS } from "../../lib/formatters"
@@ -8,16 +8,16 @@ import { useSiteConfig } from "../../hooks/useWaMessages"
 import { submitOrder } from "../../lib/appsScript"
 import { randomId } from "../../lib/crypto"
 import { saveDraft } from "../../lib/storage"
+import { mpTotal } from "../../lib/pricing"
 
 type Props = {
   draft: OrderDraft
   onPaid: () => void
   onBack: () => void
+  onKeyReady: (key: string) => void
 }
 
 type Method = "transferencia" | "binance" | "mercadopago"
-
-const MP_FEE_RATE = 0.0777
 
 const METHODS: {
   id: Method
@@ -47,24 +47,39 @@ const ALIAS_METHODS: Record<
   },
 }
 
-export default function PaymentStep({ draft, onPaid, onBack }: Props) {
+export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props) {
   const { prices } = useSiteConfig()
   const [method, setMethod] = useState<Method>("transferencia")
   const [copied, setCopied] = useState(false)
   const [mpLoading, setMpLoading] = useState(false)
   const [mpError, setMpError] = useState<string | null>(null)
 
+  // El idempotencyKey se decide UNA sola vez apenas se entra a pagar (no en
+  // cada click) y se comparte con el resto de los métodos vía onKeyReady,
+  // para que reintentar o cambiar de método de pago no genere un pedido
+  // duplicado ni choque con el turno que ya se reservó a nombre de esta key.
+  const [idempotencyKey] = useState(() => draft.idempotencyKey || randomId())
+  const orderSubmittedRef = useRef(false)
+
+  useEffect(() => {
+    if (!draft.idempotencyKey) onKeyReady(idempotencyKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const active = method !== "mercadopago" ? ALIAS_METHODS[method] : null
   const Icon = METHODS.find((m) => m.id === method)!.icon
 
   const ars = draft.pack ? prices[draft.pack].ars : draft.monto || 0
   const usd = draft.pack ? prices[draft.pack].usd : 0
-  const mpTotal = Math.ceil((ars * (1 + MP_FEE_RATE)) / 10) * 10
+  // El precio de lista es el que se paga con Mercado Pago. Transferencia y
+  // Binance tienen un descuento (nunca mostramos esto como "recargo de MP").
+  const mpTotalArs = mpTotal(ars)
+  const descuento = mpTotalArs - ars
   const displayAmount =
     method === "binance"
       ? `USD $${usd.toLocaleString("es-AR")}`
       : method === "mercadopago"
-      ? formatARS(mpTotal)
+      ? formatARS(mpTotalArs)
       : formatARS(ars)
 
   const copyValue = async () => {
@@ -100,24 +115,32 @@ export default function PaymentStep({ draft, onPaid, onBack }: Props) {
     setMpError(null)
     setMpLoading(true)
 
-    const idempotencyKey = draft.idempotencyKey || randomId()
     const draftWithKey = { ...draft, idempotencyKey }
 
-    const orderResult = await submitOrder(draftWithKey, idempotencyKey)
-    if (!orderResult.ok) {
-      setMpLoading(false)
-      setMpError(
-        orderResult.error === "slot_taken"
-          ? "Ese turno se acaba de ocupar. Volvé atrás y elegí otro horario."
-          : "No se pudo iniciar el pago. Intentá de nuevo en unos segundos.",
-      )
-      return
+    // Si ya se envió el pedido en un intento anterior (ej: se cortó la
+    // conexión al crear la preferencia, o el usuario volvió a tocar el
+    // botón), no lo volvemos a enviar — evita duplicar la reserva y que el
+    // segundo intento choque con el turno que la primera reserva ya ocupó.
+    if (!orderSubmittedRef.current) {
+      const orderResult = await submitOrder(draftWithKey, idempotencyKey)
+      if (!orderResult.ok) {
+        setMpLoading(false)
+        setMpError(
+          orderResult.error === "slot_taken"
+            ? "Ese turno se acaba de ocupar. Volvé atrás y elegí otro horario."
+            : "No se pudo iniciar el pago. Intentá de nuevo en unos segundos.",
+        )
+        return
+      }
+      orderSubmittedRef.current = true
+
+      // Guardamos el draft con la key ANTES de salir de la página, así lo
+      // recuperamos al volver del checkout de Mercado Pago.
+      saveDraft(draftWithKey, "payment")
     }
 
-    // Guardamos el draft con la key ANTES de salir de la página, así lo
-    // recuperamos al volver del checkout de Mercado Pago.
-    saveDraft(draftWithKey, "payment")
-
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 15000)
     try {
       const res = await fetch("/api/mp-create-preference", {
         method: "POST",
@@ -127,13 +150,21 @@ export default function PaymentStep({ draft, onPaid, onBack }: Props) {
           nombre: draft.nombre,
           idempotencyKey,
         }),
+        signal: controller.signal,
       })
       const data = await res.json()
       if (!data?.ok || !data.init_point) throw new Error("no_init_point")
       window.location.href = data.init_point
-    } catch {
+    } catch (err) {
       setMpLoading(false)
-      setMpError("No se pudo conectar con Mercado Pago. Intentá de nuevo.")
+      const timedOut = err instanceof Error && err.name === "AbortError"
+      setMpError(
+        timedOut
+          ? "Mercado Pago tardó demasiado en responder. Intentá de nuevo."
+          : "No se pudo conectar con Mercado Pago. Intentá de nuevo.",
+      )
+    } finally {
+      clearTimeout(timer)
     }
   }
 
@@ -173,15 +204,20 @@ export default function PaymentStep({ draft, onPaid, onBack }: Props) {
           {method === "binance"
             ? "Monto a enviar (USDT)"
             : method === "mercadopago"
-            ? "Total a pagar (incluye comisión)"
+            ? "Total a pagar"
             : "Monto a transferir"}
         </div>
         <div className="font-display font-black text-3xl text-gradient-red">
           {displayAmount}
         </div>
-        {method === "mercadopago" && (
-          <div className="text-[11px] text-white/40 mt-1">
-            Precio base {formatARS(ars)} + comisión Mercado Pago
+        {method === "transferencia" && (
+          <div className="text-[11px] text-green-400 mt-1 font-semibold">
+            Ahorrás {formatARS(descuento)} pagando por transferencia
+          </div>
+        )}
+        {method === "binance" && (
+          <div className="text-[11px] text-green-400 mt-1 font-semibold">
+            Precio con descuento por pagar en USDT
           </div>
         )}
       </div>
