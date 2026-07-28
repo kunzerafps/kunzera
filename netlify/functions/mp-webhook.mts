@@ -1,7 +1,31 @@
 import type { Context } from "@netlify/functions"
 import { createHmac, timingSafeEqual } from "node:crypto"
+import { getStore } from "@netlify/blobs"
 import { updateOrderStatus } from "../../src/lib/appsScript"
 import { formatARS } from "../../src/lib/formatters"
+
+const NOTIFIED_STORE = "mp-webhook-notified"
+
+// Mercado Pago puede reenviar la misma notificación más de una vez (a
+// propósito, por diseño). Sin esto, un mismo pago aprobado mandaría el aviso
+// de Discord repetido cada vez que llega el reenvío.
+async function alreadyNotified(paymentId: string): Promise<boolean> {
+  try {
+    const store = getStore(NOTIFIED_STORE)
+    return (await store.get(paymentId)) !== null
+  } catch {
+    return false // si falla Blobs, preferimos avisar de más antes que de menos
+  }
+}
+
+async function markNotified(paymentId: string): Promise<void> {
+  try {
+    const store = getStore(NOTIFIED_STORE)
+    await store.set(paymentId, "1")
+  } catch (err) {
+    console.error("[mp-webhook] no se pudo marcar como notificado:", err)
+  }
+}
 
 type MpPayment = {
   status?: string
@@ -120,8 +144,9 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
       const result = await updateOrderStatus(idempotencyKey, "confirmado")
       if (!result.ok) {
         console.error("[mp-webhook] no se pudo actualizar la reserva", idempotencyKey, result.error)
-      } else {
+      } else if (!(await alreadyNotified(paymentId))) {
         await notifyDiscordConfirmed(payment)
+        await markNotified(paymentId)
       }
     }
   } catch (err) {
