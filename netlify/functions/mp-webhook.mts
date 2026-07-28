@@ -1,6 +1,44 @@
 import type { Context } from "@netlify/functions"
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { updateOrderStatus } from "../../src/lib/appsScript"
+import { formatARS } from "../../src/lib/formatters"
+
+type MpPayment = {
+  status?: string
+  external_reference?: string
+  transaction_amount?: number
+  description?: string
+  payer?: { email?: string }
+}
+
+// Aviso aparte (opcional) para que Eze se entere apenas un pago de Mercado
+// Pago se acredita solo, sin tener que revisar el panel. Si no está
+// configurado MP_DISCORD_WEBHOOK_URL, simplemente no manda nada.
+async function notifyDiscordConfirmed(payment: MpPayment): Promise<void> {
+  const webhookUrl = process.env.MP_DISCORD_WEBHOOK_URL
+  if (!webhookUrl) return
+
+  const amount =
+    typeof payment.transaction_amount === "number" ? formatARS(payment.transaction_amount) : "—"
+  const ref = payment.external_reference ? payment.external_reference.slice(0, 8) : "—"
+  const lines = [
+    "💰 **Pago confirmado automáticamente vía Mercado Pago**",
+    payment.description || "Kunzera",
+    `Monto: ${amount}`,
+  ]
+  if (payment.payer?.email) lines.push(`Email pagador: ${payment.payer.email}`)
+  lines.push(`ID interno: ${ref}…`)
+
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: lines.join("\n") }),
+    })
+  } catch (err) {
+    console.error("[mp-webhook] no se pudo avisar a Discord:", err)
+  }
+}
 
 async function getPaymentId(req: Request): Promise<string | null> {
   const url = new URL(req.url)
@@ -75,13 +113,15 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
       return new Response(null, { status: 200 })
     }
 
-    const payment = (await payRes.json()) as { status?: string; external_reference?: string }
+    const payment = (await payRes.json()) as MpPayment
     const idempotencyKey = payment.external_reference
 
     if (payment.status === "approved" && idempotencyKey) {
       const result = await updateOrderStatus(idempotencyKey, "confirmado")
       if (!result.ok) {
         console.error("[mp-webhook] no se pudo actualizar la reserva", idempotencyKey, result.error)
+      } else {
+        await notifyDiscordConfirmed(payment)
       }
     }
   } catch (err) {
