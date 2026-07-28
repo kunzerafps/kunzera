@@ -1,11 +1,10 @@
 import { motion } from "framer-motion"
 import { ArrowLeft, Check, Copy, CreditCard, Landmark, Wallet } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import type { OrderDraft } from "../../types/order"
 import { BINANCE_EMAIL, MP_ALIAS } from "../../lib/constants"
 import { formatARS } from "../../lib/formatters"
 import { useSiteConfig } from "../../hooks/useWaMessages"
-import { submitOrder } from "../../lib/appsScript"
 import { randomId } from "../../lib/crypto"
 import { saveDraft } from "../../lib/storage"
 import { mpTotal } from "../../lib/pricing"
@@ -56,10 +55,8 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
 
   // El idempotencyKey se decide UNA sola vez apenas se entra a pagar (no en
   // cada click) y se comparte con el resto de los métodos vía onKeyReady,
-  // para que reintentar o cambiar de método de pago no genere un pedido
-  // duplicado ni choque con el turno que ya se reservó a nombre de esta key.
+  // para que reintentar o cambiar de método de pago apunten al mismo pedido.
   const [idempotencyKey] = useState(() => draft.idempotencyKey || randomId())
-  const orderSubmittedRef = useRef(false)
 
   useEffect(() => {
     if (!draft.idempotencyKey) onKeyReady(idempotencyKey)
@@ -115,29 +112,13 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     setMpError(null)
     setMpLoading(true)
 
+    // La reserva NO se crea acá — recién se crea (y recién ahí se avisa a
+    // Discord) cuando Mercado Pago confirma el pago, igual que transferencia
+    // no reserva nada hasta que se sube el comprobante. Solo guardamos el
+    // draft localmente para poder recuperar el estado del chat al volver del
+    // checkout de Mercado Pago.
     const draftWithKey = { ...draft, idempotencyKey }
-
-    // Si ya se envió el pedido en un intento anterior (ej: se cortó la
-    // conexión al crear la preferencia, o el usuario volvió a tocar el
-    // botón), no lo volvemos a enviar — evita duplicar la reserva y que el
-    // segundo intento choque con el turno que la primera reserva ya ocupó.
-    if (!orderSubmittedRef.current) {
-      const orderResult = await submitOrder(draftWithKey, idempotencyKey)
-      if (!orderResult.ok) {
-        setMpLoading(false)
-        setMpError(
-          orderResult.error === "slot_taken"
-            ? "Ese turno se acaba de ocupar. Volvé atrás y elegí otro horario."
-            : "No se pudo iniciar el pago. Intentá de nuevo en unos segundos.",
-        )
-        return
-      }
-      orderSubmittedRef.current = true
-
-      // Guardamos el draft con la key ANTES de salir de la página, así lo
-      // recuperamos al volver del checkout de Mercado Pago.
-      saveDraft(draftWithKey, "payment")
-    }
+    saveDraft(draftWithKey, "payment")
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 15000)
@@ -148,6 +129,9 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
         body: JSON.stringify({
           pack: draft.pack,
           nombre: draft.nombre,
+          whatsapp: draft.whatsapp,
+          discord: draft.discord,
+          turno: draft.turno,
           idempotencyKey,
         }),
         signal: controller.signal,

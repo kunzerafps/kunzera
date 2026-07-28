@@ -1,66 +1,44 @@
 import type { Context } from "@netlify/functions"
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { getStore } from "@netlify/blobs"
-import { updateOrderStatus } from "../../src/lib/appsScript"
-import { formatARS } from "../../src/lib/formatters"
+import { submitOrder, updateOrderStatus } from "../../src/lib/appsScript"
+import type { Pack } from "../../src/types/order"
 
-const NOTIFIED_STORE = "mp-webhook-notified"
+const PROCESSED_STORE = "mp-webhook-processed"
 
 // Mercado Pago puede reenviar la misma notificación más de una vez (a
-// propósito, por diseño). Sin esto, un mismo pago aprobado mandaría el aviso
-// de Discord repetido cada vez que llega el reenvío.
-async function alreadyNotified(paymentId: string): Promise<boolean> {
+// propósito, por diseño). Sin esto, un mismo pago aprobado podría disparar la
+// creación de la reserva (y su aviso a Discord) más de una vez. Marcamos
+// "en proceso" ANTES de hacer nada más (no después), para dejar la ventana de
+// carrera lo más chica posible frente a dos notificaciones casi simultáneas.
+async function alreadyProcessed(paymentId: string): Promise<boolean> {
   try {
-    const store = getStore(NOTIFIED_STORE)
-    return (await store.get(paymentId)) !== null
+    const store = getStore(PROCESSED_STORE)
+    return (await store.get(paymentId, { consistency: "strong" })) !== null
   } catch {
-    return false // si falla Blobs, preferimos avisar de más antes que de menos
+    return false // si falla Blobs, preferimos procesar de más antes que de menos
   }
 }
 
-async function markNotified(paymentId: string): Promise<void> {
+async function markProcessed(paymentId: string): Promise<void> {
   try {
-    const store = getStore(NOTIFIED_STORE)
+    const store = getStore(PROCESSED_STORE)
     await store.set(paymentId, "1")
   } catch (err) {
-    console.error("[mp-webhook] no se pudo marcar como notificado:", err)
+    console.error("[mp-webhook] no se pudo marcar como procesado:", err)
   }
 }
 
 type MpPayment = {
   status?: string
   external_reference?: string
-  transaction_amount?: number
-  description?: string
-  payer?: { email?: string }
-}
-
-// Aviso aparte (opcional) para que Eze se entere apenas un pago de Mercado
-// Pago se acredita solo, sin tener que revisar el panel. Si no está
-// configurado MP_DISCORD_WEBHOOK_URL, simplemente no manda nada.
-async function notifyDiscordConfirmed(payment: MpPayment): Promise<void> {
-  const webhookUrl = process.env.MP_DISCORD_WEBHOOK_URL
-  if (!webhookUrl) return
-
-  const amount =
-    typeof payment.transaction_amount === "number" ? formatARS(payment.transaction_amount) : "—"
-  const ref = payment.external_reference ? payment.external_reference.slice(0, 8) : "—"
-  const lines = [
-    "💰 **Pago confirmado automáticamente vía Mercado Pago**",
-    payment.description || "Kunzera",
-    `Monto: ${amount}`,
-  ]
-  if (payment.payer?.email) lines.push(`Email pagador: ${payment.payer.email}`)
-  lines.push(`ID interno: ${ref}…`)
-
-  try {
-    await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: lines.join("\n") }),
-    })
-  } catch (err) {
-    console.error("[mp-webhook] no se pudo avisar a Discord:", err)
+  metadata?: {
+    nombre?: string
+    whatsapp?: string
+    discord?: string
+    plan?: string
+    turno?: string
+    monto?: number | string
   }
 }
 
@@ -112,9 +90,46 @@ function hasValidSignature(req: Request, dataId: string): boolean {
   }
 }
 
+// Aviso de respaldo SOLO para el caso raro en que dos personas paguen el
+// mismo horario casi al mismo tiempo: la reserva "de verdad" (con el mensaje
+// normal de "Nueva reserva Kunzera") la manda el propio Apps Script cuando
+// submitOrder crea la fila. Pero si ese turno ya fue tomado por otro pago que
+// llegó una fracción de segundo antes, alguien pagó y se quedó sin turno — y
+// de eso Eze no se entera por ningún otro lado hasta que el cliente le
+// escriba. Si no está configurado MP_DISCORD_WEBHOOK_URL, no manda nada.
+async function notifyOverbooking(
+  idempotencyKey: string,
+  meta: NonNullable<MpPayment["metadata"]>,
+): Promise<void> {
+  const webhookUrl = process.env.MP_DISCORD_WEBHOOK_URL
+  if (!webhookUrl) return
+
+  const content = [
+    "⚠️ **Pago de Mercado Pago acreditado, pero el turno ya estaba ocupado**",
+    `${meta.nombre || "-"} — ${meta.plan || "-"} — turno ${meta.turno || "-"}`,
+    `WhatsApp: ${meta.whatsapp || "-"}`,
+    `ID interno: ${idempotencyKey.slice(0, 8)}…`,
+    "Revisar y coordinar otro horario o reembolso manualmente.",
+  ].join("\n")
+
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    })
+  } catch (err) {
+    console.error("[mp-webhook] no se pudo avisar el overbooking a Discord:", err)
+  }
+}
+
 // Mercado Pago llama a esta URL cuando un pago cambia de estado. Nunca
 // confiamos en el contenido de la notificación: volvemos a pedirle el pago
 // a la API de MP con el Access Token y recién ahí actuamos.
+//
+// La reserva NO se crea antes de esto — igual que transferencia, que tampoco
+// reserva nada hasta que se sube el comprobante. Si el pago nunca se
+// completa, no queda ningún rastro en la planilla ni se bloquea el turno.
 export default async (req: Request, _ctx: Context): Promise<Response> => {
   const accessToken = process.env.MP_ACCESS_TOKEN
   const paymentId = await getPaymentId(req)
@@ -129,6 +144,10 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
   }
 
   try {
+    if (await alreadyProcessed(paymentId)) {
+      return new Response(null, { status: 200 })
+    }
+
     const payRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -139,14 +158,46 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
 
     const payment = (await payRes.json()) as MpPayment
     const idempotencyKey = payment.external_reference
+    const meta = payment.metadata
 
-    if (payment.status === "approved" && idempotencyKey) {
-      const result = await updateOrderStatus(idempotencyKey, "confirmado")
-      if (!result.ok) {
-        console.error("[mp-webhook] no se pudo actualizar la reserva", idempotencyKey, result.error)
-      } else if (!(await alreadyNotified(paymentId))) {
-        await notifyDiscordConfirmed(payment)
-        await markNotified(paymentId)
+    if (payment.status === "approved" && idempotencyKey && meta?.nombre && meta?.turno) {
+      // Marcamos ANTES de crear la reserva: si llega una notificación
+      // duplicada mientras esta sigue en curso, la de abajo la va a frenar.
+      await markProcessed(paymentId)
+
+      const orderResult = await submitOrder(
+        {
+          nombre: meta.nombre,
+          whatsapp: meta.whatsapp || "",
+          discord: meta.discord || "-",
+          pack: (meta.plan as Pack) || undefined,
+          monto: Number(meta.monto) || 0,
+          turno: meta.turno,
+          idempotencyKey,
+        },
+        idempotencyKey,
+      )
+
+      if (!orderResult.ok) {
+        if (orderResult.error === "slot_taken") {
+          console.error(
+            "[mp-webhook] pago aprobado pero el turno ya estaba tomado",
+            idempotencyKey,
+            meta.turno,
+          )
+          await notifyOverbooking(idempotencyKey, meta)
+        } else {
+          console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
+        }
+      } else {
+        const statusResult = await updateOrderStatus(idempotencyKey, "confirmado")
+        if (!statusResult.ok) {
+          console.error(
+            "[mp-webhook] reserva creada pero no se pudo confirmar el estado",
+            idempotencyKey,
+            statusResult.error,
+          )
+        }
       }
     }
   } catch (err) {

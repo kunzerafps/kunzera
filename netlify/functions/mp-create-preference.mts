@@ -51,9 +51,12 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     return Response.json({ ok: false, error: "invalid_json" }, { status: 400, headers })
   }
 
-  const { pack, nombre, idempotencyKey } = (body ?? {}) as {
+  const { pack, nombre, whatsapp, discord, turno, idempotencyKey } = (body ?? {}) as {
     pack?: unknown
     nombre?: unknown
+    whatsapp?: unknown
+    discord?: unknown
+    turno?: unknown
     idempotencyKey?: unknown
   }
 
@@ -63,11 +66,25 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
   if (typeof idempotencyKey !== "string" || idempotencyKey.length < 6) {
     return Response.json({ ok: false, error: "invalid_idempotency_key" }, { status: 400, headers })
   }
+  if (typeof nombre !== "string" || !nombre) {
+    return Response.json({ ok: false, error: "missing_nombre" }, { status: 400, headers })
+  }
+  if (typeof whatsapp !== "string" || !whatsapp) {
+    return Response.json({ ok: false, error: "missing_whatsapp" }, { status: 400, headers })
+  }
+  if (typeof turno !== "string" || !turno) {
+    return Response.json({ ok: false, error: "missing_turno" }, { status: 400, headers })
+  }
 
   const ars = await getBasePriceArs(pack)
   const total = mpTotal(ars)
   const origin = new URL(req.url).origin
 
+  // La reserva recién se crea en la planilla (y recién ahí se avisa a
+  // Discord) cuando el webhook confirma que el pago se acreditó — igual que
+  // transferencia, que tampoco reserva nada hasta que se sube el
+  // comprobante. Mandamos los datos como metadata de la preferencia para
+  // poder reconstruir la reserva en ese momento, sin haber creado nada antes.
   const preference = {
     items: [
       {
@@ -77,7 +94,15 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
         currency_id: "ARS",
       },
     ],
-    payer: typeof nombre === "string" && nombre ? { name: nombre } : undefined,
+    payer: { name: nombre },
+    metadata: {
+      nombre,
+      whatsapp,
+      discord: typeof discord === "string" && discord ? discord : "-",
+      plan: pack,
+      turno,
+      monto: ars,
+    },
     external_reference: idempotencyKey,
     back_urls: {
       success: `${origin}/?mp=success&ref=${encodeURIComponent(idempotencyKey)}`,
