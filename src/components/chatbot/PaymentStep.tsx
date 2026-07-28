@@ -63,6 +63,20 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Si el cliente toca "Pagar con Mercado Pago" y después usa el botón
+  // ATRÁS del navegador (en vez del link "Volver a la tienda" de MP), Chrome
+  // puede restaurar esta página desde una foto congelada (bfcache) tal como
+  // quedó justo antes de irse — con el botón trabado en "Conectando…" para
+  // siempre, sin ningún error visible. Al detectar ese caso, liberamos el
+  // botón para que pueda reintentar sin recargar la página a mano.
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setMpLoading(false)
+    }
+    window.addEventListener("pageshow", handlePageShow)
+    return () => window.removeEventListener("pageshow", handlePageShow)
+  }, [])
+
   const active = method !== "mercadopago" ? ALIAS_METHODS[method] : null
   const Icon = METHODS.find((m) => m.id === method)!.icon
 
