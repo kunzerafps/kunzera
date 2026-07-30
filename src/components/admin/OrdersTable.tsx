@@ -3,6 +3,7 @@ import { ExternalLink, Search } from "lucide-react"
 import { useMemo, useState } from "react"
 import type { Order } from "../../types/order"
 import { formatARS, formatDateAR, formatSlotLabel, isToday } from "../../lib/formatters"
+import { comprobanteUrl } from "../../lib/comprobante"
 
 type Props = {
   orders: Order[]
@@ -124,19 +125,7 @@ export default function OrdersTable({ orders, highlightToday = true, onRowClick 
                       {formatARS(Number(o.monto) || 0)}
                     </td>
                     <td className="py-3 px-4 md:px-2 text-right">
-                      {o.comprobante && o.comprobante.startsWith("http") ? (
-                        <a
-                          href={o.comprobante}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-xs text-brand-300 hover:text-brand-200"
-                        >
-                          Ver <ExternalLink className="w-3 h-3" />
-                        </a>
-                      ) : (
-                        <span className="text-xs text-white/60">{o.comprobante || "—"}</span>
-                      )}
+                      <ComprobanteCell order={o} />
                     </td>
                   </motion.tr>
                 )
@@ -147,6 +136,48 @@ export default function OrdersTable({ orders, highlightToday = true, onRowClick 
       )}
     </div>
   )
+}
+
+function ComprobanteCell({ order }: { order: Order }) {
+  const [broken, setBroken] = useState(false)
+  const key = order.idempotencykey
+
+  if (key && !broken) {
+    const src = comprobanteUrl(String(key))
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="inline-block ml-auto"
+        title="Ver comprobante"
+      >
+        <img
+          src={src}
+          alt="comprobante"
+          onError={() => setBroken(true)}
+          className="w-10 h-10 rounded-lg object-cover border border-white/10 hover:border-brand-500/60 transition"
+        />
+      </a>
+    )
+  }
+
+  if (order.comprobante && order.comprobante.startsWith("http")) {
+    return (
+      <a
+        href={order.comprobante}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex items-center gap-1 text-xs text-brand-300 hover:text-brand-200"
+      >
+        Ver <ExternalLink className="w-3 h-3" />
+      </a>
+    )
+  }
+
+  return <span className="text-xs text-white/60">{order.comprobante || "—"}</span>
 }
 
 function labelFor(f: Filter): string {

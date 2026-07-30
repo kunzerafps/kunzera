@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react"
 import { submitOrder } from "../lib/appsScript"
+import { uploadComprobante } from "../lib/comprobante"
 import type { FlowEvent, OrderDraft } from "../types/order"
 import { randomId } from "../lib/crypto"
 import { canSubmit, markSubmitted } from "../lib/storage"
@@ -20,12 +21,17 @@ export function useOrderSubmit(dispatch: (ev: FlowEvent) => void): Return {
       if (!idempotencyRef.current) {
         idempotencyRef.current = draft.idempotencyKey || randomId()
       }
+      const key = idempotencyRef.current
 
       dispatch({ type: "SUBMIT_START" })
       markSubmitted()
 
-      const result = await submitOrder(draft, idempotencyRef.current)
+      const result = await submitOrder(draft, key)
       if (result.ok) {
+        if (draft.file) {
+          // Fire-and-forget: no bloquea la confirmación al cliente.
+          uploadComprobante(key, draft.file)
+        }
         dispatch({ type: "SUBMIT_OK", fileUrl: result.fileUrl || "" })
         idempotencyRef.current = ""
       } else {

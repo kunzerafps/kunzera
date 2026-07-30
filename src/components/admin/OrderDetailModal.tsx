@@ -18,6 +18,7 @@ import type { Order } from "../../types/order"
 import { PACKS } from "../../lib/packs"
 import { formatARS, formatDateAR, formatSlotLabel } from "../../lib/formatters"
 import { deleteOrder, updateOrderStatus } from "../../lib/appsScript"
+import { comprobanteUrl } from "../../lib/comprobante"
 import { applyTemplate } from "../../lib/waMessages"
 import { useSiteConfig } from "../../hooks/useWaMessages"
 
@@ -133,7 +134,7 @@ export default function OrderDetailModal({ order, onClose, onStatusChanged, onDe
                     </span>
                   </div>
                   <div className="mt-2">
-                    <ComprobanteRow comprobante={order.comprobante} />
+                    <ComprobanteRow key={order.idempotencykey || order.timestamp} order={order} />
                   </div>
                 </Section>
 
@@ -238,7 +239,57 @@ function StatusPill({ estado }: { estado?: string }) {
   return null
 }
 
-function ComprobanteRow({ comprobante }: { comprobante?: string }) {
+function ComprobanteRow({ order }: { order: Order }) {
+  const [broken, setBroken] = useState(false)
+  const [zoom, setZoom] = useState(false)
+  const key = order.idempotencykey
+
+  if (key && !broken) {
+    const src = comprobanteUrl(String(key))
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setZoom(true)}
+          className="block w-full rounded-xl overflow-hidden border border-white/10 hover:border-brand-500/50 transition bg-black/30"
+        >
+          <img
+            src={src}
+            alt="comprobante"
+            onError={() => setBroken(true)}
+            className="max-h-56 w-full object-contain"
+          />
+        </button>
+        <p className="mt-1.5 text-[10px] text-white/40 leading-relaxed">
+          Tocá la imagen para ampliar. Corroborá fecha, hora y monto en tu Mercado Pago antes de
+          confirmar el turno.
+        </p>
+        {zoom &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[95] bg-black/95 flex items-center justify-center p-4"
+              onClick={() => setZoom(false)}
+            >
+              <img
+                src={src}
+                alt="comprobante ampliado"
+                className="max-w-full max-h-full object-contain"
+              />
+              <button
+                onClick={() => setZoom(false)}
+                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                aria-label="Cerrar"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+            </div>,
+            document.body,
+          )}
+      </>
+    )
+  }
+
+  const comprobante = order.comprobante
   if (!comprobante) {
     return <span className="text-xs text-white/40">Sin comprobante</span>
   }
