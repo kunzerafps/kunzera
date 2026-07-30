@@ -5,6 +5,9 @@ import { submitOrder, updateOrderStatus } from "../../src/lib/appsScript"
 import type { Pack } from "../../src/types/order"
 
 const PROCESSED_STORE = "mp-webhook-processed"
+const ALERTED_STORE = "mp-webhook-alerted"
+// No es secreto: es el mismo ID que ya está público en index.html (fbq('init', ...)).
+const META_PIXEL_ID = "761377043609509"
 
 // Mercado Pago puede reenviar la misma notificación más de una vez (a
 // propósito, por diseño). Marcamos "procesado" recién cuando submitOrder
@@ -45,15 +48,28 @@ type MpPayment = {
   }
 }
 
+// Mercado Pago manda distintos "topics"/"types" de notificación a la misma
+// notification_url (payment, merchant_order, etc. — merchant_order se puede
+// activar a nivel cuenta en "Tus integraciones" sin que este código se
+// entere). Si algún día se activa otro topic, su "id" NO es un ID de pago —
+// tratarlo como tal pegaría contra /v1/payments/{id} con un ID que
+// corresponde a otra cosa. Si el topic viene informado y no es "payment",
+// lo ignoramos de entrada.
+function isPaymentTopic(topic: string | null): boolean {
+  return !topic || topic === "payment"
+}
+
 async function getPaymentId(req: Request): Promise<string | null> {
   const url = new URL(req.url)
+  const topicFromQuery = url.searchParams.get("topic") || url.searchParams.get("type")
   const fromQuery = url.searchParams.get("data.id") || url.searchParams.get("id")
-  if (fromQuery) return fromQuery
+  if (fromQuery) return isPaymentTopic(topicFromQuery) ? fromQuery : null
 
   if (req.method === "POST") {
     try {
-      const body = (await req.json()) as { data?: { id?: unknown } }
-      if (body?.data?.id) return String(body.data.id)
+      const body = (await req.json()) as { type?: unknown; data?: { id?: unknown } }
+      const topicFromBody = typeof body?.type === "string" ? body.type : null
+      if (body?.data?.id) return isPaymentTopic(topicFromBody) ? String(body.data.id) : null
     } catch {
       // el body no era JSON (o venía vacío) — ignoramos
     }
@@ -101,13 +117,11 @@ function hasValidSignature(req: Request, dataId: string): boolean {
 // plata cobrada sin ninguna reserva del otro lado. Si no está configurado
 // MP_DISCORD_WEBHOOK_URL, no manda nada.
 async function notifyOrderFailed(
+  paymentId: string,
   idempotencyKey: string,
   meta: NonNullable<MpPayment["metadata"]>,
   reason: string,
 ): Promise<void> {
-  const webhookUrl = process.env.MP_DISCORD_WEBHOOK_URL
-  if (!webhookUrl) return
-
   const isSlotTaken = reason === "slot_taken"
   const content = [
     isSlotTaken
@@ -120,6 +134,145 @@ async function notifyOrderFailed(
       ? "Revisar y coordinar otro horario o reembolso manualmente."
       : `Motivo: ${reason}. Revisar y crear la reserva a mano o coordinar con el cliente.`,
   ].join("\n")
+  await notifyGenericIssue(paymentId, content)
+}
+
+// Evita mandar el mismo aviso de "no pude verificar este pago" varias veces
+// — Mercado Pago reintenta la notificación si no marcamos "procesado", y acá
+// justamente no lo marcamos a propósito (ver más abajo) para poder
+// reintentar solos en la próxima notificación. Sin este freno, cada
+// reintento de MP durante una caída mandaría un mensaje nuevo a Discord.
+async function alreadyAlerted(paymentId: string): Promise<boolean> {
+  try {
+    const store = getStore(ALERTED_STORE)
+    return (await store.get(paymentId, { consistency: "strong" })) !== null
+  } catch {
+    return false
+  }
+}
+
+async function markAlerted(paymentId: string): Promise<void> {
+  try {
+    const store = getStore(ALERTED_STORE)
+    await store.set(paymentId, "1")
+  } catch (err) {
+    console.error("[mp-webhook] no se pudo marcar la alerta como enviada:", err)
+  }
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input)
+  const hash = await crypto.subtle.digest("SHA-256", data)
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+}
+
+// Normaliza a como Meta espera el teléfono para el hash: sólo dígitos, con
+// código de país, sin el "0" de larga distancia local (ej. "011 2345-6789"
+// → "1123456789" antes de anteponer "549"). Mismo criterio de "549" que ya
+// usa el panel admin para armar links de WhatsApp (OrderDetailModal.tsx),
+// más el agregado de sacar el 0 inicial que ese código no contempla.
+function normalizePhoneForHash(whatsapp: string): string {
+  let digits = whatsapp.replace(/\D/g, "")
+  if (digits.startsWith("549")) return digits
+  if (digits.startsWith("54") && digits.length > 10) digits = digits.slice(2)
+  if (digits.startsWith("0")) digits = digits.slice(1)
+  return "549" + digits
+}
+
+// Manda el evento de Compra a Meta desde el servidor, en el momento exacto
+// en que la reserva se confirma de verdad (no cuando Mercado Pago redirige
+// al navegador, que puede pasar sin que la reserva llegue a crearse). Esto
+// reemplaza al píxel del navegador para el flujo de Mercado Pago — además
+// de ser más preciso, captura compras que el píxel pierde por bloqueadores
+// de anuncios o las protecciones de privacidad de Safari/iOS.
+async function sendMetaPurchaseEvent(
+  idempotencyKey: string,
+  meta: NonNullable<MpPayment["metadata"]>,
+): Promise<void> {
+  const accessToken = process.env.META_CAPI_ACCESS_TOKEN
+  if (!accessToken) return
+
+  try {
+    const userData: Record<string, string[]> = {}
+    if (meta.whatsapp) {
+      userData.ph = [await sha256Hex(normalizePhoneForHash(meta.whatsapp))]
+    }
+    if (meta.nombre) {
+      const [first, ...rest] = meta.nombre.trim().toLowerCase().split(/\s+/)
+      if (first) userData.fn = [await sha256Hex(first)]
+      if (rest.length) userData.ln = [await sha256Hex(rest.join(" "))]
+    }
+
+    // Igual que postJson/getJson en appsScript.ts: timeout explícito para no
+    // quedar colgados de una API externa. Va después de updateOrderStatus
+    // en la ruta crítica, así que un cuelgue acá ya no arriesga dejar la
+    // reserva a medio confirmar — pero sin timeout, la función podría
+    // superar el límite de ejecución de Netlify sin que MP reciba el 200 a
+    // tiempo, y como el pago ya quedó marcado "procesado", un reintento de
+    // MP no volvería a intentar mandar este evento nunca más.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+    let res: Response
+    try {
+      res = await fetch(
+        `https://graph.facebook.com/v21.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(accessToken)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data: [
+              {
+                event_name: "Purchase",
+                event_time: Math.floor(Date.now() / 1000),
+                action_source: "website",
+                event_id: idempotencyKey,
+                user_data: userData,
+                custom_data: {
+                  currency: "ARS",
+                  value: Number(meta.monto) || 0,
+                  content_name: meta.plan,
+                  content_type: "product",
+                },
+              },
+            ],
+          }),
+          signal: controller.signal,
+        },
+      )
+    } finally {
+      clearTimeout(timer)
+    }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "")
+      console.error("[mp-webhook] error mandando evento a Meta:", res.status, errText)
+      // Clave de alerta separada de la del pago (namespace "capi-") — esto
+      // es un problema de tracking de anuncios, no de la reserva en sí, y
+      // no debe compartir el freno anti-spam con esos otros avisos.
+      await notifyGenericIssue(
+        `capi-${idempotencyKey}`,
+        `⚠️ **No se pudo mandar el evento de Compra a Meta** (reserva ${idempotencyKey.slice(0, 8)}…, HTTP ${res.status})\nLa reserva está bien creada — esto solo afecta el tracking de anuncios. Revisar si el token de la API de Conversiones sigue vigente.`,
+      )
+    }
+  } catch (err) {
+    console.error("[mp-webhook] no se pudo mandar el evento de Compra a Meta:", err)
+    await notifyGenericIssue(
+      `capi-${idempotencyKey}`,
+      `⚠️ **Error inesperado mandando el evento de Compra a Meta** (reserva ${idempotencyKey.slice(0, 8)}…)\n${String(err)}`,
+    )
+  }
+}
+
+// Helper genérico: manda un mensaje de texto libre a Discord, con el mismo
+// freno anti-spam por clave (alreadyAlerted/markAlerted) que ya usan
+// notifyOrderFailed y notifyWebhookIssue. La clave decide qué se considera
+// "el mismo problema" — pasar claves con distinto namespace (ej. "capi-")
+// para que un aviso no tape a otro de un motivo distinto sobre el mismo pago.
+async function notifyGenericIssue(alertKey: string, content: string): Promise<void> {
+  const webhookUrl = process.env.MP_DISCORD_WEBHOOK_URL
+  if (!webhookUrl) return
+  if (await alreadyAlerted(alertKey)) return
 
   try {
     await fetch(webhookUrl, {
@@ -127,9 +280,25 @@ async function notifyOrderFailed(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content }),
     })
+    await markAlerted(alertKey)
   } catch (err) {
     console.error("[mp-webhook] no se pudo avisar el problema a Discord:", err)
   }
+}
+
+// Aviso de respaldo para cuando ni siquiera pudimos averiguar el estado del
+// pago (falla de red, Mercado Pago caído, respuesta inesperada). A
+// diferencia de notifyOrderFailed, acá no tenemos los datos del cliente
+// todavía — solo el ID de pago, para que se pueda revisar a mano en el
+// panel de Mercado Pago.
+async function notifyWebhookIssue(paymentId: string, reason: string): Promise<void> {
+  const content = [
+    "⚠️ **No se pudo verificar una notificación de pago de Mercado Pago**",
+    `ID de pago: ${paymentId}`,
+    `Motivo: ${reason}`,
+    "Revisar este pago manualmente en el panel de Mercado Pago — puede que haya plata cobrada sin reserva creada.",
+  ].join("\n")
+  await notifyGenericIssue(paymentId, content)
 }
 
 // Mercado Pago llama a esta URL cuando un pago cambia de estado. Nunca
@@ -162,6 +331,7 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     })
     if (!payRes.ok) {
       console.error("[mp-webhook] no se pudo leer el pago", paymentId, payRes.status)
+      await notifyWebhookIssue(paymentId, `Mercado Pago devolvió HTTP ${payRes.status} al consultar el pago`)
       return new Response(null, { status: 200 })
     }
 
@@ -185,7 +355,7 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
 
       if (!orderResult.ok) {
         console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
-        await notifyOrderFailed(idempotencyKey, meta, orderResult.error)
+        await notifyOrderFailed(paymentId, idempotencyKey, meta, orderResult.error)
         // "slot_taken" es definitivo (reintentar no lo va a cambiar): lo
         // marcamos procesado para no repetir el aviso en cada reintento de
         // Mercado Pago. Cualquier otro motivo puede ser transitorio (ej. Apps
@@ -196,6 +366,10 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
         }
       } else {
         await markProcessed(paymentId)
+        // updateOrderStatus va primero: es lo importante (que la planilla
+        // quede bien). El aviso a Meta es un beneficio aparte — si se
+        // cortara acá, mejor que ya haya quedado "confirmado" en la
+        // planilla antes de arriesgar esa llamada extra.
         const statusResult = await updateOrderStatus(idempotencyKey, "confirmado")
         if (!statusResult.ok) {
           console.error(
@@ -204,10 +378,12 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
             statusResult.error,
           )
         }
+        await sendMetaPurchaseEvent(idempotencyKey, meta)
       }
     }
   } catch (err) {
     console.error("[mp-webhook] error procesando notificación:", err)
+    await notifyWebhookIssue(paymentId, `Error inesperado procesando la notificación: ${String(err)}`)
   }
 
   // Siempre 200: si devolvemos error, Mercado Pago reintenta indefinidamente.

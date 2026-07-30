@@ -98,5 +98,5 @@ export type FlowEvent =
   | { type: "RESET" }
   | { type: "BACK" }
   | { type: "HYDRATE"; draft: OrderDraft; state: FlowState }
-  | { type: "MP_RETURN"; status: "success" | "failure"; draft: OrderDraft }
+  | { type: "MP_RETURN"; status: "success" | "pending" | "failure"; draft: OrderDraft }
   | { type: "SET_ORDER_KEY"; key: string }

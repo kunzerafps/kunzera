@@ -19,6 +19,11 @@ export type FlowContext = {
   mode: "compact" | "expanded"
   nextId: number
   stateAnchors: Partial<Record<FlowState, number>>
+  // true cuando la confirmación vino de Mercado Pago: el evento de "Compra"
+  // para Meta Ads ya lo manda el servidor (mp-webhook.mts) recién cuando la
+  // reserva se confirma de verdad — si el front también lo disparara acá,
+  // se contaría una compra que en el peor caso nunca se concretó.
+  skipClientPixel?: boolean
 }
 
 const EXPANDED_STATES: FlowState[] = [
@@ -175,6 +180,22 @@ function confirmedMessages(draft: OrderDraft, _fileUrl: string): ChatMessage[] {
   ]
 }
 
+// Mercado Pago puede volver con el pago en estado "pending" (revisión del
+// medio de pago, no necesariamente un rechazo). Nada está reservado
+// todavía — la reserva recién se crea cuando el webhook ve el pago
+// aprobado — así que NO reutilizamos el mensaje de éxito acá.
+function pendingMessages(draft: OrderDraft): ChatMessage[] {
+  const waMsg =
+    `Hola! Pagué el pack ${PACKS[draft.pack!]?.name || ""} con Mercado Pago y quedó "pendiente". ` +
+    `Turno: ${draft.turno ? formatSlotLabel(draft.turno) : ""}. Nombre: ${draft.nombre || "-"}.`
+  return [
+    bot(
+      "Tu pago quedó *pendiente de confirmación* en Mercado Pago (puede pasar con algunos medios de pago). Todavía no está reservado el turno — en cuanto se acredite te confirmamos automáticamente. Si pasan más de unas horas y no tenés novedades, escribinos.",
+      { link: { label: "Ir a WhatsApp", href: waLink(waMsg) } },
+    ),
+  ]
+}
+
 function errorMessages(_error: string, draft: OrderDraft): ChatMessage[] {
   const fallbackMsg =
     `Hola! Quiero reservar el pack ${PACKS[draft.pack!]?.name || ""} — turno ${draft.turno ? formatSlotLabel(draft.turno) : ""}. ` +
@@ -267,7 +288,17 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
     const fresh = initialContext()
     if (ev.status === "success") {
       const withBot = pushMessages(fresh, confirmedMessages(ev.draft, ""))
-      return transition({ ...withBot, draft: ev.draft }, "confirmed")
+      return transition(
+        { ...withBot, draft: ev.draft, skipClientPixel: true },
+        "confirmed",
+      )
+    }
+    if (ev.status === "pending") {
+      // Estado "error" solo por conveniencia de UI (no muestra el selector
+      // de pago ni dispara el pixel de conversión, a diferencia de
+      // "payment"/"confirmed") — el mensaje real es el de pendingMessages.
+      const withPending = pushMessages(fresh, pendingMessages(ev.draft))
+      return transition({ ...withPending, draft: ev.draft }, "error")
     }
     const withPayment = pushMessages(fresh, paymentMessages(ev.draft))
     const withError = pushMessages(withPayment, [

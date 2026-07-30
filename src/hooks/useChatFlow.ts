@@ -77,14 +77,19 @@ export function useChatFlow(): FlowReturn {
     if (ctx.state === "confirmed") {
       clearDraft()
       setResumable(null)
-      const fbq = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq
-      if (typeof fbq === "function") {
-        fbq("track", "Purchase", {
-          value: ctx.draft.monto ?? 0,
-          currency: "ARS",
-          content_name: ctx.draft.pack,
-          content_type: "product",
-        })
+      // Mercado Pago manda su propio evento de Compra desde el servidor
+      // (mp-webhook.mts), recién cuando la reserva se confirma de verdad —
+      // acá se salta a propósito para no duplicar ni adelantarse.
+      if (!ctx.skipClientPixel) {
+        const fbq = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq
+        if (typeof fbq === "function") {
+          fbq("track", "Purchase", {
+            value: ctx.draft.monto ?? 0,
+            currency: "ARS",
+            content_name: ctx.draft.pack,
+            content_type: "product",
+          })
+        }
       }
     }
   }, [ctx.state, ctx.draft])
@@ -105,7 +110,7 @@ export function useChatFlow(): FlowReturn {
     setResumable(null)
     rawDispatch({
       type: "MP_RETURN",
-      status: mp === "failure" ? "failure" : "success",
+      status: mp === "success" ? "success" : mp === "pending" ? "pending" : "failure",
       draft: stored.draft,
     })
     setOpen(true)
