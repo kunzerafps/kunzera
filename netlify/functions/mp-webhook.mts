@@ -279,7 +279,10 @@ async function notifyGenericIssue(alertKey: string, content: string): Promise<vo
     await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      // allowed_mentions vacío: el contenido puede incluir el nombre de la
+      // reserva (dato que controla el cliente) — sin esto, un "@everyone"
+      // ahí pingearía a todo el servidor de Discord.
+      body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
     })
     await markAlerted(alertKey)
   } catch (err) {

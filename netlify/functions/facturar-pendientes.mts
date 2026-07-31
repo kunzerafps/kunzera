@@ -15,13 +15,18 @@ import { invoiceOrderIfNeeded } from "./lib/facturacion"
 export default async (req: Request, _ctx: Context): Promise<Response> => {
   // Protegido con un secreto compartido (CRON_SECRET) para que no cualquiera
   // en internet pueda golpear este endpoint y forzar escaneos repetidos.
-  // El cron externo se configura para mandar ?key=<CRON_SECRET>.
+  // El cron externo se configura para mandar ?key=<CRON_SECRET>. Falla
+  // CERRADO si la variable no está configurada — un endpoint que factura
+  // de verdad no debe quedar abierto por accidente si alguien borra la
+  // env var en Netlify.
   const expected = process.env.CRON_SECRET
-  if (expected) {
-    const url = new URL(req.url)
-    if (url.searchParams.get("key") !== expected) {
-      return Response.json({ ok: false, error: "unauthorized" }, { status: 401 })
-    }
+  if (!expected) {
+    console.error("[facturar-pendientes] CRON_SECRET no configurado — rechazando por seguridad")
+    return Response.json({ ok: false, error: "not_configured" }, { status: 500 })
+  }
+  const url = new URL(req.url)
+  if (url.searchParams.get("key") !== expected) {
+    return Response.json({ ok: false, error: "unauthorized" }, { status: 401 })
   }
 
   // Sin fecha de corte explícita, no facturamos nada — el objetivo es
@@ -45,6 +50,15 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
   for (const order of orders) {
     if (!order.idempotencykey) continue
     if (new Date(order.timestamp).getTime() < desdeMs) continue
+    // No facturar reservas "pendiente" — para transferencia/Binance eso
+    // significa que el cliente subió un comprobante pero todavía nadie lo
+    // revisó. Facturar en ese momento generaría una Factura C real (e
+    // irreversible) antes de confirmar que el comprobante es legítimo.
+    // Recién se factura cuando el estado pasa a "confirmado" (botón nuevo
+    // en el panel admin) o "atendido". Mercado Pago no se ve afectado:
+    // mp-webhook.mts ya deja el estado en "confirmado" antes de facturar.
+    const estado = String(order.estado || "").toLowerCase()
+    if (estado !== "confirmado" && estado !== "atendido" && estado !== "completado") continue
     await invoiceOrderIfNeeded(order)
     procesadas++
   }

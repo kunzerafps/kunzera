@@ -48,7 +48,17 @@ function credentials(): Credentials | null {
   const accessToken = process.env.AFIPSDK_ACCESS_TOKEN
   if (!accessToken) return null
 
-  const environment = process.env.AFIPSDK_ENVIRONMENT === "production" ? "production" : "dev"
+  // Comparación exacta a propósito, pero con un chequeo aparte para
+  // cualquier valor que no sea ni "production" ni vacío/"dev" — ya
+  // aparecieron hoy dos bugs de "string casi correcto pero no exacto"
+  // (ver "production" vs "prod" más abajo), así que un typo o un espacio
+  // de más al cargar la variable en Netlify no debe caer en silencio a
+  // modo dev sin que nadie se entere.
+  const raw = process.env.AFIPSDK_ENVIRONMENT
+  if (raw && raw !== "production" && raw !== "dev") {
+    console.error(`[facturacion] AFIPSDK_ENVIRONMENT tiene un valor inesperado: "${raw}" — revisar la variable en Netlify`)
+  }
+  const environment = raw === "production" ? "production" : "dev"
 
   if (environment === "dev") {
     return { accessToken, environment, cuit: DEV_CUIT, puntoVenta: DEV_PUNTO_VENTA }
@@ -70,19 +80,64 @@ function apiEnvironment(environment: Credentials["environment"]): "dev" | "prod"
   return environment === "production" ? "prod" : "dev"
 }
 
-export async function alreadyInvoiced(idempotencyKey: string): Promise<boolean> {
+// Netlify Blobs (esta versión del SDK) no tiene ninguna operación atómica
+// tipo "set solo si no existe" — así que no hay forma de "reservar" un
+// idempotencyKey de forma perfectamente segura antes de facturar. Como
+// mitigación (no una solución perfecta): se guarda un "en_proceso" con
+// timestamp ANTES de llamar a AFIP, no solo el resultado final después.
+// Esto reduce la ventana real de doble factura de "toda la llamada a AFIP
+// completa" (varios segundos) a la fracción de segundo entre la lectura y
+// la escritura del claim — no la elimina del todo, pero la achica mucho.
+// Un claim de más de CLAIM_TTL_MS se considera abandonado (la función que
+// lo dejó ahí se cortó a mitad de camino) y se permite reintentar.
+const CLAIM_TTL_MS = 2 * 60 * 1000
+
+type InvoiceRecord =
+  | { status: "en_proceso"; claimedAt: number }
+  | { status: "facturada"; cae: string; numero: number }
+
+async function invoiceState(
+  idempotencyKey: string,
+): Promise<{ ya: true } | { ya: false; ocupado: boolean }> {
   try {
     const store = getStore(INVOICED_STORE)
-    return (await store.get(idempotencyKey, { consistency: "strong" })) !== null
+    const data = (await store.get(idempotencyKey, {
+      type: "json",
+      consistency: "strong",
+    })) as InvoiceRecord | null
+    if (!data) return { ya: false, ocupado: false }
+    if (data.status === "facturada") return { ya: true }
+    // "en_proceso": ocupado solo si el claim es reciente — uno viejo es de
+    // un intento anterior que se cortó, no bloquea el reintento.
+    const ocupado = Date.now() - data.claimedAt < CLAIM_TTL_MS
+    return { ya: false, ocupado }
   } catch {
-    return false
+    return { ya: false, ocupado: false }
   }
+}
+
+async function claim(idempotencyKey: string): Promise<void> {
+  try {
+    const store = getStore(INVOICED_STORE)
+    await store.setJSON(idempotencyKey, { status: "en_proceso", claimedAt: Date.now() } satisfies InvoiceRecord)
+  } catch (err) {
+    console.error("[facturacion] no se pudo reservar la facturación:", err)
+  }
+}
+
+export async function alreadyInvoiced(idempotencyKey: string): Promise<boolean> {
+  const state = await invoiceState(idempotencyKey)
+  return state.ya
 }
 
 async function markInvoiced(idempotencyKey: string, info: { cae: string; numero: number }): Promise<void> {
   try {
     const store = getStore(INVOICED_STORE)
-    await store.setJSON(idempotencyKey, info)
+    await store.setJSON(idempotencyKey, {
+      status: "facturada",
+      cae: info.cae,
+      numero: info.numero,
+    } satisfies InvoiceRecord)
   } catch (err) {
     console.error("[facturacion] no se pudo marcar como facturada:", err)
   }
@@ -164,7 +219,10 @@ async function siguienteNumero(
         },
       }),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.error("[facturacion] fallo HTTP consultando numeracion:", res.status, await res.text().catch(() => ""))
+      return null
+    }
     // AfipSDK envuelve la respuesta real de AFIP en "<Metodo>Result" — no
     // devuelve los campos sueltos en la raíz (confirmado a mano contra su
     // API real, no solo contra la documentación). Importante: AFIP informa
@@ -350,7 +408,10 @@ async function notifyInvoiceFailed(order: InvoiceableOrder, reason: string): Pro
     await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      // allowed_mentions vacío: el nombre de la reserva viene de un campo
+      // que el cliente controla — sin esto, un "@everyone" en el nombre
+      // pingearía a todo el servidor de Discord.
+      body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
     })
     await markAlerted(idempotencyKey)
   } catch (err) {
@@ -370,7 +431,9 @@ export async function invoiceOrderIfNeeded(order: InvoiceableOrder): Promise<voi
   const metodo = await getPaymentMethod(idempotencyKey)
   if (metodo === "binance") return
 
-  if (await alreadyInvoiced(idempotencyKey)) return
+  const state = await invoiceState(idempotencyKey)
+  if (state.ya) return
+  if (state.ocupado) return // otro llamado concurrente ya la está facturando ahora mismo
 
   // Un monto en $0 (o inválido) no debería generar una Factura C real por
   // $0 — casi seguro es un dato roto de la reserva (plan sin precio
@@ -383,11 +446,16 @@ export async function invoiceOrderIfNeeded(order: InvoiceableOrder): Promise<voi
     return
   }
 
+  // Reservamos el idempotencyKey ANTES de llamar a AFIP (ver comentario en
+  // invoiceState/claim) — achica la ventana en la que dos llamados
+  // concurrentes podrían facturar la misma reserva dos veces.
+  await claim(idempotencyKey)
+
   const result = await crearFactura(order)
   if (!result.ok) {
     console.error("[facturacion] no se pudo facturar", idempotencyKey, result.error)
     await notifyInvoiceFailed(order, result.error)
-    return // sin marcar: el próximo ciclo de facturar-pendientes reintenta solo
+    return // sin marcar como facturada: el próximo ciclo reintenta solo (el claim expira en 2 min)
   }
 
   await markInvoiced(idempotencyKey, { cae: result.cae, numero: result.numero })

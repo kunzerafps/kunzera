@@ -66,10 +66,15 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
   if (typeof idempotencyKey !== "string" || idempotencyKey.length < 6) {
     return Response.json({ ok: false, error: "invalid_idempotency_key" }, { status: 400, headers })
   }
-  if (typeof nombre !== "string" || !nombre) {
+  // La validación de formato "linda" (solo letras, nombre y apellido) vive
+  // en el cliente (src/lib/validators.ts) — acá solo un tope de largo, para
+  // que alguien pegándole directo a este endpoint (sin pasar por el chat)
+  // no pueda meter un string gigante o con basura que termine rompiendo el
+  // formato del aviso de Discord o de la fila en la planilla.
+  if (typeof nombre !== "string" || !nombre.trim() || nombre.length > 120) {
     return Response.json({ ok: false, error: "missing_nombre" }, { status: 400, headers })
   }
-  if (typeof whatsapp !== "string" || !whatsapp) {
+  if (typeof whatsapp !== "string" || !whatsapp || whatsapp.length > 30) {
     return Response.json({ ok: false, error: "missing_whatsapp" }, { status: 400, headers })
   }
   if (typeof turno !== "string" || !turno) {

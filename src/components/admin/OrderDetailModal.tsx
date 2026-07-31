@@ -319,12 +319,39 @@ function StatusActions({
   onDeleted?: () => void
   onClose: () => void
 }) {
-  const [loading, setLoading] = useState<"atender" | "eliminar" | null>(null)
+  const [loading, setLoading] = useState<"confirmar" | "atender" | "eliminar" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const current = String(order.estado || "").toLowerCase()
+  const isPendiente = current === "pendiente" || current === ""
   const isAtendido = current === "atendido"
   const hasKey = !!order.idempotencykey
+
+  // "Confirmar pago" es el paso que hoy NO existía en el panel: sin él, una
+  // reserva por transferencia queda en "pendiente" hasta que se marca
+  // "atendido" (recién cuando ya se hizo el servicio, días después) — y la
+  // facturación automática no tiene ninguna otra señal de "esto ya lo
+  // revisé y es un comprobante real" para no facturar de más temprano.
+  const confirmarPago = async () => {
+    if (!hasKey) {
+      setError("Esta reserva no tiene ID interno — actualizá el estado manualmente en el Sheet")
+      return
+    }
+    setLoading("confirmar")
+    setError(null)
+    const result = await updateOrderStatus(String(order.idempotencykey), "confirmado")
+    setLoading(null)
+    if (!result.ok) {
+      setError(
+        result.error === "unauthorized"
+          ? "Token admin inválido"
+          : "No se pudo actualizar: " + result.error,
+      )
+      return
+    }
+    onStatusChanged?.()
+    onClose()
+  }
 
   const markAsAtendido = async () => {
     if (!hasKey) {
@@ -373,6 +400,29 @@ function StatusActions({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Confirmar pago: habilita la facturación automática de esta reserva.
+          Solo aparece mientras sigue "pendiente" — una vez confirmada (o
+          atendida) desaparece, no hace falta tocarla de nuevo. */}
+      {isPendiente && !confirmDelete && (
+        <motion.button
+          whileHover={{ scale: hasKey && !loading ? 1.01 : 1 }}
+          whileTap={{ scale: hasKey && !loading ? 0.99 : 1 }}
+          onClick={confirmarPago}
+          disabled={!!loading || !hasKey}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition shadow-lg shadow-blue-900/40"
+        >
+          {loading === "confirmar" ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Actualizando…
+            </>
+          ) : (
+            <>
+              <Check className="w-4 h-4" /> Confirmar pago
+            </>
+          )}
+        </motion.button>
+      )}
+
       {/* Botón principal de atender (si no está ya atendido) */}
       {!isAtendido && !confirmDelete && (
         <motion.button
