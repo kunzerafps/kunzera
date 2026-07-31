@@ -2,6 +2,7 @@ import type { Context } from "@netlify/functions"
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { getStore } from "@netlify/blobs"
 import { submitOrder, updateOrderStatus } from "../../src/lib/appsScript"
+import { invoiceOrderIfNeeded } from "./lib/facturacion"
 import type { Pack } from "../../src/types/order"
 
 const PROCESSED_STORE = "mp-webhook-processed"
@@ -393,6 +394,19 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
           )
         }
         await sendMetaPurchaseEvent(idempotencyKey, meta)
+        // Mercado Pago siempre se factura al toque (ya estamos en un
+        // contexto de servidor confiable) — no hace falta esperar al
+        // escaneo periódico de facturar-pendientes.mts, que igual la cubre
+        // como red de respaldo si esto llegara a fallar.
+        await invoiceOrderIfNeeded({
+          idempotencykey: idempotencyKey,
+          nombre: meta.nombre,
+          // submitOrder ya validó que meta.plan sea un Pack válido (si no,
+          // orderResult.ok sería false y no llegaríamos hasta acá).
+          plan: meta.plan as Pack,
+          monto: Number(meta.monto) || 0,
+          turno: meta.turno,
+        })
       }
     }
   } catch (err) {

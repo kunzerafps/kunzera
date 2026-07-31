@@ -122,6 +122,23 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     setMpError(null)
   }
 
+  // Transferencia y Binance comparten el mismo flujo de "subir comprobante"
+  // hacia el Apps Script, que no guarda en ningún lado cuál de los dos fue.
+  // Se etiqueta acá aparte (del lado nuestro) para que la facturación
+  // automática sepa a cuáles facturar y a cuáles saltear (Binance). Es
+  // "best effort": si esta llamada falla, facturar-pendientes factura
+  // igual por defecto (ver netlify/functions/lib/facturacion.ts).
+  const handlePaidClick = () => {
+    if (method === "transferencia" || method === "binance") {
+      fetch("/api/tag-payment-method", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idempotencyKey, metodo: method }),
+      }).catch(() => {})
+    }
+    onPaid()
+  }
+
   const payWithMercadoPago = async () => {
     setMpError(null)
     setMpLoading(true)
@@ -284,7 +301,7 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={onPaid}
+            onClick={handlePaidClick}
             className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-green-500 to-green-700 hover:from-green-400 hover:to-green-600 text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-900/40"
           >
             Ya pagué, subir comprobante
