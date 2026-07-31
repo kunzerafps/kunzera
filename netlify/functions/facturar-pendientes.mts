@@ -1,6 +1,18 @@
 import type { Config, Context } from "@netlify/functions"
+import { timingSafeEqual } from "node:crypto"
 import { getOrders } from "../../src/lib/appsScript"
 import { invoiceOrderIfNeeded } from "./lib/facturacion"
+
+// Comparación a tiempo constante, mismo patrón que ya usa mp-webhook.mts
+// para su firma HMAC — timingSafeEqual exige buffers del mismo largo, así
+// que primero se descarta por longitud (una fuga de longitud por sí sola
+// no sirve para adivinar el secreto).
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a)
+  const bufB = Buffer.from(b)
+  if (bufA.length !== bufB.length) return false
+  return timingSafeEqual(bufA, bufB)
+}
 
 // Escaneo periódico: cubre la facturación de transferencia (que no tiene
 // ningún gancho de servidor propio, a diferencia de Mercado Pago) y sirve
@@ -25,7 +37,8 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     return Response.json({ ok: false, error: "not_configured" }, { status: 500 })
   }
   const url = new URL(req.url)
-  if (url.searchParams.get("key") !== expected) {
+  const provided = url.searchParams.get("key")
+  if (!provided || !safeEqual(provided, expected)) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 })
   }
 
