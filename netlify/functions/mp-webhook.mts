@@ -368,7 +368,21 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
         // Definitivo en cualquier caso: reintentar no lo va a cambiar.
         await markProcessed(paymentId)
         if (ownRow.ok) {
-          await sendMetaPurchaseEvent(idempotencyKey, meta)
+          // OJO: no volvemos a llamar a sendMetaPurchaseEvent acá — esta
+          // rama es justamente la ENTREGA DUPLICADA de una notificación que
+          // ya se procesó con éxito en la primera entrega (esa ya mandó el
+          // evento a Meta). Repetirlo acá contaría la misma venta dos veces
+          // en las métricas de conversión de Meta Ads. invoiceOrderIfNeeded
+          // sí es seguro llamarlo de nuevo acá — internamente chequea
+          // alreadyInvoiced() antes de facturar, así que es un no-op si la
+          // primera entrega ya facturó, y una red de respaldo si falló.
+          await invoiceOrderIfNeeded({
+            idempotencykey: idempotencyKey,
+            nombre: meta.nombre,
+            plan: meta.plan as Pack,
+            monto: Number(meta.monto) || 0,
+            turno: meta.turno,
+          })
         } else {
           console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
           await notifyOrderFailed(paymentId, idempotencyKey, meta, orderResult.error)

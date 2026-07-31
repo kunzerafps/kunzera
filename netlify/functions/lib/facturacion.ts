@@ -368,6 +368,17 @@ export async function invoiceOrderIfNeeded(order: InvoiceableOrder): Promise<voi
 
   if (await alreadyInvoiced(idempotencyKey)) return
 
+  // Un monto en $0 (o inválido) no debería generar una Factura C real por
+  // $0 — casi seguro es un dato roto de la reserva (plan sin precio
+  // cargado, campo vacío) y no algo que AFIP deba ver. Avisamos para
+  // revisar a mano en vez de facturar basura o fallar silenciosamente.
+  const monto = Number(order.monto)
+  if (!Number.isFinite(monto) || monto <= 0) {
+    console.error("[facturacion] monto invalido, no se factura", idempotencyKey, order.monto)
+    await notifyInvoiceFailed(order, `monto_invalido (${order.monto})`)
+    return
+  }
+
   const result = await crearFactura(order)
   if (!result.ok) {
     console.error("[facturacion] no se pudo facturar", idempotencyKey, result.error)
