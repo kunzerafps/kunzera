@@ -353,17 +353,31 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
         idempotencyKey,
       )
 
-      if (!orderResult.ok) {
+      if (!orderResult.ok && orderResult.error === "slot_taken") {
+        // Mercado Pago puede reenviar la misma notificación dos veces casi
+        // en simultáneo (ver alreadyProcessed): las dos entregas pueden
+        // pasar el chequeo de "¿ya procesado?" antes de que la primera
+        // termine de marcarlo. La segunda entrega llega a submitOrder,
+        // encuentra el turno recién tomado por SU PROPIA reserva (la que
+        // creó la primera entrega) y lo reporta como "ocupado" — un falso
+        // conflicto, no una reserva ajena pisada. updateOrderStatus con este
+        // mismo idempotencyKey nos dice cuál es el caso: si existe una fila
+        // con esta key, el turno lo ocupa nuestra propia reserva.
+        const ownRow = await updateOrderStatus(idempotencyKey, "confirmado")
+        // Definitivo en cualquier caso: reintentar no lo va a cambiar.
+        await markProcessed(paymentId)
+        if (ownRow.ok) {
+          await sendMetaPurchaseEvent(idempotencyKey, meta)
+        } else {
+          console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
+          await notifyOrderFailed(paymentId, idempotencyKey, meta, orderResult.error)
+        }
+      } else if (!orderResult.ok) {
         console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
         await notifyOrderFailed(paymentId, idempotencyKey, meta, orderResult.error)
-        // "slot_taken" es definitivo (reintentar no lo va a cambiar): lo
-        // marcamos procesado para no repetir el aviso en cada reintento de
-        // Mercado Pago. Cualquier otro motivo puede ser transitorio (ej. Apps
-        // Script caído un momento) — lo dejamos SIN marcar, para que una
-        // futura notificación del mismo pago pueda reintentarlo solo.
-        if (orderResult.error === "slot_taken") {
-          await markProcessed(paymentId)
-        }
+        // Puede ser transitorio (ej. Apps Script caído un momento) — no
+        // marcamos procesado, para que una futura notificación del mismo
+        // pago pueda reintentarlo solo.
       } else {
         await markProcessed(paymentId)
         // updateOrderStatus va primero: es lo importante (que la planilla
