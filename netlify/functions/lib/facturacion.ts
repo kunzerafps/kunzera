@@ -152,9 +152,15 @@ async function siguienteNumero(
       }),
     })
     if (!res.ok) return null
-    const data = (await res.json()) as { CbteNro?: number | string }
-    if (data.CbteNro === undefined) return null
-    return Number(data.CbteNro) + 1
+    // AfipSDK envuelve la respuesta real de AFIP en "<Metodo>Result" — no
+    // devuelve los campos sueltos en la raíz (confirmado a mano contra su
+    // API real, no solo contra la documentación).
+    const data = (await res.json()) as {
+      FECompUltimoAutorizadoResult?: { CbteNro?: number | string }
+    }
+    const cbteNro = data.FECompUltimoAutorizadoResult?.CbteNro
+    if (cbteNro === undefined) return null
+    return Number(cbteNro) + 1
   } catch (err) {
     console.error("[facturacion] no se pudo consultar la numeración:", err)
     return null
@@ -231,17 +237,28 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
 
     const data = (await res.json()) as {
       errors?: { code?: string; msg?: string }[]
-      CAE?: string
-      FeDetResp?: { FECAEDetResponse?: { Resultado?: string; CAE?: string; Observaciones?: unknown }[] }
+      // AfipSDK envuelve la respuesta real de AFIP en "FECAESolicitarResult"
+      // — confirmado a mano contra su API real, no solo contra la
+      // documentación (ver commit que agregó este comentario).
+      FECAESolicitarResult?: {
+        FeDetResp?: {
+          FECAEDetResponse?: { Resultado?: string; CAE?: string; Observaciones?: unknown }[]
+        }
+      }
     }
 
     if (!res.ok) {
       return { ok: false, error: data.errors?.map((e) => e.msg).join(", ") || `http_${res.status}` }
     }
 
-    const cae = data.CAE || data.FeDetResp?.FECAEDetResponse?.[0]?.CAE
+    const detalle = data.FECAESolicitarResult?.FeDetResp?.FECAEDetResponse?.[0]
+    const cae = detalle?.CAE
     if (!cae) {
-      return { ok: false, error: data.errors?.map((e) => e.msg).join(", ") || "sin_cae_en_respuesta" }
+      const obs = detalle?.Observaciones ? JSON.stringify(detalle.Observaciones) : undefined
+      return {
+        ok: false,
+        error: data.errors?.map((e) => e.msg).join(", ") || obs || "sin_cae_en_respuesta",
+      }
     }
 
     return { ok: true, cae, numero }
