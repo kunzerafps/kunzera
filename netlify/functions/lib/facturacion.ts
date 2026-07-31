@@ -3,6 +3,7 @@ import type { Order } from "../../src/types/order"
 
 const INVOICED_STORE = "facturas-emitidas"
 const METHOD_STORE = "payment-methods"
+const ALERTED_STORE = "facturacion-alertada"
 
 // Subconjunto mínimo de Order necesario para facturar — así tanto
 // mp-webhook.mts (que no tiene un Order completo a mano, solo los datos que
@@ -61,6 +62,14 @@ function credentials(): Credentials | null {
   return { accessToken, environment, cuit, puntoVenta: Number(puntoVentaRaw), cert, key }
 }
 
+// El valor interno "production" (más legible en este archivo) no es el
+// que espera la API de AfipSDK — confirmado a mano contra la API real:
+// devuelve "El campo Ambiente es invalido" con "production", solo acepta
+// "prod". "dev" sí coincide en los dos lados.
+function apiEnvironment(environment: Credentials["environment"]): "dev" | "prod" {
+  return environment === "production" ? "prod" : "dev"
+}
+
 export async function alreadyInvoiced(idempotencyKey: string): Promise<boolean> {
   try {
     const store = getStore(INVOICED_STORE)
@@ -107,7 +116,7 @@ async function autenticar(creds: Credentials): Promise<{ token: string; sign: st
         Authorization: `Bearer ${creds.accessToken}`,
       },
       body: JSON.stringify({
-        environment: creds.environment,
+        environment: apiEnvironment(creds.environment),
         tax_id: creds.cuit,
         wsid: "wsfe",
         ...(creds.environment === "production" ? { cert: creds.cert, key: creds.key } : {}),
@@ -141,7 +150,7 @@ async function siguienteNumero(
         Authorization: `Bearer ${creds.accessToken}`,
       },
       body: JSON.stringify({
-        environment: creds.environment,
+        environment: apiEnvironment(creds.environment),
         method: "FECompUltimoAutorizado",
         wsid: "wsfe",
         params: {
@@ -154,9 +163,22 @@ async function siguienteNumero(
     if (!res.ok) return null
     // AfipSDK envuelve la respuesta real de AFIP en "<Metodo>Result" — no
     // devuelve los campos sueltos en la raíz (confirmado a mano contra su
-    // API real, no solo contra la documentación).
+    // API real, no solo contra la documentación). Importante: AFIP informa
+    // sus propios errores (ej. "punto de venta no habilitado") CON HTTP 200,
+    // adentro de "Errors.Err" — no alcanza con mirar el status HTTP. Sin
+    // este chequeo, un error real de AFIP pasaba desapercibido y el código
+    // seguía de largo con un CbteNro basura (confirmado a mano contra la
+    // API real, forzando un punto de venta inválido a propósito).
     const data = (await res.json()) as {
-      FECompUltimoAutorizadoResult?: { CbteNro?: number | string }
+      FECompUltimoAutorizadoResult?: {
+        CbteNro?: number | string
+        Errors?: { Err?: { Code?: number; Msg?: string }[] }
+      }
+    }
+    const errors = data.FECompUltimoAutorizadoResult?.Errors?.Err
+    if (errors?.length) {
+      console.error("[facturacion] AFIP rechazó la consulta de numeración:", JSON.stringify(errors))
+      return null
     }
     const cbteNro = data.FECompUltimoAutorizadoResult?.CbteNro
     if (cbteNro === undefined) return null
@@ -199,7 +221,7 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
         Authorization: `Bearer ${creds.accessToken}`,
       },
       body: JSON.stringify({
-        environment: creds.environment,
+        environment: apiEnvironment(creds.environment),
         method: "FECAESolicitar",
         wsid: "wsfe",
         params: {
@@ -239,8 +261,11 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
       errors?: { code?: string; msg?: string }[]
       // AfipSDK envuelve la respuesta real de AFIP en "FECAESolicitarResult"
       // — confirmado a mano contra su API real, no solo contra la
-      // documentación (ver commit que agregó este comentario).
+      // documentación. AFIP informa sus propios errores CON HTTP 200,
+      // adentro de "Errors.Err" — el chequeo de "!res.ok" de más abajo NO
+      // los detecta por sí solo (confirmado a mano forzando un error real).
       FECAESolicitarResult?: {
+        Errors?: { Err?: { Code?: number; Msg?: string }[] }
         FeDetResp?: {
           FECAEDetResponse?: { Resultado?: string; CAE?: string; Observaciones?: unknown }[]
         }
@@ -251,9 +276,17 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
       return { ok: false, error: data.errors?.map((e) => e.msg).join(", ") || `http_${res.status}` }
     }
 
+    const solicitudErrors = data.FECAESolicitarResult?.Errors?.Err
+    if (solicitudErrors?.length) {
+      return {
+        ok: false,
+        error: solicitudErrors.map((e) => `${e.Code}: ${e.Msg}`).join(", "),
+      }
+    }
+
     const detalle = data.FECAESolicitarResult?.FeDetResp?.FECAEDetResponse?.[0]
     const cae = detalle?.CAE
-    if (!cae) {
+    if (!cae || detalle?.Resultado !== "A") {
       const obs = detalle?.Observaciones ? JSON.stringify(detalle.Observaciones) : undefined
       return {
         ok: false,
@@ -268,6 +301,29 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
   }
 }
 
+// Evita mandar el mismo aviso de "no se pudo facturar" en cada reintento
+// — facturar-pendientes corre cada ~15 min y reintenta solo (a propósito,
+// no se marca como facturada en un fallo), así que sin este freno un
+// problema persistente mandaría un mensaje nuevo a Discord cada 15
+// minutos para siempre. Mismo patrón que ya usa mp-webhook.mts.
+async function alreadyAlerted(idempotencyKey: string): Promise<boolean> {
+  try {
+    const store = getStore(ALERTED_STORE)
+    return (await store.get(idempotencyKey, { consistency: "strong" })) !== null
+  } catch {
+    return false
+  }
+}
+
+async function markAlerted(idempotencyKey: string): Promise<void> {
+  try {
+    const store = getStore(ALERTED_STORE)
+    await store.set(idempotencyKey, "1")
+  } catch (err) {
+    console.error("[facturacion] no se pudo marcar la alerta como enviada:", err)
+  }
+}
+
 // Aviso para CUALQUIER motivo por el que un pago se acredite pero la
 // factura no se llegue a generar. Si no está configurado
 // MP_DISCORD_WEBHOOK_URL, no manda nada.
@@ -275,11 +331,14 @@ async function notifyInvoiceFailed(order: InvoiceableOrder, reason: string): Pro
   const webhookUrl = process.env.MP_DISCORD_WEBHOOK_URL
   if (!webhookUrl) return
 
+  const idempotencyKey = order.idempotencykey || "-"
+  if (await alreadyAlerted(idempotencyKey)) return
+
   const content = [
     "⚠️ **No se pudo generar la factura digital de una reserva**",
     `${order.nombre || "-"} — ${order.plan || "-"} — $${order.monto || 0}`,
     `Motivo: ${reason}`,
-    `ID interno: ${(order.idempotencykey || "-").slice(0, 8)}…`,
+    `ID interno: ${idempotencyKey.slice(0, 8)}…`,
     "Se va a reintentar solo en el próximo ciclo. Si se repite, revisar a mano.",
   ].join("\n")
 
@@ -289,6 +348,7 @@ async function notifyInvoiceFailed(order: InvoiceableOrder, reason: string): Pro
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content }),
     })
+    await markAlerted(idempotencyKey)
   } catch (err) {
     console.error("[facturacion] no se pudo avisar el fallo a Discord:", err)
   }

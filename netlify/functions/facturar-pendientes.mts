@@ -24,11 +24,27 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     }
   }
 
+  // Sin fecha de corte explícita, no facturamos nada — el objetivo es
+  // facturar reservas NUEVAS de acá en adelante, no reprocesar meses de
+  // historial que el contador ya facturó a mano en el resumen semanal
+  // (facturarlas ahora sería declarar ese ingreso dos veces). Recién
+  // cuando se decide la fecha de arranque se carga FACTURACION_DESDE
+  // (ISO, ej. "2026-08-01") en Netlify.
+  const desde = process.env.FACTURACION_DESDE
+  if (!desde) {
+    return Response.json({ ok: true, revisadas: 0, motivo: "FACTURACION_DESDE no configurado" })
+  }
+  const desdeMs = new Date(desde).getTime()
+  if (Number.isNaN(desdeMs)) {
+    return Response.json({ ok: false, error: "FACTURACION_DESDE invalido" }, { status: 500 })
+  }
+
   const orders = await getOrders()
 
   let procesadas = 0
   for (const order of orders) {
     if (!order.idempotencykey) continue
+    if (new Date(order.timestamp).getTime() < desdeMs) continue
     await invoiceOrderIfNeeded(order)
     procesadas++
   }
