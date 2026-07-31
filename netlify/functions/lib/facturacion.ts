@@ -97,7 +97,11 @@ async function markInvoiced(idempotencyKey: string, info: { cae: string; numero:
 export async function getPaymentMethod(idempotencyKey: string): Promise<"transferencia" | "binance"> {
   try {
     const store = getStore(METHOD_STORE)
-    const value = await store.get(idempotencyKey)
+    // consistency: "strong" — igual que alreadyInvoiced/alreadyProcessed en
+    // mp-webhook.mts. Sin esto, una lectura eventualmente consistente podría
+    // no ver todavía la etiqueta "binance" que tag-payment-method.mts acaba
+    // de escribir, y facturar por default algo que no debería facturarse.
+    const value = await store.get(idempotencyKey, { consistency: "strong" })
     return value === "binance" ? "binance" : "transferencia"
   } catch {
     return "transferencia"

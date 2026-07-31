@@ -122,19 +122,35 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     setMpError(null)
   }
 
+  // Reintenta 3 veces (sin bloquear al cliente, que ya siguió con onPaid())
+  // porque si esto termina fallando del todo, un pago de Binance sin
+  // etiquetar se factura por default como si fuera transferencia — algo que
+  // el negocio pidió explícitamente que nunca pase.
+  const tagPaymentMethodWithRetry = async (key: string, metodo: "transferencia" | "binance") => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 500 * attempt))
+      try {
+        const res = await fetch("/api/tag-payment-method", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idempotencyKey: key, metodo }),
+        })
+        if (res.ok) return
+      } catch {
+        // reintenta
+      }
+    }
+  }
+
   // Transferencia y Binance comparten el mismo flujo de "subir comprobante"
   // hacia el Apps Script, que no guarda en ningún lado cuál de los dos fue.
   // Se etiqueta acá aparte (del lado nuestro) para que la facturación
   // automática sepa a cuáles facturar y a cuáles saltear (Binance). Es
-  // "best effort": si esta llamada falla, facturar-pendientes factura
+  // "best effort": si las 3 reintentos fallan, facturar-pendientes factura
   // igual por defecto (ver netlify/functions/lib/facturacion.ts).
   const handlePaidClick = () => {
     if (method === "transferencia" || method === "binance") {
-      fetch("/api/tag-payment-method", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idempotencyKey, metodo: method }),
-      }).catch(() => {})
+      tagPaymentMethodWithRetry(idempotencyKey, method).catch(() => {})
     }
     onPaid()
   }
