@@ -1,6 +1,4 @@
 import {
-  SAT_SLOT_END_HOUR,
-  SAT_SLOT_START_HOUR,
   SLOT_END_HOUR,
   SLOT_START_HOUR,
   SLOT_STEP_MIN,
@@ -41,26 +39,6 @@ function addDays(dayKey: string, n: number): string {
 type DayBlock = {
   dayKey: string
   slots: Date[]
-}
-
-/** true si `dayKey` (YYYY-MM-DD en hora AR) cae domingo. */
-function isSundayAR(dayKey: string): boolean {
-  const day = new Date(`${dayKey}T12:00:00-03:00`).getUTCDay()
-  return day === 0
-}
-
-/** true si `dayKey` (YYYY-MM-DD en hora AR) cae sábado. */
-function isSaturdayAR(dayKey: string): boolean {
-  const day = new Date(`${dayKey}T12:00:00-03:00`).getUTCDay()
-  return day === 6
-}
-
-/** Ventana horaria (start/end) aplicable a `dayKey`: sábado usa su propio rango. */
-function hoursForDay(dayKey: string): { start: number; end: number } {
-  if (isSaturdayAR(dayKey)) {
-    return { start: SAT_SLOT_START_HOUR, end: SAT_SLOT_END_HOUR }
-  }
-  return { start: SLOT_START_HOUR, end: SLOT_END_HOUR }
 }
 
 /**
@@ -124,10 +102,7 @@ export function generateSlots(
   // Ventana de reserva: desde hoy hasta 30 días en el futuro (inclusive).
   const lastDayKey = addDays(todayKey, RESERVATION_HORIZON_DAYS)
 
-  const blockFor = (dayKey: string) => {
-    const { start, end } = hoursForDay(dayKey)
-    return generateDayBlock(dayKey, start, end)
-  }
+  const blockFor = (dayKey: string) => generateDayBlock(dayKey)
 
   const blocks: DayBlock[] = [blockFor(yesterdayKey)]
   for (let i = 0; i <= RESERVATION_HORIZON_DAYS; i++) {
@@ -140,7 +115,6 @@ export function generateSlots(
       if (d <= now) continue
       const slotDayKey = getDayKeyAR(d)
       if (slotDayKey > lastDayKey) continue
-      if (isSundayAR(slotDayKey)) continue
       const iso = d.toISOString()
       const normalizedIso = normalizeIso(iso)
       if (takenSet.has(normalizedIso)) continue
