@@ -416,7 +416,9 @@ function StatusActions({
     }
     setLoading("factura")
     setError(null)
-    let result: { ok: true; cae: string; numero: number; already: boolean } | { ok: false; error: string }
+    let result:
+      | { ok: true; cae: string; numero: number; already: boolean }
+      | { ok: false; error: string; ambiguous?: boolean }
     try {
       const res = await fetch("/api/generar-factura", {
         method: "POST",
@@ -436,12 +438,27 @@ function StatusActions({
     }
     setLoading(null)
     if (!result.ok) {
+      // "ambiguous" = no sabemos con certeza si AFIP llegó a generar la
+      // factura antes de que se cortara la conexión — puede que sí haya
+      // pasado. Nunca se debe reintentar a ciegas en este caso: mejor
+      // mostrar un aviso explícito que un mensaje técnico cualquiera.
+      if (result.ambiguous) {
+        setError(
+          "No se pudo confirmar si la factura se generó en AFIP (se cortó la conexión en el peor momento). " +
+            "NO reintentes todavía: entrá a tu cuenta de AFIP y fijate si ya existe una factura de hoy por " +
+            `$${order.monto} para esta reserva. El botón se va a volver a habilitar solo en 2 minutos.`,
+        )
+        return
+      }
       const messages: Record<string, string> = {
         unauthorized: "Token admin inválido",
         missing_field: "Faltan datos de la reserva para facturar",
         binance_no_facturable: "Este pago fue por Binance — no se factura",
         not_configured: "La facturación electrónica todavía no está configurada",
         ya_se_esta_facturando: "Ya se está generando esta factura, esperá un momento y volvé a intentar",
+        ya_facturada_no_reintentar: "Esta reserva ya estaba facturada — no se generó una nueva. Si necesitás el CAE, revisalo en tu cuenta de AFIP.",
+        auth_fallida: "No se pudo autenticar con AFIP — revisar el certificado/CUIT configurado",
+        no_numero: "No se pudo consultar la numeración con AFIP — probá de nuevo en un momento",
         network: "No se pudo conectar con el servidor",
       }
       setError(messages[result.error] || "No se pudo facturar: " + result.error)

@@ -42,7 +42,7 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 })
   }
 
-  if (!body.idempotencyKey || !body.nombre || !body.plan || !body.turno) {
+  if (!body.idempotencyKey || !body.nombre || !body.plan || !body.turno || body.monto === undefined) {
     return Response.json({ ok: false, error: "missing_field" }, { status: 400 })
   }
 
