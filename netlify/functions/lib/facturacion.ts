@@ -3,12 +3,9 @@ import type { Order } from "../../src/types/order"
 
 const INVOICED_STORE = "facturas-emitidas"
 const METHOD_STORE = "payment-methods"
-const ALERTED_STORE = "facturacion-alertada"
 
-// Subconjunto mínimo de Order necesario para facturar — así tanto
-// mp-webhook.mts (que no tiene un Order completo a mano, solo los datos que
-// mandó como metadata de la preferencia) como facturar-pendientes.mts (que
-// sí tiene el Order completo desde getOrders) pueden llamar a esto mismo.
+// Subconjunto mínimo de Order necesario para facturar — lo que manda el
+// panel admin al apretar "Generar factura" (generar-factura.mts).
 export type InvoiceableOrder = Pick<Order, "idempotencykey" | "nombre" | "plan" | "monto" | "turno">
 
 // AfipSDK: https://docs.afipsdk.com — wrapper delgado sobre el web service
@@ -122,6 +119,21 @@ async function claim(idempotencyKey: string): Promise<void> {
     await store.setJSON(idempotencyKey, { status: "en_proceso", claimedAt: Date.now() } satisfies InvoiceRecord)
   } catch (err) {
     console.error("[facturacion] no se pudo reservar la facturación:", err)
+  }
+}
+
+// A diferencia del viejo diseño (reintento automático cada ~15 min sin que
+// nadie mire), acá el admin ve el error al toque y puede querer reintentar
+// enseguida. Si crearFactura ya devolvió un resultado (la ejecución
+// terminó, no se cortó a mitad de camino), no tiene sentido dejarlo
+// "en_proceso" 2 minutos más — lo liberamos así el próximo click no choca
+// con el mensaje confuso de "ya se está generando".
+async function releaseClaim(idempotencyKey: string): Promise<void> {
+  try {
+    const store = getStore(INVOICED_STORE)
+    await store.delete(idempotencyKey)
+  } catch (err) {
+    console.error("[facturacion] no se pudo liberar la reserva de facturación:", err)
   }
 }
 
@@ -363,100 +375,66 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
   }
 }
 
-// Evita mandar el mismo aviso de "no se pudo facturar" en cada reintento
-// — facturar-pendientes corre cada ~15 min y reintenta solo (a propósito,
-// no se marca como facturada en un fallo), así que sin este freno un
-// problema persistente mandaría un mensaje nuevo a Discord cada 15
-// minutos para siempre. Mismo patrón que ya usa mp-webhook.mts.
-async function alreadyAlerted(idempotencyKey: string): Promise<boolean> {
-  try {
-    const store = getStore(ALERTED_STORE)
-    return (await store.get(idempotencyKey, { consistency: "strong" })) !== null
-  } catch {
-    return false
-  }
-}
+// Resultado que ve el panel admin al apretar "Generar factura" — a
+// diferencia del viejo invoiceOrderIfNeeded (void, silencioso, pensado
+// para disparadores automáticos), acá el admin necesita saber exactamente
+// qué pasó para decidir si reintentar o revisar a mano.
+export type InvoiceOutcome =
+  | { ok: true; cae: string; numero: number; already: boolean }
+  | { ok: false; error: string }
 
-async function markAlerted(idempotencyKey: string): Promise<void> {
-  try {
-    const store = getStore(ALERTED_STORE)
-    await store.set(idempotencyKey, "1")
-  } catch (err) {
-    console.error("[facturacion] no se pudo marcar la alerta como enviada:", err)
-  }
-}
-
-// Aviso para CUALQUIER motivo por el que un pago se acredite pero la
-// factura no se llegue a generar. Si no está configurado
-// MP_DISCORD_WEBHOOK_URL, no manda nada.
-async function notifyInvoiceFailed(order: InvoiceableOrder, reason: string): Promise<void> {
-  const webhookUrl = process.env.MP_DISCORD_WEBHOOK_URL
-  if (!webhookUrl) return
-
-  const idempotencyKey = order.idempotencykey || "-"
-  if (await alreadyAlerted(idempotencyKey)) return
-
-  const content = [
-    "⚠️ **No se pudo generar la factura digital de una reserva**",
-    `${order.nombre || "-"} — ${order.plan || "-"} — $${order.monto || 0}`,
-    `Motivo: ${reason}`,
-    `ID interno: ${idempotencyKey.slice(0, 8)}…`,
-    "Se va a reintentar solo en el próximo ciclo. Si se repite, revisar a mano.",
-  ].join("\n")
-
-  try {
-    await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // allowed_mentions vacío: el nombre de la reserva viene de un campo
-      // que el cliente controla — sin esto, un "@everyone" en el nombre
-      // pingearía a todo el servidor de Discord.
-      body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
-    })
-    await markAlerted(idempotencyKey)
-  } catch (err) {
-    console.error("[facturacion] no se pudo avisar el fallo a Discord:", err)
-  }
-}
-
-// Punto de entrada único, usado tanto por mp-webhook.mts (al confirmarse un
-// pago de Mercado Pago) como por facturar-pendientes.mts (escaneo
-// periódico para transferencia, y red de respaldo para Mercado Pago).
-export async function invoiceOrderIfNeeded(order: InvoiceableOrder): Promise<void> {
+// Punto de entrada único de facturación — usado por generar-factura.mts
+// cuando el admin aprieta "Generar factura" a mano en el panel. No hay
+// ningún disparador automático: Kunzera factura reserva por reserva,
+// cuando el admin decide (a propósito, para no arriesgar una factura mal
+// hecha mientras nadie está mirando — ver historial del proyecto).
+export async function invoiceOrderNow(order: InvoiceableOrder): Promise<InvoiceOutcome> {
   const idempotencyKey = order.idempotencykey
-  if (!idempotencyKey) return
+  if (!idempotencyKey) return { ok: false, error: "missing_idempotency_key" }
 
-  if (!credentials()) return // facturación todavía no configurada: no-op silencioso
+  if (!credentials()) return { ok: false, error: "not_configured" }
 
   const metodo = await getPaymentMethod(idempotencyKey)
-  if (metodo === "binance") return
+  if (metodo === "binance") return { ok: false, error: "binance_no_facturable" }
 
   const state = await invoiceState(idempotencyKey)
-  if (state.ya) return
-  if (state.ocupado) return // otro llamado concurrente ya la está facturando ahora mismo
+  if (state.ya) {
+    // Ya facturada antes (posible reintento del mismo click, o el admin
+    // reabrió el detalle) — recuperamos el CAE guardado en vez de facturar
+    // de nuevo. Esto es lo que garantiza que no se pueda duplicar una
+    // factura por doble click o por volver a abrir la reserva.
+    const store = getStore(INVOICED_STORE)
+    const data = (await store.get(idempotencyKey, {
+      type: "json",
+      consistency: "strong",
+    })) as InvoiceRecord | null
+    if (data?.status === "facturada") {
+      return { ok: true, cae: data.cae, numero: data.numero, already: true }
+    }
+    return { ok: false, error: "estado_inconsistente" }
+  }
+  if (state.ocupado) return { ok: false, error: "ya_se_esta_facturando" }
 
   // Un monto en $0 (o inválido) no debería generar una Factura C real por
   // $0 — casi seguro es un dato roto de la reserva (plan sin precio
-  // cargado, campo vacío) y no algo que AFIP deba ver. Avisamos para
-  // revisar a mano en vez de facturar basura o fallar silenciosamente.
+  // cargado, campo vacío) y no algo que AFIP deba ver.
   const monto = Number(order.monto)
   if (!Number.isFinite(monto) || monto <= 0) {
-    console.error("[facturacion] monto invalido, no se factura", idempotencyKey, order.monto)
-    await notifyInvoiceFailed(order, `monto_invalido (${order.monto})`)
-    return
+    return { ok: false, error: `monto_invalido (${order.monto})` }
   }
 
   // Reservamos el idempotencyKey ANTES de llamar a AFIP (ver comentario en
-  // invoiceState/claim) — achica la ventana en la que dos llamados
-  // concurrentes podrían facturar la misma reserva dos veces.
+  // invoiceState/claim) — achica la ventana en la que dos clicks casi
+  // simultáneos podrían facturar la misma reserva dos veces.
   await claim(idempotencyKey)
 
   const result = await crearFactura(order)
   if (!result.ok) {
     console.error("[facturacion] no se pudo facturar", idempotencyKey, result.error)
-    await notifyInvoiceFailed(order, result.error)
-    return // sin marcar como facturada: el próximo ciclo reintenta solo (el claim expira en 2 min)
+    await releaseClaim(idempotencyKey)
+    return { ok: false, error: result.error }
   }
 
   await markInvoiced(idempotencyKey, { cae: result.cae, numero: result.numero })
+  return { ok: true, cae: result.cae, numero: result.numero, already: false }
 }

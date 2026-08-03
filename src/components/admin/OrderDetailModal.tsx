@@ -8,6 +8,7 @@ import {
   Loader2,
   MessageSquare,
   Phone,
+  Receipt,
   Trash2,
   User,
   X,
@@ -21,6 +22,7 @@ import { deleteOrder, updateOrderStatus } from "../../lib/appsScript"
 import { comprobanteUrl } from "../../lib/comprobante"
 import { applyTemplate } from "../../lib/waMessages"
 import { useSiteConfig } from "../../hooks/useWaMessages"
+import { ADMIN_SECRET_TOKEN } from "../../lib/constants"
 
 type Props = {
   order: Order | null
@@ -139,6 +141,7 @@ export default function OrderDetailModal({ order, onClose, onStatusChanged, onDe
                 </Section>
 
                 <StatusActions
+                  key={order.idempotencykey || order.timestamp}
                   order={order}
                   onStatusChanged={onStatusChanged}
                   onDeleted={onDeleted}
@@ -319,19 +322,21 @@ function StatusActions({
   onDeleted?: () => void
   onClose: () => void
 }) {
-  const [loading, setLoading] = useState<"confirmar" | "atender" | "eliminar" | null>(null)
+  const [loading, setLoading] = useState<"confirmar" | "atender" | "eliminar" | "factura" | null>(
+    null,
+  )
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [factura, setFactura] = useState<{ cae: string; numero: number } | null>(null)
   const current = String(order.estado || "").toLowerCase()
   const isPendiente = current === "pendiente" || current === ""
   const isAtendido = current === "atendido"
   const hasKey = !!order.idempotencykey
 
-  // "Confirmar pago" es el paso que hoy NO existía en el panel: sin él, una
-  // reserva por transferencia queda en "pendiente" hasta que se marca
-  // "atendido" (recién cuando ya se hizo el servicio, días después) — y la
-  // facturación automática no tiene ninguna otra señal de "esto ya lo
-  // revisé y es un comprobante real" para no facturar de más temprano.
+  // "Confirmar pago" marca que ya revisaste el comprobante y es real — no
+  // dispara nada automático (la facturación es 100% manual, ver botón
+  // "Generar factura" más abajo), pero deja registro en el Sheet de que
+  // esta reserva ya pasó control antes de "atendido".
   const confirmarPago = async () => {
     if (!hasKey) {
       setError("Esta reserva no tiene ID interno — actualizá el estado manualmente en el Sheet")
@@ -398,9 +403,88 @@ function StatusActions({
     onClose()
   }
 
+  // Único disparador de facturación en todo el sitio: nada se factura solo,
+  // ni Mercado Pago ni transferencia — el admin decide reserva por reserva,
+  // cuando la atiende. El backend (generar-factura.mts → invoiceOrderNow)
+  // es idempotente: si esta reserva ya se facturó (por ejemplo, doble click,
+  // o volver a abrir el detalle), devuelve el mismo CAE en vez de generar
+  // una segunda factura.
+  const generarFactura = async () => {
+    if (!hasKey) {
+      setError("Esta reserva no tiene ID interno — no se puede facturar")
+      return
+    }
+    setLoading("factura")
+    setError(null)
+    let result: { ok: true; cae: string; numero: number; already: boolean } | { ok: false; error: string }
+    try {
+      const res = await fetch("/api/generar-factura", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: ADMIN_SECRET_TOKEN,
+          idempotencyKey: String(order.idempotencykey),
+          nombre: order.nombre,
+          plan: order.plan,
+          monto: order.monto,
+          turno: order.turno,
+        }),
+      })
+      result = await res.json()
+    } catch {
+      result = { ok: false, error: "network" }
+    }
+    setLoading(null)
+    if (!result.ok) {
+      const messages: Record<string, string> = {
+        unauthorized: "Token admin inválido",
+        missing_field: "Faltan datos de la reserva para facturar",
+        binance_no_facturable: "Este pago fue por Binance — no se factura",
+        not_configured: "La facturación electrónica todavía no está configurada",
+        ya_se_esta_facturando: "Ya se está generando esta factura, esperá un momento y volvé a intentar",
+        network: "No se pudo conectar con el servidor",
+      }
+      setError(messages[result.error] || "No se pudo facturar: " + result.error)
+      return
+    }
+    setFactura({ cae: result.cae, numero: result.numero })
+  }
+
   return (
     <div className="flex flex-col gap-2">
-      {/* Confirmar pago: habilita la facturación automática de esta reserva.
+      {/* Generar factura: único disparador de facturación de todo el sitio,
+          100% manual — no depende del estado de la reserva, el admin decide
+          cuándo. Si ya se facturó antes, el backend devuelve el mismo CAE
+          en vez de duplicar. */}
+      {hasKey &&
+        (factura ? (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-violet-300 text-sm">
+            <Receipt className="w-4 h-4 shrink-0" />
+            <span>
+              Facturada — CAE {factura.cae} (Nº {factura.numero})
+            </span>
+          </div>
+        ) : (
+          <motion.button
+            whileHover={{ scale: !loading ? 1.01 : 1 }}
+            whileTap={{ scale: !loading ? 0.99 : 1 }}
+            onClick={generarFactura}
+            disabled={!!loading}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-violet-700 hover:from-violet-400 hover:to-violet-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition shadow-lg shadow-violet-900/40"
+          >
+            {loading === "factura" ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Facturando…
+              </>
+            ) : (
+              <>
+                <Receipt className="w-4 h-4" /> Generar factura
+              </>
+            )}
+          </motion.button>
+        ))}
+
+      {/* Confirmar pago: deja constancia de que revisaste el comprobante.
           Solo aparece mientras sigue "pendiente" — una vez confirmada (o
           atendida) desaparece, no hace falta tocarla de nuevo. */}
       {isPendiente && !confirmDelete && (

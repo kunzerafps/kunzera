@@ -144,10 +144,12 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
 
   // Transferencia y Binance comparten el mismo flujo de "subir comprobante"
   // hacia el Apps Script, que no guarda en ningún lado cuál de los dos fue.
-  // Se etiqueta acá aparte (del lado nuestro) para que la facturación
-  // automática sepa a cuáles facturar y a cuáles saltear (Binance). Es
-  // "best effort": si las 3 reintentos fallan, facturar-pendientes factura
-  // igual por defecto (ver netlify/functions/lib/facturacion.ts).
+  // Se etiqueta acá aparte (del lado nuestro) para que cuando el admin
+  // apriete "Generar factura" a mano, el sistema sepa saltear los pagos de
+  // Binance. Es "best effort": si las 3 reintentos fallan, queda etiquetada
+  // como transferencia por default (ver getPaymentMethod en
+  // netlify/functions/lib/facturacion.ts) — factura de más antes que perder
+  // silenciosamente una factura real.
   const handlePaidClick = () => {
     if (method === "transferencia" || method === "binance") {
       tagPaymentMethodWithRetry(idempotencyKey, method).catch(() => {})

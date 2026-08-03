@@ -2,7 +2,6 @@ import type { Context } from "@netlify/functions"
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { getStore } from "@netlify/blobs"
 import { submitOrder, updateOrderStatus } from "../../src/lib/appsScript"
-import { invoiceOrderIfNeeded } from "./lib/facturacion"
 import type { Pack } from "../../src/types/order"
 
 const PROCESSED_STORE = "mp-webhook-processed"
@@ -375,17 +374,7 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
           // rama es justamente la ENTREGA DUPLICADA de una notificación que
           // ya se procesó con éxito en la primera entrega (esa ya mandó el
           // evento a Meta). Repetirlo acá contaría la misma venta dos veces
-          // en las métricas de conversión de Meta Ads. invoiceOrderIfNeeded
-          // sí es seguro llamarlo de nuevo acá — internamente chequea
-          // alreadyInvoiced() antes de facturar, así que es un no-op si la
-          // primera entrega ya facturó, y una red de respaldo si falló.
-          await invoiceOrderIfNeeded({
-            idempotencykey: idempotencyKey,
-            nombre: meta.nombre,
-            plan: meta.plan as Pack,
-            monto: Number(meta.monto) || 0,
-            turno: meta.turno,
-          })
+          // en las métricas de conversión de Meta Ads.
         } else {
           console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
           await notifyOrderFailed(paymentId, idempotencyKey, meta, orderResult.error)
@@ -411,19 +400,10 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
           )
         }
         await sendMetaPurchaseEvent(idempotencyKey, meta)
-        // Mercado Pago siempre se factura al toque (ya estamos en un
-        // contexto de servidor confiable) — no hace falta esperar al
-        // escaneo periódico de facturar-pendientes.mts, que igual la cubre
-        // como red de respaldo si esto llegara a fallar.
-        await invoiceOrderIfNeeded({
-          idempotencykey: idempotencyKey,
-          nombre: meta.nombre,
-          // submitOrder ya validó que meta.plan sea un Pack válido (si no,
-          // orderResult.ok sería false y no llegaríamos hasta acá).
-          plan: meta.plan as Pack,
-          monto: Number(meta.monto) || 0,
-          turno: meta.turno,
-        })
+        // La factura NO se genera acá ni en ningún otro lugar automático —
+        // Kunzera la factura a mano desde el panel admin (botón "Generar
+        // factura", ver netlify/functions/generar-factura.mts) para tener
+        // control total de cuándo sale cada una, incluso para Mercado Pago.
       }
     }
   } catch (err) {
