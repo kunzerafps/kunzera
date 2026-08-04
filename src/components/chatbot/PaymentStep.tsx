@@ -50,6 +50,16 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
   const { prices } = useSiteConfig()
   const [method, setMethod] = useState<Method>("transferencia")
   const [copied, setCopied] = useState(false)
+  // Qué método se etiqueta al facturar no debería depender de en qué tab
+  // haya quedado parado el cliente al tocar "Ya pagué" (switchMethod deja
+  // cambiar de tab en cualquier momento, incluso después de pagar) — eso
+  // etiquetaría mal si copió el alias de Binance y después volvió a mirar
+  // la tab de Transferencia antes de confirmar. Se guarda el método en el
+  // momento en que efectivamente copia el dato de pago (la señal más
+  // confiable de cuál usó de verdad) y esa es la que se manda a
+  // tag-payment-method; si nunca copió nada, se sigue usando el tab activo
+  // como antes (mismo comportamiento que ya existía).
+  const [paidWithMethod, setPaidWithMethod] = useState<"transferencia" | "binance" | null>(null)
   const [mpLoading, setMpLoading] = useState(false)
   const [mpError, setMpError] = useState<string | null>(null)
 
@@ -95,6 +105,7 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
 
   const copyValue = async () => {
     if (!active) return
+    setPaidWithMethod(method as "transferencia" | "binance")
     try {
       await navigator.clipboard.writeText(active.value)
       setCopied(true)
@@ -120,6 +131,42 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     setMethod(next)
     setCopied(false)
     setMpError(null)
+  }
+
+  // Reintenta 3 veces (sin bloquear al cliente, que ya siguió con onPaid())
+  // porque si esto termina fallando del todo, un pago de Binance sin
+  // etiquetar se factura por default como si fuera transferencia — algo que
+  // el negocio pidió explícitamente que nunca pase.
+  const tagPaymentMethodWithRetry = async (key: string, metodo: "transferencia" | "binance") => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 500 * attempt))
+      try {
+        const res = await fetch("/api/tag-payment-method", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idempotencyKey: key, metodo }),
+        })
+        if (res.ok) return
+      } catch {
+        // reintenta
+      }
+    }
+  }
+
+  // Transferencia y Binance comparten el mismo flujo de "subir comprobante"
+  // hacia el Apps Script, que no guarda en ningún lado cuál de los dos fue.
+  // Se etiqueta acá aparte (del lado nuestro) para que cuando el admin
+  // apriete "Generar factura" a mano, el sistema sepa saltear los pagos de
+  // Binance. Es "best effort": si las 3 reintentos fallan, queda etiquetada
+  // como transferencia por default (ver getPaymentMethod en
+  // netlify/functions/lib/facturacion.ts) — factura de más antes que perder
+  // silenciosamente una factura real.
+  const handlePaidClick = () => {
+    const metodoReal = paidWithMethod ?? method
+    if (metodoReal === "transferencia" || metodoReal === "binance") {
+      tagPaymentMethodWithRetry(idempotencyKey, metodoReal).catch(() => {})
+    }
+    onPaid()
   }
 
   const payWithMercadoPago = async () => {
@@ -284,7 +331,7 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={onPaid}
+            onClick={handlePaidClick}
             className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-green-500 to-green-700 hover:from-green-400 hover:to-green-600 text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-900/40"
           >
             Ya pagué, subir comprobante

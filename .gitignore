@@ -39,3 +39,10 @@ dist-ssr
 
 # Netlify
 .netlify
+
+# Certificados / claves privadas — nunca deben terminar en el repo
+*.key
+*.crt
+*.pem
+*.p12
+*.pfx

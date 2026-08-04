@@ -1,5 +1,6 @@
 import type { Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
+import { verifySessionToken } from "./lib/adminSession"
 
 const STORE_NAME = "site-config"
 const KEY = "site-config"
@@ -132,9 +133,8 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
       )
     }
 
-    const expected = process.env.ADMIN_SECRET_TOKEN || ""
     const sent = (body as { token?: unknown })?.token
-    if (!expected || typeof sent !== "string" || sent !== expected) {
+    if (!verifySessionToken(sent)) {
       return Response.json(
         { ok: false, error: "unauthorized" },
         { status: 401, headers },

@@ -6,6 +6,10 @@ import type { Pack } from "../../src/types/order"
 
 const PROCESSED_STORE = "mp-webhook-processed"
 const ALERTED_STORE = "mp-webhook-alerted"
+// Mismo store que usa tag-payment-method.mts para transferencia/binance —
+// el nombre tiene que coincidir a mano porque METHOD_STORE en
+// lib/facturacion.ts no está exportado (ver getPaymentMethod ahí).
+const METHOD_STORE = "payment-methods"
 // No es secreto: es el mismo ID que ya está público en index.html (fbq('init', ...)).
 const META_PIXEL_ID = "761377043609509"
 
@@ -278,7 +282,10 @@ async function notifyGenericIssue(alertKey: string, content: string): Promise<vo
     await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      // allowed_mentions vacío: el contenido puede incluir el nombre de la
+      // reserva (dato que controla el cliente) — sin esto, un "@everyone"
+      // ahí pingearía a todo el servidor de Discord.
+      body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
     })
     await markAlerted(alertKey)
   } catch (err) {
@@ -367,7 +374,11 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
         // Definitivo en cualquier caso: reintentar no lo va a cambiar.
         await markProcessed(paymentId)
         if (ownRow.ok) {
-          await sendMetaPurchaseEvent(idempotencyKey, meta)
+          // OJO: no volvemos a llamar a sendMetaPurchaseEvent acá — esta
+          // rama es justamente la ENTREGA DUPLICADA de una notificación que
+          // ya se procesó con éxito en la primera entrega (esa ya mandó el
+          // evento a Meta). Repetirlo acá contaría la misma venta dos veces
+          // en las métricas de conversión de Meta Ads.
         } else {
           console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
           await notifyOrderFailed(paymentId, idempotencyKey, meta, orderResult.error)
@@ -393,6 +404,26 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
           )
         }
         await sendMetaPurchaseEvent(idempotencyKey, meta)
+        // La factura NO se genera acá ni en ningún otro lugar automático —
+        // Kunzera la factura a mano desde el panel admin (botón "Generar
+        // factura", ver netlify/functions/generar-factura.mts) para tener
+        // control total de cuándo sale cada una, incluso para Mercado Pago.
+        // Sí dejamos etiquetada acá que el método fue "mercadopago" (mismo
+        // store que tag-payment-method.mts usa para transferencia/binance)
+        // — así, cuando el admin factura a mano, lib/facturacion.ts sabe
+        // que tiene que facturar el total con la comisión de MP sumada
+        // (mpTotal), no el precio base: el contador confirmó que hay que
+        // facturar lo que el cliente pagó de verdad, no lo que Kunzera
+        // termina recibiendo neto.
+        try {
+          await getStore(METHOD_STORE).set(idempotencyKey, "mercadopago")
+        } catch (err) {
+          console.error(
+            "[mp-webhook] no se pudo etiquetar el método de pago (mercadopago) — se facturará por el precio base si nadie lo corrige a mano:",
+            idempotencyKey,
+            err,
+          )
+        }
       }
     }
   } catch (err) {

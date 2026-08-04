@@ -1,4 +1,4 @@
-import { ADMIN_SECRET_TOKEN } from "./constants"
+import { getAdminToken } from "./storage"
 
 const COMPROBANTE_URL = "/api/comprobante"
 
@@ -31,5 +31,6 @@ export async function uploadComprobante(
 }
 
 export function comprobanteUrl(key: string): string {
-  return `${COMPROBANTE_URL}?key=${encodeURIComponent(key)}&token=${encodeURIComponent(ADMIN_SECRET_TOKEN)}`
+  const token = getAdminToken() || ""
+  return `${COMPROBANTE_URL}?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token)}`
 }

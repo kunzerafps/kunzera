@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { clearAdminAuth, isAdminAuthed, setAdminAuthed } from "../lib/storage"
 import { sha256 } from "../lib/crypto"
-import { ADMIN_PASSWORD_HASH } from "../lib/constants"
-import { fetchSiteConfig, readCachedSiteConfig } from "../lib/waMessages"
 
 type Phase = "closed" | "login" | "authed"
 
@@ -26,22 +24,33 @@ export function useAdminGate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // La contraseña se sigue hasheando en el navegador antes de mandarla
+  // (mismo hash que antes, no cambia lo que el admin escribe), pero ahora
+  // quien decide si es correcta es el servidor (/api/admin-login) — no el
+  // cliente comparando contra un hash que también viajaba en el bundle
+  // público. Si es correcta, el servidor devuelve una sesión firmada con
+  // vencimiento en vez de que el cliente se autoconceda acceso.
   const login = useCallback(async (password: string): Promise<boolean> => {
-    const h = await sha256(password)
-    let saved = ""
+    const passwordHash = await sha256(password)
     try {
-      const config = await fetchSiteConfig()
-      saved = config.adminPasswordHash
+      const res = await fetch("/api/admin-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passwordHash }),
+      })
+      const data = (await res.json().catch(() => null)) as
+        | { ok: true; token: string }
+        | { ok: false; error: string }
+        | null
+      if (data?.ok) {
+        setAdminAuthed(data.token)
+        setPhase("authed")
+        return true
+      }
+      return false
     } catch {
-      saved = readCachedSiteConfig().adminPasswordHash
+      return false
     }
-    const expected = saved || ADMIN_PASSWORD_HASH
-    if (h === expected) {
-      setAdminAuthed()
-      setPhase("authed")
-      return true
-    }
-    return false
   }, [])
 
   const logout = useCallback(() => {

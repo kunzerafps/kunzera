@@ -68,19 +68,26 @@ export function clearDraft(): void {
 
 const ADMIN_KEY = "kz_admin_ok"
 
-export function setAdminAuthed(): void {
+// Guarda el token de sesión que devuelve /api/admin-login (firmado del lado
+// del servidor, con vencimiento) — reemplaza al viejo flag booleano "1" de
+// cuando la sesión se decidía enteramente del lado del cliente.
+export function setAdminAuthed(token: string): void {
   try {
-    sessionStorage.setItem(ADMIN_KEY, "1")
+    sessionStorage.setItem(ADMIN_KEY, token)
   } catch {
     // noop
   }
 }
 
 export function isAdminAuthed(): boolean {
+  return getAdminToken() !== null
+}
+
+export function getAdminToken(): string | null {
   try {
-    return sessionStorage.getItem(ADMIN_KEY) === "1"
+    return sessionStorage.getItem(ADMIN_KEY)
   } catch {
-    return false
+    return null
   }
 }
 
