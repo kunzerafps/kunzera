@@ -50,6 +50,16 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
   const { prices } = useSiteConfig()
   const [method, setMethod] = useState<Method>("transferencia")
   const [copied, setCopied] = useState(false)
+  // Qué método se etiqueta al facturar no debería depender de en qué tab
+  // haya quedado parado el cliente al tocar "Ya pagué" (switchMethod deja
+  // cambiar de tab en cualquier momento, incluso después de pagar) — eso
+  // etiquetaría mal si copió el alias de Binance y después volvió a mirar
+  // la tab de Transferencia antes de confirmar. Se guarda el método en el
+  // momento en que efectivamente copia el dato de pago (la señal más
+  // confiable de cuál usó de verdad) y esa es la que se manda a
+  // tag-payment-method; si nunca copió nada, se sigue usando el tab activo
+  // como antes (mismo comportamiento que ya existía).
+  const [paidWithMethod, setPaidWithMethod] = useState<"transferencia" | "binance" | null>(null)
   const [mpLoading, setMpLoading] = useState(false)
   const [mpError, setMpError] = useState<string | null>(null)
 
@@ -95,6 +105,7 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
 
   const copyValue = async () => {
     if (!active) return
+    setPaidWithMethod(method as "transferencia" | "binance")
     try {
       await navigator.clipboard.writeText(active.value)
       setCopied(true)
@@ -151,8 +162,9 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
   // netlify/functions/lib/facturacion.ts) — factura de más antes que perder
   // silenciosamente una factura real.
   const handlePaidClick = () => {
-    if (method === "transferencia" || method === "binance") {
-      tagPaymentMethodWithRetry(idempotencyKey, method).catch(() => {})
+    const metodoReal = paidWithMethod ?? method
+    if (metodoReal === "transferencia" || metodoReal === "binance") {
+      tagPaymentMethodWithRetry(idempotencyKey, metodoReal).catch(() => {})
     }
     onPaid()
   }

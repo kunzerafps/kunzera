@@ -13,7 +13,7 @@ import {
   User,
   X,
 } from "lucide-react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import type { Order } from "../../types/order"
 import { PACKS } from "../../lib/packs"
@@ -325,6 +325,16 @@ function StatusActions({
   const [loading, setLoading] = useState<"confirmar" | "atender" | "eliminar" | "factura" | null>(
     null,
   )
+  // Traba sincrónica aparte de `loading`: setState es asíncrono/batcheado,
+  // así que un doble click rápido (o dos clicks separados antes del primer
+  // re-render) puede disparar generarFactura() dos veces con `loading`
+  // todavía en null las dos veces — el backend es idempotente (ver
+  // comentario en generarFactura), pero cada intento igual dispara su
+  // propia llamada real a AFIP antes de que el idempotency-check del
+  // backend pueda frenar la segunda. Un ref se lee/escribe al toque, sin
+  // esperar un re-render, y cierra esa ventana en el mismo tab/click doble
+  // (no cubre dos tabs/dispositivos distintos — eso depende del backend).
+  const facturandoRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [factura, setFactura] = useState<{ cae: string; numero: number } | null>(null)
@@ -414,6 +424,8 @@ function StatusActions({
       setError("Esta reserva no tiene ID interno — no se puede facturar")
       return
     }
+    if (facturandoRef.current) return
+    facturandoRef.current = true
     setLoading("factura")
     setError(null)
     let result:
@@ -436,6 +448,7 @@ function StatusActions({
     } catch {
       result = { ok: false, error: "network" }
     }
+    facturandoRef.current = false
     setLoading(null)
     if (!result.ok) {
       // "ambiguous" = no sabemos con certeza si AFIP llegó a generar la

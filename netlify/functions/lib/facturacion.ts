@@ -13,11 +13,17 @@ export type InvoiceableOrder = Pick<Order, "idempotencykey" | "nombre" | "plan" 
 // nombres de campo son los mismos que usa AFIP internamente. Credenciales
 // como variables de entorno en Netlify, igual que MP_ACCESS_TOKEN.
 //
-// Empieza siempre en modo "dev" (AFIPSDK_ENVIRONMENT=dev o sin configurar)
-// — usa un CUIT y certificado de prueba compartidos por AfipSDK, no
-// requiere nada de AFIP real. Recién con AFIPSDK_ENVIRONMENT=production
-// (y AFIPSDK_CUIT/AFIPSDK_PUNTO_VENTA/AFIPSDK_CERT/AFIPSDK_KEY cargados)
-// empieza a facturar de verdad. Ver plan para el detalle de cada campo.
+// AFIPSDK_ENVIRONMENT tiene que decir explícitamente "dev" o "production"
+// — no hay default implícito. Antes, si la variable no estaba seteada (no
+// solo si tenía un valor con typo), el código caía en silencio a modo dev
+// (CUIT y certificado de prueba compartidos por AfipSDK) y devolvía un CAE
+// con pinta de real pero sin ningún valor legal, sin ningún aviso visible.
+// Con la variable ya cargada en Netlify para production y para la branch,
+// esto no debería dispararse nunca en un deploy real — pero si algún día
+// esa variable se borra o queda sin scope por error, ahora se corta acá
+// ("not_configured") en vez de facturar en silencio contra el sandbox.
+// Para probar en local sin nada configurado: setear AFIPSDK_ENVIRONMENT=dev
+// a mano en .env (opt-in explícito, ya no es el default).
 const API_BASE = "https://app.afipsdk.com/api/v1/afip"
 const DEV_CUIT = "20409378472" // CUIT de prueba compartido de AfipSDK (solo environment=dev)
 const DEV_PUNTO_VENTA = 1
@@ -69,13 +75,15 @@ function credentials(): Credentials | null {
   // CAE con pinta de real pero sin ningún valor legal — sin ningún aviso
   // visible para el admin, solo un log que nadie lee.
   const raw = process.env.AFIPSDK_ENVIRONMENT?.trim()
-  if (raw && raw !== "production" && raw !== "dev") {
+  if (raw !== "production" && raw !== "dev") {
     console.error(
-      `[facturacion] AFIPSDK_ENVIRONMENT tiene un valor inesperado: "${raw}" — revisar la variable en Netlify. Se corta acá en vez de caer a modo dev en silencio.`,
+      `[facturacion] AFIPSDK_ENVIRONMENT debe ser exactamente "production" o "dev" — valor actual: ${
+        raw ? `"${raw}"` : "(sin configurar)"
+      }. Se corta acá en vez de caer a modo dev en silencio.`,
     )
     return null
   }
-  const environment = raw === "production" ? "production" : "dev"
+  const environment = raw
 
   if (environment === "dev") {
     return { accessToken, environment, cuit: DEV_CUIT, puntoVenta: DEV_PUNTO_VENTA }

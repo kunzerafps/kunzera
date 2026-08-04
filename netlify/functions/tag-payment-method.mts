@@ -37,10 +37,15 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     const store = getStore(STORE_NAME)
     await store.set(idempotencyKey, metodo)
   } catch (err) {
-    // No bloqueamos al cliente por esto — en el peor caso, generar-factura.mts
-    // no encuentra la etiqueta y factura igual, tratándola como transferencia
-    // (falla hacia el lado seguro: factura de más antes que perder una real).
+    // A diferencia de "no encontramos etiqueta" (que sí falla hacia el lado
+    // seguro tratándola como transferencia), acá SÍ hay que avisarle al
+    // cliente que falló — si esto devolviera ok:true, el reintento de
+    // PaymentStep.tsx nunca se dispararía, y un pago por Binance quedaría
+    // sin etiqueta: generar-factura.mts lo trataría por default como
+    // transferencia (facturable), justo lo que este endpoint existe para
+    // evitar. Devolver el error acá es lo que hace que el reintento sirva.
     console.error("[tag-payment-method] no se pudo guardar:", err)
+    return Response.json({ ok: false, error: "store_write_failed" }, { status: 502 })
   }
 
   return Response.json({ ok: true })
