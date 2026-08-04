@@ -37,12 +37,23 @@ const DOC_TIPO_CONSUMIDOR_FINAL = 99
 const CONDICION_IVA_CONSUMIDOR_FINAL = 5
 
 // Cada llamada a AFIP/AfipSDK tiene su propio límite de tiempo — sin esto,
-// una respuesta colgada deja que Netlify mate la función de golpe (a los
-// 60s, sin aviso limpio) en vez de que nuestro propio código se entere y
-// pueda reaccionar. Con 3 llamadas seguidas como mucho (auth + numeración +
-// FECAESolicitar), 15s cada una deja margen de sobra por debajo del límite
-// de la plataforma.
-const AFIP_FETCH_TIMEOUT_MS = 15000
+// una respuesta colgada deja que Netlify mate la función de golpe, sin
+// aviso limpio, en vez de que nuestro propio código se entere (fetchConTimeout
+// más abajo) y pueda devolver un error prolijo. El plan actual de Netlify
+// (Personal) corta funciones síncronas a los 10s reales — no a los 60s que
+// decía un comentario viejo acá, ese número correspondía a un plan
+// distinto. Con hasta 3 llamadas seguidas en el peor caso (auth + numeración
+// + FECAESolicitar) y ~1.5s de margen para nuestro propio procesamiento
+// (Blobs, JSON), el presupuesto total no puede pasar de ~8.5s para que
+// nuestro propio timeout tenga chance de dispararse ANTES que el corte
+// abrupto de la plataforma — si Netlify mata la función primero, se pierde
+// la clasificación "ambiguous" y el admin ve un error de conexión genérico
+// en vez del aviso claro de "revisá en AFIP antes de reintentar". Si algún
+// día se sube a un plan con más margen (Pro: 26s), estos números se pueden
+// relajar.
+const AUTH_TIMEOUT_MS = 2500
+const NUMERO_TIMEOUT_MS = 2500
+const FECAE_TIMEOUT_MS = 3000 // la llamada que más importa — la que de verdad crea la factura
 
 type FacturaResult =
   | { ok: true; cae: string; numero: number }
@@ -114,10 +125,11 @@ function apiEnvironment(environment: Credentials["environment"]): "dev" | "prod"
 
 // Igual que sendMetaPurchaseEvent en mp-webhook.mts y postJson/getJson en
 // appsScript.ts — timeout explícito en cada llamada externa en vez de
-// confiar en que la plataforma corte por nosotros. Si AFIP/AfipSDK se
-// cuelga, preferimos enterarnos nosotros (con margen para reaccionar) antes
-// que Netlify mate la función entera de golpe a los 60s.
-async function fetchConTimeout(url: string, init: RequestInit, timeoutMs = AFIP_FETCH_TIMEOUT_MS): Promise<Response> {
+// confiar en que la plataforma corte por nosotros. Sin timeoutMs explícito
+// no hay default silencioso a propósito — cada call site de acá abajo pasa
+// el suyo (AUTH/NUMERO/FECAE_TIMEOUT_MS), para que la suma total quede
+// dentro del presupuesto real de la función (ver comentario arriba).
+async function fetchConTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -138,7 +150,8 @@ async function fetchConTimeout(url: string, init: RequestInit, timeoutMs = AFIP_
 // claim de más de CLAIM_TTL_MS se considera abandonado (la función que lo
 // dejó ahí se cortó a mitad de camino) y se permite reintentar — 2 minutos
 // da margen de sobra por encima del límite real de ejecución de Netlify
-// (60s para funciones sincrónicas como esta), así que si un claim sigue
+// (10s en el plan actual — ver AUTH/NUMERO/FECAE_TIMEOUT_MS más arriba),
+// así que si un claim sigue
 // "en_proceso" pasados los 2 minutos, es seguro asumir que ese intento ya
 // terminó (bien o mal) y no sigue corriendo en paralelo.
 const CLAIM_TTL_MS = 2 * 60 * 1000
@@ -239,31 +252,83 @@ export async function getPaymentMethod(idempotencyKey: string): Promise<"transfe
   }
 }
 
-// Login contra AFIP (WSAA) a través de AfipSDK. Con el volumen bajo de
-// Kunzera (~16 reservas/día) se pide un token nuevo en cada factura en vez
-// de cachearlo — más simple, sin riesgo de usar un token vencido.
-async function autenticar(creds: Credentials): Promise<{ token: string; sign: string } | null> {
+// El ticket de acceso que devuelve WSAA (el login real de AFIP, detrás de
+// este /auth de AfipSDK) es válido 12hs del lado de AFIP — no hace falta
+// pedir uno nuevo en cada factura. Se cachea acá (Netlify Blobs, mismo
+// patrón que el resto del archivo) con un TTL bien por debajo de esas 12hs
+// reales (AFIP puede cambiar esa duración sin aviso, según su propia
+// documentación — mejor quedarse corto que quedarse con un ticket vencido).
+// Esto saca una llamada entera de la cadena secuencial en el caso común
+// (ver AUTH/NUMERO/FECAE_TIMEOUT_MS más arriba, por qué importa el total).
+const AUTH_CACHE_STORE = "afip-auth-cache"
+const AUTH_CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6hs — la mitad de las 12hs reales, con margen de sobra
+
+type CachedAuth = { token: string; sign: string; cachedAt: number }
+
+async function authCacheGet(cuit: string): Promise<{ token: string; sign: string } | null> {
   try {
-    const res = await fetchConTimeout(`${API_BASE}/auth`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${creds.accessToken}`,
+    const store = getStore(AUTH_CACHE_STORE)
+    const cached = (await store.get(cuit, { type: "json", consistency: "strong" })) as CachedAuth | null
+    if (!cached || Date.now() - cached.cachedAt >= AUTH_CACHE_TTL_MS) return null
+    return { token: cached.token, sign: cached.sign }
+  } catch {
+    return null
+  }
+}
+
+async function authCacheSet(cuit: string, auth: { token: string; sign: string }): Promise<void> {
+  try {
+    await getStore(AUTH_CACHE_STORE).setJSON(cuit, { ...auth, cachedAt: Date.now() } satisfies CachedAuth)
+  } catch (err) {
+    // No es grave — simplemente se pierde el ahorro de esta vez, la próxima
+    // factura vuelve a autenticar contra AFIP como si no hubiera caché.
+    console.error("[facturacion] no se pudo cachear el ticket de AFIP:", err)
+  }
+}
+
+// Si un llamado posterior (numeración o FECAESolicitar) rechaza con un
+// ticket cacheado, lo más seguro es asumir que puede estar vencido/inválido
+// y descartarlo — así el próximo intento (retry del admin, o la próxima
+// reserva) arranca con un login fresco en vez de repetir el mismo fallo.
+async function authCacheInvalidate(cuit: string): Promise<void> {
+  try {
+    await getStore(AUTH_CACHE_STORE).delete(cuit)
+  } catch {
+    // noop
+  }
+}
+
+async function autenticar(creds: Credentials): Promise<{ token: string; sign: string } | null> {
+  const cached = await authCacheGet(creds.cuit)
+  if (cached) return cached
+
+  try {
+    const res = await fetchConTimeout(
+      `${API_BASE}/auth`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${creds.accessToken}`,
+        },
+        body: JSON.stringify({
+          environment: apiEnvironment(creds.environment),
+          tax_id: creds.cuit,
+          wsid: "wsfe",
+          ...(creds.environment === "production" ? { cert: creds.cert, key: creds.key } : {}),
+        }),
       },
-      body: JSON.stringify({
-        environment: apiEnvironment(creds.environment),
-        tax_id: creds.cuit,
-        wsid: "wsfe",
-        ...(creds.environment === "production" ? { cert: creds.cert, key: creds.key } : {}),
-      }),
-    })
+      AUTH_TIMEOUT_MS,
+    )
     if (!res.ok) {
       console.error("[facturacion] fallo de autenticación AFIP:", res.status, await res.text().catch(() => ""))
       return null
     }
     const data = (await res.json()) as { token?: string; sign?: string }
     if (!data.token || !data.sign) return null
-    return { token: data.token, sign: data.sign }
+    const auth = { token: data.token, sign: data.sign }
+    await authCacheSet(creds.cuit, auth)
+    return auth
   } catch (err) {
     console.error("[facturacion] error de red autenticando con AFIP:", err)
     return null
@@ -278,25 +343,30 @@ async function siguienteNumero(
   auth: { token: string; sign: string },
 ): Promise<number | null> {
   try {
-    const res = await fetchConTimeout(`${API_BASE}/requests`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${creds.accessToken}`,
-      },
-      body: JSON.stringify({
-        environment: apiEnvironment(creds.environment),
-        method: "FECompUltimoAutorizado",
-        wsid: "wsfe",
-        params: {
-          Auth: { Token: auth.token, Sign: auth.sign, Cuit: creds.cuit },
-          PtoVta: creds.puntoVenta,
-          CbteTipo: CBTE_TIPO_FACTURA_C,
+    const res = await fetchConTimeout(
+      `${API_BASE}/requests`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${creds.accessToken}`,
         },
-      }),
-    })
+        body: JSON.stringify({
+          environment: apiEnvironment(creds.environment),
+          method: "FECompUltimoAutorizado",
+          wsid: "wsfe",
+          params: {
+            Auth: { Token: auth.token, Sign: auth.sign, Cuit: creds.cuit },
+            PtoVta: creds.puntoVenta,
+            CbteTipo: CBTE_TIPO_FACTURA_C,
+          },
+        }),
+      },
+      NUMERO_TIMEOUT_MS,
+    )
     if (!res.ok) {
       console.error("[facturacion] fallo HTTP consultando numeracion:", res.status, await res.text().catch(() => ""))
+      if (res.status === 401 || res.status === 403) await authCacheInvalidate(creds.cuit)
       return null
     }
     // AfipSDK envuelve la respuesta real de AFIP en "<Metodo>Result" — no
@@ -316,6 +386,11 @@ async function siguienteNumero(
     const errors = data.FECompUltimoAutorizadoResult?.Errors?.Err
     if (errors?.length) {
       console.error("[facturacion] AFIP rechazó la consulta de numeración:", JSON.stringify(errors))
+      // No distinguimos acá si el rechazo fue por el ticket cacheado
+      // específicamente o por otra razón — invalidar de más solo cuesta un
+      // login extra en el próximo intento, invalidar de menos podría dejar
+      // reintentando con el mismo ticket roto varias veces seguidas.
+      await authCacheInvalidate(creds.cuit)
       return null
     }
     const cbteNro = data.FECompUltimoAutorizadoResult?.CbteNro
@@ -365,48 +440,52 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
   // una segunda factura real por reintentar a ciegas.
   let res: Response
   try {
-    res = await fetchConTimeout(`${API_BASE}/requests`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${creds.accessToken}`,
-      },
-      body: JSON.stringify({
-        environment: apiEnvironment(creds.environment),
-        method: "FECAESolicitar",
-        wsid: "wsfe",
-        params: {
-          Auth: { Token: auth.token, Sign: auth.sign, Cuit: creds.cuit },
-          FeCAEReq: {
-            FeCabReq: { CantReg: 1, PtoVta: creds.puntoVenta, CbteTipo: CBTE_TIPO_FACTURA_C },
-            FeDetReq: {
-              FECAEDetRequest: {
-                Concepto: CONCEPTO_SERVICIOS,
-                DocTipo: DOC_TIPO_CONSUMIDOR_FINAL,
-                DocNro: 0,
-                CbteDesde: numero,
-                CbteHasta: numero,
-                CbteFch: fecha,
-                // Obligatorios porque Concepto=2 (servicios). Se usa la
-                // fecha del pago (no la del turno, que puede ser futura).
-                FchServDesde: fecha,
-                FchServHasta: fecha,
-                FchVtoPago: fecha,
-                ImpTotal: monto,
-                ImpTotConc: 0,
-                ImpNeto: monto,
-                ImpOpEx: 0,
-                ImpIVA: 0,
-                ImpTrib: 0,
-                MonId: "PES",
-                MonCotiz: 1,
-                CondicionIVAReceptorId: CONDICION_IVA_CONSUMIDOR_FINAL,
+    res = await fetchConTimeout(
+      `${API_BASE}/requests`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${creds.accessToken}`,
+        },
+        body: JSON.stringify({
+          environment: apiEnvironment(creds.environment),
+          method: "FECAESolicitar",
+          wsid: "wsfe",
+          params: {
+            Auth: { Token: auth.token, Sign: auth.sign, Cuit: creds.cuit },
+            FeCAEReq: {
+              FeCabReq: { CantReg: 1, PtoVta: creds.puntoVenta, CbteTipo: CBTE_TIPO_FACTURA_C },
+              FeDetReq: {
+                FECAEDetRequest: {
+                  Concepto: CONCEPTO_SERVICIOS,
+                  DocTipo: DOC_TIPO_CONSUMIDOR_FINAL,
+                  DocNro: 0,
+                  CbteDesde: numero,
+                  CbteHasta: numero,
+                  CbteFch: fecha,
+                  // Obligatorios porque Concepto=2 (servicios). Se usa la
+                  // fecha del pago (no la del turno, que puede ser futura).
+                  FchServDesde: fecha,
+                  FchServHasta: fecha,
+                  FchVtoPago: fecha,
+                  ImpTotal: monto,
+                  ImpTotConc: 0,
+                  ImpNeto: monto,
+                  ImpOpEx: 0,
+                  ImpIVA: 0,
+                  ImpTrib: 0,
+                  MonId: "PES",
+                  MonCotiz: 1,
+                  CondicionIVAReceptorId: CONDICION_IVA_CONSUMIDOR_FINAL,
+                },
               },
             },
           },
-        },
-      }),
-    })
+        }),
+      },
+      FECAE_TIMEOUT_MS,
+    )
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error("[facturacion] conexión incierta con AFIP en FECAESolicitar (puede haberse generado igual):", msg)
@@ -433,11 +512,15 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
     }
 
     if (!res.ok) {
+      if (res.status === 401 || res.status === 403) await authCacheInvalidate(creds.cuit)
       return { ok: false, error: data.errors?.map((e) => e.msg).join(", ") || `http_${res.status}` }
     }
 
     const solicitudErrors = data.FECAESolicitarResult?.Errors?.Err
     if (solicitudErrors?.length) {
+      // Mismo criterio que en siguienteNumero: no distinguimos la causa
+      // exacta del rechazo, invalidar el ticket cacheado de más es barato.
+      await authCacheInvalidate(creds.cuit)
       return {
         ok: false,
         error: solicitudErrors.map((e) => `${e.Code}: ${e.Msg}`).join(", "),
