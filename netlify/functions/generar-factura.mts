@@ -1,17 +1,7 @@
 import type { Config, Context } from "@netlify/functions"
-import { timingSafeEqual } from "node:crypto"
-import { ADMIN_SECRET_TOKEN } from "../../src/lib/constants"
+import { verifySessionToken } from "./lib/adminSession"
 import { invoiceOrderNow } from "./lib/facturacion"
 import type { Pack } from "../../src/types/order"
-
-// Comparación a tiempo constante — mismo patrón que ya usa mp-webhook.mts
-// para su firma HMAC.
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a)
-  const bufB = Buffer.from(b)
-  if (bufA.length !== bufB.length) return false
-  return timingSafeEqual(bufA, bufB)
-}
 
 type Body = {
   token?: string
@@ -38,7 +28,7 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     return Response.json({ ok: false, error: "invalid_body" }, { status: 400 })
   }
 
-  if (typeof body.token !== "string" || !body.token || !safeEqual(body.token, ADMIN_SECRET_TOKEN)) {
+  if (!verifySessionToken(body.token)) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 })
   }
 

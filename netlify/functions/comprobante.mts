@@ -1,5 +1,6 @@
 import type { Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
+import { verifySessionToken } from "./lib/adminSession"
 
 const STORE_NAME = "comprobantes"
 const RATE_LIMIT_STORE = "comprobante-rate-limit"
@@ -108,8 +109,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     const url = new URL(req.url)
     const key = url.searchParams.get("key") || ""
     const token = url.searchParams.get("token") || ""
-    const expected = process.env.ADMIN_SECRET_TOKEN || ""
-    if (!expected || token !== expected) {
+    if (!verifySessionToken(token)) {
       return Response.json({ ok: false, error: "unauthorized" }, { status: 401, headers })
     }
     if (!KEY_RE.test(key)) {

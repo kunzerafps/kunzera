@@ -22,7 +22,7 @@ import { deleteOrder, updateOrderStatus } from "../../lib/appsScript"
 import { comprobanteUrl } from "../../lib/comprobante"
 import { applyTemplate } from "../../lib/waMessages"
 import { useSiteConfig } from "../../hooks/useWaMessages"
-import { ADMIN_SECRET_TOKEN } from "../../lib/constants"
+import { getAdminToken } from "../../lib/storage"
 
 type Props = {
   order: Order | null
@@ -436,7 +436,7 @@ function StatusActions({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: ADMIN_SECRET_TOKEN,
+          token: getAdminToken(),
           idempotencyKey: String(order.idempotencykey),
           nombre: order.nombre,
           plan: order.plan,

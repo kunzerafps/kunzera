@@ -42,12 +42,20 @@ export const TIMEZONE = "America/Argentina/Buenos_Aires"
 //  Admin
 // ────────────────────────────────────────────────────────────
 
-// SHA-256 hex de "alixepero136"
+// Fallback si nunca se guardó un hash custom en la config del sitio (ver
+// site-config en Blobs). Ya no se usa del lado del cliente (useAdminGate.ts
+// manda la contraseña hasheada a /api/admin-login, que es quien compara
+// contra esto) — solo lo leen las funciones server-side.
 export const ADMIN_PASSWORD_HASH =
   "790467bb0d4ce77ebbd225f3419c138c25730d30c32bdf8c4ed4bc2d8621639e"
 
-// Token que el front manda al endpoint getOrders. Debe coincidir con
-// la Script Property ADMIN_TOKEN del Apps Script.
+// Token fijo que el front manda al Apps Script (getOrders/deleteOrder/etc,
+// vía appsScript.ts) — debe coincidir con la Script Property ADMIN_TOKEN
+// ahí. Sigue siendo un valor estático visible en el bundle público a
+// propósito: migrarlo a sesión firmada (como se hizo para facturación,
+// comprobantes y config del sitio, ver adminSession.ts) requeriría tocar
+// el código del Apps Script del lado de Google, que queda fuera de lo que
+// se toca en este repo.
 export const ADMIN_SECRET_TOKEN = "1bf8f203f7d5428c88da097596f51551"
 
 // ────────────────────────────────────────────────────────────

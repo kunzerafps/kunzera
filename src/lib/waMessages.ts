@@ -1,4 +1,4 @@
-import { ADMIN_SECRET_TOKEN } from "./constants"
+import { getAdminToken } from "./storage"
 import { PACKS } from "./packs"
 import type { Pack } from "../types/order"
 import { setCurrentPrices } from "./prices"
@@ -192,7 +192,7 @@ export async function saveSiteConfig(
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: ADMIN_SECRET_TOKEN, config: sanitized }),
+      body: JSON.stringify({ token: getAdminToken(), config: sanitized }),
     })
     const data = (await res.json().catch(() => null)) as
       | { ok: true; config: SiteConfig }
