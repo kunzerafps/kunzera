@@ -430,7 +430,7 @@ function StatusActions({
     setError(null)
     let result:
       | { ok: true; cae: string; numero: number; already: boolean }
-      | { ok: false; error: string; ambiguous?: boolean }
+      | { ok: false; error: string; ambiguous?: boolean; monto?: number }
     try {
       const res = await fetch("/api/generar-factura", {
         method: "POST",
@@ -456,10 +456,13 @@ function StatusActions({
       // pasado. Nunca se debe reintentar a ciegas en este caso: mejor
       // mostrar un aviso explícito que un mensaje técnico cualquiera.
       if (result.ambiguous) {
+        // result.monto (si vino) es el monto que realmente se intentó
+        // facturar — para Mercado Pago no es order.monto (precio base) sino
+        // el total con la comisión de MP sumada, ver invoiceOrderNow.
         setError(
           "No se pudo confirmar si la factura se generó en AFIP (se cortó la conexión en el peor momento). " +
             "NO reintentes todavía: entrá a tu cuenta de AFIP y fijate si ya existe una factura de hoy por " +
-            `$${order.monto} para esta reserva. El botón se va a volver a habilitar solo en 2 minutos.`,
+            `$${result.monto ?? order.monto} para esta reserva. El botón se va a volver a habilitar solo en 2 minutos.`,
         )
         return
       }

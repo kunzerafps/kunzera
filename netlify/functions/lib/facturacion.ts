@@ -1,5 +1,6 @@
 import { getStore } from "@netlify/blobs"
 import type { Order } from "../../src/types/order"
+import { mpTotal } from "../../../src/lib/pricing"
 
 const INVOICED_STORE = "facturas-emitidas"
 const METHOD_STORE = "payment-methods"
@@ -232,21 +233,29 @@ async function markInvoiced(idempotencyKey: string, info: { cae: string; numero:
   }
 }
 
-// Hoy el sistema no guarda en ningún lado si una reserva se pagó por
-// transferencia o por Binance (ambas comparten el mismo flujo hacia el
-// Apps Script). Se etiqueta aparte vía tag-payment-method.mts. Si no hay
-// etiqueta guardada (ej. la llamada de tag-payment-method falló), el
-// default es tratarla como transferencia — preferible facturar de más
-// una vez por accidente a perder silenciosamente una factura real.
-export async function getPaymentMethod(idempotencyKey: string): Promise<"transferencia" | "binance"> {
+// Hoy el sistema no guarda en la reserva misma si se pagó por
+// transferencia, Binance o Mercado Pago — se etiqueta aparte, en este
+// mismo store, por dos caminos distintos: tag-payment-method.mts (llamado
+// por el cliente, para transferencia/binance) y mp-webhook.mts (server-side,
+// automático, para mercadopago — ver ahí). Si no hay etiqueta guardada (ej.
+// la llamada de tag-payment-method falló, o es una reserva vieja de antes
+// de este sistema), el default es tratarla como transferencia — preferible
+// facturar de más por el precio base una vez por accidente a perder
+// silenciosamente una factura real.
+export async function getPaymentMethod(
+  idempotencyKey: string,
+): Promise<"transferencia" | "binance" | "mercadopago"> {
   try {
     const store = getStore(METHOD_STORE)
     // consistency: "strong" — igual que alreadyInvoiced/alreadyProcessed en
     // mp-webhook.mts. Sin esto, una lectura eventualmente consistente podría
-    // no ver todavía la etiqueta "binance" que tag-payment-method.mts acaba
-    // de escribir, y facturar por default algo que no debería facturarse.
+    // no ver todavía la etiqueta que tag-payment-method.mts/mp-webhook.mts
+    // acaban de escribir, y facturar por default algo que no debería
+    // facturarse (binance) o por el monto equivocado (mercadopago).
     const value = await store.get(idempotencyKey, { consistency: "strong" })
-    return value === "binance" ? "binance" : "transferencia"
+    if (value === "binance") return "binance"
+    if (value === "mercadopago") return "mercadopago"
+    return "transferencia"
   } catch {
     return "transferencia"
   }
@@ -410,10 +419,15 @@ function fechaAfip(d = new Date()): number {
   return Number(parts.join(""))
 }
 
-// Crea una Factura C a Consumidor Final por un servicio, por el monto de
-// la reserva (siempre el precio base — $50.000/$70.000 — nunca el total
-// con la comisión de Mercado Pago sumada, ver order.monto en mp-webhook).
-async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
+// Crea una Factura C a Consumidor Final por un servicio, por
+// montoFacturar — NO necesariamente order.monto: el contador confirmó
+// (2026-08-04) que hay que facturar lo que el cliente efectivamente pagó,
+// no el precio base que Kunzera termina recibiendo neto. Para transferencia
+// y binance ambos coinciden (sin comisión), pero para Mercado Pago el
+// cliente paga el total con la comisión de MP sumada (mpTotal) — es
+// invoiceOrderNow quien decide cuál de los dos corresponde, según
+// getPaymentMethod.
+async function crearFactura(order: InvoiceableOrder, montoFacturar: number): Promise<FacturaResult> {
   const creds = credentials()
   if (!creds) return { ok: false, error: "not_configured" }
 
@@ -423,7 +437,7 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
   const numero = await siguienteNumero(creds, auth)
   if (!numero) return { ok: false, error: "no_numero" }
 
-  const monto = Number(order.monto) || 0
+  const monto = montoFacturar
   const fecha = fechaAfip()
 
   // A partir de acá (la llamada a FECAESolicitar en sí) es la única parte
@@ -561,16 +575,19 @@ async function crearFactura(order: InvoiceableOrder): Promise<FacturaResult> {
 async function alertarFacturaSinGuardar(
   order: InvoiceableOrder,
   info: { cae: string; numero: number },
+  montoFacturado: number,
 ): Promise<void> {
   console.error(
     "[facturacion] CAE real emitido pero no se pudo guardar el registro — anotar a mano:",
-    JSON.stringify({ idempotencyKey: order.idempotencykey, ...info }),
+    JSON.stringify({ idempotencyKey: order.idempotencykey, montoFacturado, ...info }),
   )
   const webhookUrl = process.env.MP_DISCORD_WEBHOOK_URL
   if (!webhookUrl) return
   const content = [
     "🚨 **Factura generada en AFIP pero no se pudo guardar el registro acá adentro**",
-    `${order.nombre || "-"} — ${order.plan || "-"} — $${order.monto || 0}`,
+    // montoFacturado, no order.monto — para Mercado Pago no son lo mismo
+    // (ver invoiceOrderNow), y es lo que hay que buscar en AFIP.
+    `${order.nombre || "-"} — ${order.plan || "-"} — $${montoFacturado}`,
     `CAE: ${info.cae} — Número: ${info.numero}`,
     `ID interno: ${(order.idempotencykey || "-").slice(0, 8)}…`,
     "IMPORTANTE: anotá este CAE a mano — el sistema no tiene registro de que esta reserva ya se facturó, así que si volvés a apretar \"Generar factura\" acá podría generarse una SEGUNDA factura real. No reintentes sin revisar antes.",
@@ -592,7 +609,11 @@ async function alertarFacturaSinGuardar(
 // qué pasó para decidir si reintentar o revisar a mano.
 export type InvoiceOutcome =
   | { ok: true; cae: string; numero: number; already: boolean }
-  | { ok: false; error: string; ambiguous?: boolean }
+  // monto: el que efectivamente se intentó facturar (puede ser distinto de
+  // order.monto para Mercado Pago, ver invoiceOrderNow) — solo presente
+  // cuando se llegó a decidir un monto, para que el admin sepa exactamente
+  // qué buscar en su cuenta de AFIP si el resultado fue "ambiguous".
+  | { ok: false; error: string; ambiguous?: boolean; monto?: number }
 
 // Punto de entrada único de facturación — usado por generar-factura.mts
 // cuando el admin aprieta "Generar factura" a mano en el panel. No hay
@@ -643,14 +664,23 @@ export async function invoiceOrderNow(order: InvoiceableOrder): Promise<InvoiceO
 
   // Un monto en $0 (o inválido) no debería generar una Factura C real por
   // $0 — casi seguro es un dato roto de la reserva (plan sin precio
-  // cargado, campo vacío) y no algo que AFIP deba ver.
-  const monto = Number(order.monto)
-  if (!Number.isFinite(monto) || monto <= 0) {
+  // cargado, campo vacío) y no algo que AFIP deba ver. Se valida sobre el
+  // precio base (order.monto) porque es lo que llega del front — si es
+  // inválido, tampoco tiene sentido derivar montoFacturar de él.
+  const montoBase = Number(order.monto)
+  if (!Number.isFinite(montoBase) || montoBase <= 0) {
     await releaseClaim(idempotencyKey)
     return { ok: false, error: `monto_invalido (${order.monto})` }
   }
 
-  const result = await crearFactura(order)
+  // El contador confirmó (2026-08-04): hay que facturar lo que el cliente
+  // efectivamente pagó, no el precio base que Kunzera recibe neto. Para
+  // transferencia eso YA es order.monto (sin comisión). Para Mercado Pago,
+  // el cliente pagó mpTotal(monto) — la comisión de MP la absorbe Kunzera,
+  // pero ante AFIP la factura tiene que reflejar el cobro real.
+  const montoFacturar = metodo === "mercadopago" ? mpTotal(montoBase) : montoBase
+
+  const result = await crearFactura(order, montoFacturar)
   if (!result.ok) {
     console.error("[facturacion] no se pudo facturar", idempotencyKey, result.error, result.ambiguous ? "(ambiguo)" : "")
     if (!result.ambiguous) {
@@ -661,7 +691,7 @@ export async function invoiceOrderNow(order: InvoiceableOrder): Promise<InvoiceO
     // Si es ambiguo, el claim se deja "en_proceso" a propósito — expira
     // solo a los 2 minutos, dándole tiempo al admin de revisar en AFIP
     // antes de que el sistema permita un reintento.
-    return { ok: false, error: result.error, ambiguous: result.ambiguous }
+    return { ok: false, error: result.error, ambiguous: result.ambiguous, monto: montoFacturar }
   }
 
   const guardado = await markInvoiced(idempotencyKey, { cae: result.cae, numero: result.numero })
@@ -669,7 +699,7 @@ export async function invoiceOrderNow(order: InvoiceableOrder): Promise<InvoiceO
     // El CAE es real y válido igual — no le mentimos al admin diciendo que
     // falló — pero como no quedó guardado acá, avisamos fuerte por otro
     // canal para que no se pierda el dato.
-    await alertarFacturaSinGuardar(order, { cae: result.cae, numero: result.numero })
+    await alertarFacturaSinGuardar(order, { cae: result.cae, numero: result.numero }, montoFacturar)
   }
   return { ok: true, cae: result.cae, numero: result.numero, already: false }
 }
