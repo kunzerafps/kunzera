@@ -337,7 +337,7 @@ function StatusActions({
   const facturandoRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [factura, setFactura] = useState<{ cae: string; numero: number } | null>(null)
+  const [factura, setFactura] = useState<{ cae: string; numero: number; monto: number } | null>(null)
   const current = String(order.estado || "").toLowerCase()
   const isPendiente = current === "pendiente" || current === ""
   const isAtendido = current === "atendido"
@@ -429,7 +429,7 @@ function StatusActions({
     setLoading("factura")
     setError(null)
     let result:
-      | { ok: true; cae: string; numero: number; already: boolean }
+      | { ok: true; cae: string; numero: number; already: boolean; monto: number }
       | { ok: false; error: string; ambiguous?: boolean; monto?: number }
     try {
       const res = await fetch("/api/generar-factura", {
@@ -480,7 +480,7 @@ function StatusActions({
       setError(messages[result.error] || "No se pudo facturar: " + result.error)
       return
     }
-    setFactura({ cae: result.cae, numero: result.numero })
+    setFactura({ cae: result.cae, numero: result.numero, monto: result.monto })
   }
 
   return (
@@ -494,7 +494,7 @@ function StatusActions({
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-violet-300 text-sm">
             <Receipt className="w-4 h-4 shrink-0" />
             <span>
-              Facturada — CAE {factura.cae} (Nº {factura.numero})
+              Facturada por {formatARS(factura.monto)} — CAE {factura.cae} (Nº {factura.numero})
             </span>
           </div>
         ) : (

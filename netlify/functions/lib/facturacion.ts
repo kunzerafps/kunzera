@@ -159,7 +159,7 @@ const CLAIM_TTL_MS = 2 * 60 * 1000
 
 type InvoiceRecord =
   | { status: "en_proceso"; claimedAt: number }
-  | { status: "facturada"; cae: string; numero: number }
+  | { status: "facturada"; cae: string; numero: number; monto: number }
 
 async function invoiceState(
   idempotencyKey: string,
@@ -218,13 +218,17 @@ export async function alreadyInvoiced(idempotencyKey: string): Promise<boolean> 
 // este archivo (una factura real que queda sin ningún rastro acá adentro,
 // con riesgo de facturarse de nuevo más adelante creyendo que nunca se
 // hizo). invoiceOrderNow manda una alerta a Discord si esto devuelve false.
-async function markInvoiced(idempotencyKey: string, info: { cae: string; numero: number }): Promise<boolean> {
+async function markInvoiced(
+  idempotencyKey: string,
+  info: { cae: string; numero: number; monto: number },
+): Promise<boolean> {
   try {
     const store = getStore(INVOICED_STORE)
     await store.setJSON(idempotencyKey, {
       status: "facturada",
       cae: info.cae,
       numero: info.numero,
+      monto: info.monto,
     } satisfies InvoiceRecord)
     return true
   } catch (err) {
@@ -608,11 +612,13 @@ async function alertarFacturaSinGuardar(
 // para disparadores automáticos), acá el admin necesita saber exactamente
 // qué pasó para decidir si reintentar o revisar a mano.
 export type InvoiceOutcome =
-  | { ok: true; cae: string; numero: number; already: boolean }
-  // monto: el que efectivamente se intentó facturar (puede ser distinto de
-  // order.monto para Mercado Pago, ver invoiceOrderNow) — solo presente
-  // cuando se llegó a decidir un monto, para que el admin sepa exactamente
-  // qué buscar en su cuenta de AFIP si el resultado fue "ambiguous".
+  // monto: el que efectivamente se facturó (puede ser distinto de
+  // order.monto para Mercado Pago, ver invoiceOrderNow) — así el panel
+  // admin puede mostrarlo y no depender de comparar a ciegas contra AFIP.
+  | { ok: true; cae: string; numero: number; already: boolean; monto: number }
+  // monto: el que efectivamente se intentó facturar — solo presente cuando
+  // se llegó a decidir un monto, para que el admin sepa exactamente qué
+  // buscar en su cuenta de AFIP si el resultado fue "ambiguous".
   | { ok: false; error: string; ambiguous?: boolean; monto?: number }
 
 // Punto de entrada único de facturación — usado por generar-factura.mts
@@ -638,7 +644,11 @@ export async function invoiceOrderNow(order: InvoiceableOrder): Promise<InvoiceO
       consistency: "strong",
     })) as InvoiceRecord | null
     if (data?.status === "facturada") {
-      return { ok: true, cae: data.cae, numero: data.numero, already: true }
+      // data.monto puede faltar en registros guardados ANTES de que este
+      // campo existiera (ver markInvoiced) — para esos, order.monto es lo
+      // mejor que tenemos (puede no ser el monto real facturado si era una
+      // reserva de Mercado Pago, pero es mejor que no mostrar nada).
+      return { ok: true, cae: data.cae, numero: data.numero, already: true, monto: data.monto ?? order.monto }
     }
     // Caso rarísimo (dos lecturas "strong" del mismo dato discreparon) —
     // invoiceState() ya vio "facturada" hace un instante, así que sabemos
@@ -694,12 +704,12 @@ export async function invoiceOrderNow(order: InvoiceableOrder): Promise<InvoiceO
     return { ok: false, error: result.error, ambiguous: result.ambiguous, monto: montoFacturar }
   }
 
-  const guardado = await markInvoiced(idempotencyKey, { cae: result.cae, numero: result.numero })
+  const guardado = await markInvoiced(idempotencyKey, { cae: result.cae, numero: result.numero, monto: montoFacturar })
   if (!guardado) {
     // El CAE es real y válido igual — no le mentimos al admin diciendo que
     // falló — pero como no quedó guardado acá, avisamos fuerte por otro
     // canal para que no se pierda el dato.
     await alertarFacturaSinGuardar(order, { cae: result.cae, numero: result.numero }, montoFacturar)
   }
-  return { ok: true, cae: result.cae, numero: result.numero, already: false }
+  return { ok: true, cae: result.cae, numero: result.numero, already: false, monto: montoFacturar }
 }

@@ -39,6 +39,45 @@ async function markProcessed(paymentId: string): Promise<void> {
   }
 }
 
+// Etiqueta la reserva como pagada por Mercado Pago en el mismo store que
+// tag-payment-method.mts usa para transferencia/binance — así
+// getPaymentMethod() en lib/facturacion.ts sabe que hay que facturar el
+// total con la comisión de MP sumada (mpTotal), no el precio base (el
+// contador confirmó que hay que facturar lo que el cliente pagó de
+// verdad). SIEMPRE se llama ANTES de markProcessed(paymentId) en los dos
+// lugares donde se usa, a propósito: si la función se corta acá (por el
+// límite real de ejecución de Netlify, ver lib/facturacion.ts) antes de
+// completar el intento, el pago todavía no quedó marcado "procesado", así
+// que el reintento automático de notificación de Mercado Pago nos da otra
+// oportunidad de etiquetar. Si esto quedara DESPUÉS de markProcessed (como
+// en la primera versión de este fix), un corte justo ahí dejaría la
+// reserva sin etiqueta PARA SIEMPRE — alreadyProcessed() ignora en
+// silencio cualquier reintento futuro de MP para ese mismo pago, y no hay
+// ningún otro camino (ni automático ni manual desde el panel) para
+// corregirlo después.
+async function tagAsMercadoPago(paymentId: string, idempotencyKey: string): Promise<boolean> {
+  try {
+    await getStore(METHOD_STORE).set(idempotencyKey, "mercadopago")
+    return true
+  } catch (err) {
+    console.error(
+      "[mp-webhook] no se pudo etiquetar el método de pago (mercadopago):",
+      idempotencyKey,
+      err,
+    )
+    await notifyGenericIssue(
+      `${paymentId}-mp-tag-failed`,
+      [
+        "⚠️ **No se pudo etiquetar una reserva como pagada por Mercado Pago**",
+        `ID interno: ${idempotencyKey.slice(0, 8)}…`,
+        "Si se factura sin corregir esto a mano, va a salir por el precio base en vez del total con la comisión de MP sumada — el contador pidió facturar siempre el monto real cobrado.",
+        "Mercado Pago va a reintentar la notificación solo; si el problema es transitorio, se corrige solo en el próximo intento. Si no, revisar el store \"payment-methods\" en Netlify Blobs.",
+      ].join("\n"),
+    )
+    return false
+  }
+}
+
 type MpPayment = {
   status?: string
   external_reference?: string
@@ -371,9 +410,17 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
         // mismo idempotencyKey nos dice cuál es el caso: si existe una fila
         // con esta key, el turno lo ocupa nuestra propia reserva.
         const ownRow = await updateOrderStatus(idempotencyKey, "confirmado")
-        // Definitivo en cualquier caso: reintentar no lo va a cambiar.
-        await markProcessed(paymentId)
         if (ownRow.ok) {
+          // Esta entrega puede ser el reintento de una entrega anterior de
+          // este mismo pago que se cortó ANTES de llegar a etiquetar el
+          // método de pago (ver tagAsMercadoPago) — reintentarlo acá es la
+          // red de seguridad para ese caso exacto. Si vuelve a fallar, NO
+          // marcamos procesado (mismo criterio que la rama de abajo para
+          // fallas transitorias): mejor darle a un futuro reintento de MP
+          // otra oportunidad que perder la etiqueta para siempre.
+          const tagged = await tagAsMercadoPago(paymentId, idempotencyKey)
+          if (!tagged) return new Response(null, { status: 200 })
+          await markProcessed(paymentId)
           // OJO: no volvemos a llamar a sendMetaPurchaseEvent acá — esta
           // rama es justamente la ENTREGA DUPLICADA de una notificación que
           // ya se procesó con éxito en la primera entrega (esa ya mandó el
@@ -382,6 +429,8 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
         } else {
           console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
           await notifyOrderFailed(paymentId, idempotencyKey, meta, orderResult.error)
+          // Definitivo: un conflicto de turno real no lo arregla un reintento.
+          await markProcessed(paymentId)
         }
       } else if (!orderResult.ok) {
         console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
@@ -390,6 +439,24 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
         // marcamos procesado, para que una futura notificación del mismo
         // pago pueda reintentarlo solo.
       } else {
+        // La factura NO se genera acá ni en ningún otro lugar automático —
+        // Kunzera la factura a mano desde el panel admin (botón "Generar
+        // factura", ver netlify/functions/generar-factura.mts) para tener
+        // control total de cuándo sale cada una, incluso para Mercado Pago.
+        // Sí dejamos etiquetada acá que el método fue "mercadopago" (mismo
+        // store que tag-payment-method.mts usa para transferencia/binance)
+        // — así, cuando el admin factura a mano, lib/facturacion.ts sabe
+        // que tiene que facturar el total con la comisión de MP sumada
+        // (mpTotal), no el precio base: el contador confirmó que hay que
+        // facturar lo que el cliente pagó de verdad, no lo que Kunzera
+        // termina recibiendo neto. Se etiqueta ANTES de markProcessed (ver
+        // tagAsMercadoPago) — si esto falla, cortamos acá SIN marcar
+        // procesado, para que el reintento automático de MP vuelva a pasar
+        // por acá (y esta vez, como la reserva ya existe, entre por la
+        // rama de arriba con ownRow.ok, que reintenta el etiquetado).
+        const tagged = await tagAsMercadoPago(paymentId, idempotencyKey)
+        if (!tagged) return new Response(null, { status: 200 })
+
         await markProcessed(paymentId)
         // updateOrderStatus va primero: es lo importante (que la planilla
         // quede bien). El aviso a Meta es un beneficio aparte — si se
@@ -404,26 +471,6 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
           )
         }
         await sendMetaPurchaseEvent(idempotencyKey, meta)
-        // La factura NO se genera acá ni en ningún otro lugar automático —
-        // Kunzera la factura a mano desde el panel admin (botón "Generar
-        // factura", ver netlify/functions/generar-factura.mts) para tener
-        // control total de cuándo sale cada una, incluso para Mercado Pago.
-        // Sí dejamos etiquetada acá que el método fue "mercadopago" (mismo
-        // store que tag-payment-method.mts usa para transferencia/binance)
-        // — así, cuando el admin factura a mano, lib/facturacion.ts sabe
-        // que tiene que facturar el total con la comisión de MP sumada
-        // (mpTotal), no el precio base: el contador confirmó que hay que
-        // facturar lo que el cliente pagó de verdad, no lo que Kunzera
-        // termina recibiendo neto.
-        try {
-          await getStore(METHOD_STORE).set(idempotencyKey, "mercadopago")
-        } catch (err) {
-          console.error(
-            "[mp-webhook] no se pudo etiquetar el método de pago (mercadopago) — se facturará por el precio base si nadie lo corrige a mano:",
-            idempotencyKey,
-            err,
-          )
-        }
       }
     }
   } catch (err) {
