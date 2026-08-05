@@ -364,6 +364,35 @@ function StatusActions({
       )
       return
     }
+    // Mercado Pago ya manda su propio evento de Compra desde el servidor al
+    // momento del pago (mp-webhook.mts) — este botón nunca llega a mostrarse
+    // para esas reservas porque ya nacen con estado "confirmado". Para
+    // transferencia/binance, este es el único momento en que Meta se entera
+    // de la venta del lado del servidor — best-effort: si falla, no bloquea
+    // la confirmación (ya quedó bien en el Sheet) ni le muestra error al
+    // admin, capi-confirmar-pago.mts ya lo avisa por Discord.
+    // fetch() no rechaza en errores HTTP (401/400/500) — solo en fallas de
+    // red reales — así que sin chequear res.ok un rechazo de auth o de
+    // validación quedaría invisible del todo (capi-confirmar-pago.mts solo
+    // avisa por Discord cuando SU intento contra Meta falla, no cuando la
+    // request ni siquiera llega a esa parte).
+    void fetch("/api/capi-confirmar-pago", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: getAdminToken(),
+        idempotencyKey: order.idempotencykey,
+        nombre: order.nombre,
+        whatsapp: order.whatsapp,
+        plan: order.plan,
+        monto: order.monto,
+        reservaTimestamp: order.timestamp,
+      }),
+    })
+      .then((res) => {
+        if (!res.ok) console.error("[confirmarPago] capi-confirmar-pago devolvió", res.status)
+      })
+      .catch((err) => console.error("[confirmarPago] no se pudo avisar a Meta:", err))
     onStatusChanged?.()
     onClose()
   }
@@ -389,9 +418,26 @@ function StatusActions({
     onClose()
   }
 
+  // Una reserva "confirmado"/"atendido" fue una venta real — probablemente
+  // ya le mandamos un evento de Compra a Meta por ella (mp-webhook.mts o
+  // capi-confirmar-pago.mts). La API de Conversiones de Meta NO tiene forma
+  // de "retractar" o borrar un evento ya mandado — no existe ese endpoint,
+  // así que no hay nada que este código pueda hacer del lado de Meta. Lo
+  // único que sí podemos controlar es no perder el rastro DE ESTE lado: en
+  // vez de borrar la fila del Sheet (que haría desaparecer toda mención de
+  // que la venta existió, incluso para calcular facturación/CPA/ROAS reales
+  // más adelante), la marcamos "cancelada" y la conservamos.
+  const wasConfirmedSale = current === "confirmado" || current === "cancelada" || isAtendido
+
   const doDelete = async () => {
     if (!hasKey) {
       setError("Esta reserva no tiene ID interno — eliminala manualmente en el Sheet")
+      return
+    }
+    if (wasConfirmedSale) {
+      // No debería poder llegar acá — el botón de abajo ya se reemplaza por
+      // "Marcar cancelada" para este caso. Chequeo defensivo igual.
+      setError("Esta reserva ya fue confirmada — no se puede eliminar, marcala como cancelada")
       return
     }
     setLoading("eliminar")
@@ -409,6 +455,26 @@ function StatusActions({
       return
     }
     onDeleted?.()
+    setConfirmDelete(false)
+    onClose()
+  }
+
+  const cancelarVenta = async () => {
+    if (!hasKey) {
+      setError("Esta reserva no tiene ID interno — actualizá el estado manualmente en el Sheet")
+      return
+    }
+    setLoading("eliminar")
+    setError(null)
+    const result = await updateOrderStatus(String(order.idempotencykey), "cancelada")
+    setLoading(null)
+    if (!result.ok) {
+      setError(
+        result.error === "unauthorized" ? "Token admin inválido" : "No se pudo cancelar: " + result.error,
+      )
+      return
+    }
+    onStatusChanged?.()
     setConfirmDelete(false)
     onClose()
   }
@@ -568,11 +634,20 @@ function StatusActions({
         </div>
       )}
 
-      {/* Confirmación de delete */}
-      {confirmDelete ? (
+      {current === "cancelada" && (
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/50 text-sm">
+          <X className="w-4 h-4" />
+          <span>Venta cancelada — se conserva el registro</span>
+        </div>
+      )}
+
+      {/* Confirmación de delete / cancelación — no se ofrece más una vez cancelada */}
+      {current === "cancelada" ? null : confirmDelete ? (
         <div className="flex flex-col gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
           <p className="text-xs text-red-200 leading-relaxed">
-            ¿Eliminar este turno del Sheet? Esta acción no se puede deshacer.
+            {wasConfirmedSale
+              ? "Esta reserva ya fue una venta confirmada — no se borra, queda marcada como cancelada (para no perder el historial ni lo que ya se le informó a Meta)."
+              : "¿Eliminar este turno del Sheet? Esta acción no se puede deshacer."}
           </p>
           <div className="flex gap-2">
             <button
@@ -580,20 +655,22 @@ function StatusActions({
               disabled={!!loading}
               className="flex-1 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-xs disabled:opacity-40"
             >
-              Cancelar
+              Volver
             </button>
             <button
-              onClick={doDelete}
+              onClick={wasConfirmedSale ? cancelarVenta : doDelete}
               disabled={!!loading}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold disabled:opacity-40"
             >
               {loading === "eliminar" ? (
                 <>
-                  <Loader2 className="w-3 h-3 animate-spin" /> Eliminando…
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  {wasConfirmedSale ? "Cancelando…" : "Eliminando…"}
                 </>
               ) : (
                 <>
-                  <Trash2 className="w-3 h-3" /> Sí, eliminar
+                  <Trash2 className="w-3 h-3" />
+                  {wasConfirmedSale ? "Sí, marcar cancelada" : "Sí, eliminar"}
                 </>
               )}
             </button>
@@ -605,7 +682,8 @@ function StatusActions({
           disabled={!!loading || !hasKey}
           className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-red-500/15 border border-white/10 hover:border-red-500/40 text-red-300 text-xs font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <Trash2 className="w-3.5 h-3.5" /> Eliminar turno
+          <Trash2 className="w-3.5 h-3.5" />
+          {wasConfirmedSale ? "Cancelar venta" : "Eliminar turno"}
         </button>
       )}
 

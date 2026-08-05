@@ -1,5 +1,13 @@
 import { motion } from "framer-motion"
-import { ArrowLeft, BarChart3, CalendarDays, LogOut, RefreshCw, Settings } from "lucide-react"
+import {
+  ArrowLeft,
+  BarChart3,
+  CalendarDays,
+  LogOut,
+  MessageCircleHeart,
+  RefreshCw,
+  Settings,
+} from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { Order, AdminMetrics, Pack } from "../../types/order"
 import { getOrders } from "../../lib/appsScript"
@@ -12,6 +20,7 @@ import OrderDetailModal from "./OrderDetailModal"
 import DayDetailModal from "./DayDetailModal"
 import ErrorBoundary from "./ErrorBoundary"
 import WaMessagesEditor from "./WaMessagesEditor"
+import ManualSaleModal from "./ManualSaleModal"
 
 type Tab = "dashboard" | "turnos" | "config"
 
@@ -28,6 +37,7 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [returnToDay, setReturnToDay] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("dashboard")
+  const [manualSaleOpen, setManualSaleOpen] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -81,6 +91,14 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setManualSaleOpen(true)}
+              className="flex items-center gap-2 px-3 md:px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-sm transition"
+              aria-label="Registrar venta manual"
+            >
+              <MessageCircleHeart className="w-4 h-4" />
+              <span className="hidden md:inline">Venta manual</span>
+            </button>
             <button
               onClick={load}
               disabled={loading}
@@ -201,6 +219,8 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
           }}
         />
       </ErrorBoundary>
+
+      <ManualSaleModal open={manualSaleOpen} onClose={() => setManualSaleOpen(false)} />
     </motion.div>
   )
 }

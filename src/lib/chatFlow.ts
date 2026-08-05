@@ -19,11 +19,6 @@ export type FlowContext = {
   mode: "compact" | "expanded"
   nextId: number
   stateAnchors: Partial<Record<FlowState, number>>
-  // true cuando la confirmación vino de Mercado Pago: el evento de "Compra"
-  // para Meta Ads ya lo manda el servidor (mp-webhook.mts) recién cuando la
-  // reserva se confirma de verdad — si el front también lo disparara acá,
-  // se contaría una compra que en el peor caso nunca se concretó.
-  skipClientPixel?: boolean
 }
 
 const EXPANDED_STATES: FlowState[] = [
@@ -288,10 +283,7 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
     const fresh = initialContext()
     if (ev.status === "success") {
       const withBot = pushMessages(fresh, confirmedMessages(ev.draft, ""))
-      return transition(
-        { ...withBot, draft: ev.draft, skipClientPixel: true },
-        "confirmed",
-      )
+      return transition({ ...withBot, draft: ev.draft }, "confirmed")
     }
     if (ev.status === "pending") {
       // Estado "error" solo por conveniencia de UI (no muestra el selector

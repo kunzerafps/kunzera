@@ -46,6 +46,11 @@ const ALIAS_METHODS: Record<
   },
 }
 
+function getCookie(name: string): string | undefined {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
+  return match ? decodeURIComponent(match[1]) : undefined
+}
+
 export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props) {
   const { prices } = useSiteConfig()
   const [method, setMethod] = useState<Method>("transferencia")
@@ -69,7 +74,40 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
   const [idempotencyKey] = useState(() => draft.idempotencyKey || randomId())
 
   useEffect(() => {
-    if (!draft.idempotencyKey) onKeyReady(idempotencyKey)
+    if (draft.idempotencyKey) return // ya se hizo esto la primera vez que se entró a pagar
+    onKeyReady(idempotencyKey)
+
+    // InitiateCheckout: señal de "entró a pagar", distinta de Purchase (que
+    // recién se manda cuando el pago está confirmado de verdad, ver
+    // useChatFlow.ts). Cliente-side está bien acá — a diferencia de
+    // Purchase, no hace falta que sea a prueba de bloqueadores de anuncios.
+    const fbq = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq
+    if (typeof fbq === "function") {
+      fbq("track", "InitiateCheckout", {
+        value: draft.monto ?? 0,
+        currency: "ARS",
+        content_name: draft.pack,
+        content_type: "product",
+      })
+    }
+
+    // Captura fbp/fbc (cookies que el propio píxel de Meta ya puso, nunca
+    // se inventan) + IP/user-agent reales del comprador (del lado del
+    // servidor, en capture-attribution.mts) — ACÁ, mientras hay una sesión
+    // de navegador real. Si esto se capturara recién cuando el admin
+    // confirma el pago (transferencia/binance, horas o días después), ya no
+    // habría forma de saber la IP/cookies reales de quien compró. Best
+    // effort: si falla, el Purchase se manda igual más tarde, sin estos
+    // campos.
+    void fetch("/api/capture-attribution", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        idempotencyKey,
+        fbp: getCookie("_fbp"),
+        fbc: getCookie("_fbc"),
+      }),
+    }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

@@ -77,20 +77,17 @@ export function useChatFlow(): FlowReturn {
     if (ctx.state === "confirmed") {
       clearDraft()
       setResumable(null)
-      // Mercado Pago manda su propio evento de Compra desde el servidor
-      // (mp-webhook.mts), recién cuando la reserva se confirma de verdad —
-      // acá se salta a propósito para no duplicar ni adelantarse.
-      if (!ctx.skipClientPixel) {
-        const fbq = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq
-        if (typeof fbq === "function") {
-          fbq("track", "Purchase", {
-            value: ctx.draft.monto ?? 0,
-            currency: "ARS",
-            content_name: ctx.draft.pack,
-            content_type: "product",
-          })
-        }
-      }
+      // El evento de Compra para Meta Ads NUNCA se manda desde acá — se
+      // manda 100% server-side: mp-webhook.mts para Mercado Pago (al
+      // confirmarse el pago), capi-confirmar-pago.mts para
+      // transferencia/binance (cuando el admin revisa el comprobante y
+      // aprieta "Confirmar pago"). Se probó disparar el píxel del navegador
+      // acá + deduplicar por event_id contra el evento del servidor, pero la
+      // ventana de deduplicación de Meta es de 48hs — el admin puede tardar
+      // más que eso en confirmar un comprobante, y ahí Meta contaría la
+      // misma venta dos veces en vez de fusionarla. Un solo origen de verdad
+      // (servidor, disparado recién cuando la venta está confirmada de
+      // verdad) evita ese problema de raíz.
     }
   }, [ctx.state, ctx.draft])
 
