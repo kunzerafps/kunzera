@@ -81,4 +81,6 @@ Para cualquiera de los casos de arriba, al abrir el evento en Test Events / diag
 
 ## Limitación importante de Meta a tener en cuenta
 
-La API de Conversiones **no tiene forma de "borrar" o "retractar" un evento ya mandado**. Si una venta confirmada se cancela o se reembolsa después, no hay ningún endpoint que le avise a Meta "esa compra no valió" — el evento ya contado en las métricas de la campaña se queda ahí. Lo único que el sistema puede (y debe) hacer es no perder el registro interno de que se canceló (ver "Cancelar venta" en el panel admin), para poder calcular facturación/CPA/ROAS *reales* por fuera de lo que Meta reporta — que va a seguir mostrando la venta original como si nunca se hubiera anulado.
+La API de Conversiones **no tiene forma de "borrar" o "retractar" un evento ya mandado**. Si una venta confirmada se elimina después, no hay ningún endpoint que le avise a Meta "esa compra no valió" — el evento ya contado en las métricas de la campaña se queda ahí para siempre, aunque la reserva se borre del Sheet.
+
+Se evaluó agregar un registro interno de cancelaciones (en vez de eliminar la fila) para poder recalcular facturación/CPA/ROAS reales más adelante, pero se descartó a pedido explícito de Eze: como las reservas no se reembolsan una vez confirmadas, este caso es muy poco frecuente en el negocio y no justifica cambiar el flujo de "Eliminar turno" que ya se usaba. El panel admin sigue funcionando como antes: "Eliminar turno" borra la fila y libera el horario, para cualquier reserva.
