@@ -56,9 +56,16 @@ export function useChatFlow(): FlowReturn {
     }
   }, [])
 
-  // Greet on first open
+  // Greet on first open — pero NO si hay un pedido sin terminar para
+  // retomar: antes esto disparaba igual a los 700ms sin mirar `resumable`,
+  // sacando a ctx.state de "idle" (el único estado donde se muestra el
+  // banner de "Retomar") y dejándolo invisible para siempre salvo que el
+  // cliente lo viera en esa ventana de menos de un segundo. Bug real: un
+  // cliente que volvía confundido tras un checkout interrumpido nunca veía
+  // la opción de retomar y terminaba reservando todo de cero (ver incidente
+  // Lucas López, reserva duplicada 05/08/2026).
   useEffect(() => {
-    if (open && !greeted.current && ctx.state === "idle") {
+    if (open && !greeted.current && ctx.state === "idle" && !resumable) {
       greeted.current = true
       setTyping(true)
       const t = setTimeout(() => {
@@ -67,7 +74,7 @@ export function useChatFlow(): FlowReturn {
       }, 700)
       return () => clearTimeout(t)
     }
-  }, [open, ctx.state])
+  }, [open, ctx.state, resumable])
 
   // Persist draft
   useEffect(() => {
@@ -121,11 +128,16 @@ export function useChatFlow(): FlowReturn {
     rawDispatch({ type: "HYDRATE", draft: stored.draft, state: stored.state })
     setResumable(null)
     setOpen(true)
+    greeted.current = true
   }, [])
 
   const discardDraft = useCallback(() => {
     clearDraft()
     setResumable(null)
+    // RESET ya inserta el saludo directamente (ver reducer) sin pasar por
+    // el efecto de arriba — marcar `greeted` acá evita que ese efecto
+    // dispare un segundo saludo duplicado ahora que `resumable` pasó a null.
+    greeted.current = true
     rawDispatch({ type: "RESET" })
   }, [])
 
