@@ -46,3 +46,4 @@ dist-ssr
 *.pem
 *.p12
 *.pfx
+deno.lock

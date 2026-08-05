@@ -75,6 +75,10 @@ export type MetaCapiPurchase = {
   // rechazar en silencio un evento que el caller ya le mostró al usuario
   // como "cargado".
   eventTime?: number
+  // Fecha real (YYYY-MM-DD, hora Argentina) de la venta — solo la manda
+  // capi-venta-manual.mts hoy, para que daily-gap-report.mts pueda bucketear
+  // por el día real de la venta en vez de por cuándo se cargó en el panel.
+  saleDate?: string
 }
 
 export type MetaCapiResult = { ok: true } | { ok: false; error: string }
@@ -100,6 +104,7 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
       ok: false,
       error: "no_access_token",
       dedupedLocally: false,
+      saleDate: params.saleDate,
     })
     return { ok: false, error: "no_access_token" }
   }
@@ -120,6 +125,7 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
         source: params.source,
         ok: true,
         dedupedLocally: true,
+        saleDate: params.saleDate,
       })
       return { ok: true }
     }
@@ -193,7 +199,14 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
     if (!res.ok) {
       const errText = await res.text().catch(() => "")
       const error = `http_${res.status}: ${errText}`
-      await recordDelivery({ eventId: params.eventId, source: params.source, ok: false, error, dedupedLocally: false })
+      await recordDelivery({
+        eventId: params.eventId,
+        source: params.source,
+        ok: false,
+        error,
+        dedupedLocally: false,
+        saleDate: params.saleDate,
+      })
       return { ok: false, error }
     }
 
@@ -207,11 +220,24 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
       console.error("[metaCapi] no se pudo marcar el evento como enviado:", err)
     }
 
-    await recordDelivery({ eventId: params.eventId, source: params.source, ok: true, dedupedLocally: false })
+    await recordDelivery({
+      eventId: params.eventId,
+      source: params.source,
+      ok: true,
+      dedupedLocally: false,
+      saleDate: params.saleDate,
+    })
     return { ok: true }
   } catch (err) {
     const error = String(err)
-    await recordDelivery({ eventId: params.eventId, source: params.source, ok: false, error, dedupedLocally: false })
+    await recordDelivery({
+      eventId: params.eventId,
+      source: params.source,
+      ok: false,
+      error,
+      dedupedLocally: false,
+      saleDate: params.saleDate,
+    })
     return { ok: false, error }
   }
 }

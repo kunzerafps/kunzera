@@ -117,6 +117,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     whatsapp: body.whatsapp,
     nombre: body.nombre,
     eventTime,
+    saleDate: fecha,
   })
 
   if (!result.ok) {

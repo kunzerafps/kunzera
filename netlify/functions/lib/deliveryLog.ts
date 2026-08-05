@@ -15,6 +15,12 @@ export type DeliveryLogEntry = {
   ok: boolean
   error?: string
   dedupedLocally: boolean
+  // Fecha real (YYYY-MM-DD, hora Argentina) de la venta que representa este
+  // evento — no siempre coincide con lastAttemptAt (ej. venta manual cargada
+  // un día después de cerrada por WhatsApp). Opcional para no romper
+  // compatibilidad con entradas viejas que no la tenían; hoy solo la manda
+  // capi-venta-manual.mts, que es el único caso donde puede backdatearse.
+  saleDate?: string
 }
 
 export async function recordDelivery(entry: {
@@ -23,6 +29,7 @@ export async function recordDelivery(entry: {
   ok: boolean
   error?: string
   dedupedLocally: boolean
+  saleDate?: string
 }): Promise<void> {
   try {
     const store = getStore(STORE_NAME)
@@ -35,6 +42,7 @@ export async function recordDelivery(entry: {
       ok: entry.ok,
       error: entry.error,
       dedupedLocally: entry.dedupedLocally,
+      saleDate: entry.saleDate,
     }
     await store.setJSON(entry.eventId, record)
   } catch (err) {
