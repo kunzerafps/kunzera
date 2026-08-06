@@ -339,65 +339,19 @@ function StatusActions({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [factura, setFactura] = useState<{ cae: string; numero: number; monto: number } | null>(null)
   const current = String(order.estado || "").toLowerCase()
-  const isPendiente = current === "pendiente" || current === ""
   const isAtendido = current === "atendido"
   const hasKey = !!order.idempotencykey
 
-  // "Confirmar pago" marca que ya revisaste el comprobante y es real — no
-  // dispara nada automático (la facturación es 100% manual, ver botón
-  // "Generar factura" más abajo), pero deja registro en el Sheet de que
-  // esta reserva ya pasó control antes de "atendido".
-  const confirmarPago = async () => {
-    if (!hasKey) {
-      setError("Esta reserva no tiene ID interno — actualizá el estado manualmente en el Sheet")
-      return
-    }
-    setLoading("confirmar")
-    setError(null)
-    const result = await updateOrderStatus(String(order.idempotencykey), "confirmado")
-    setLoading(null)
-    if (!result.ok) {
-      setError(
-        result.error === "unauthorized"
-          ? "Token admin inválido"
-          : "No se pudo actualizar: " + result.error,
-      )
-      return
-    }
-    // Mercado Pago ya manda su propio evento de Compra desde el servidor al
-    // momento del pago (mp-webhook.mts) — este botón nunca llega a mostrarse
-    // para esas reservas porque ya nacen con estado "confirmado". Para
-    // transferencia/binance, este es el único momento en que Meta se entera
-    // de la venta del lado del servidor — best-effort: si falla, no bloquea
-    // la confirmación (ya quedó bien en el Sheet) ni le muestra error al
-    // admin, capi-confirmar-pago.mts ya lo avisa por Discord.
-    // fetch() no rechaza en errores HTTP (401/400/500) — solo en fallas de
-    // red reales — así que sin chequear res.ok un rechazo de auth o de
-    // validación quedaría invisible del todo (capi-confirmar-pago.mts solo
-    // avisa por Discord cuando SU intento contra Meta falla, no cuando la
-    // request ni siquiera llega a esa parte).
-    void fetch("/api/capi-confirmar-pago", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token: getAdminToken(),
-        idempotencyKey: order.idempotencykey,
-        nombre: order.nombre,
-        whatsapp: order.whatsapp,
-        plan: order.plan,
-        monto: order.monto,
-        reservaTimestamp: order.timestamp,
-      }),
-    })
-      .then((res) => {
-        if (!res.ok) console.error("[confirmarPago] capi-confirmar-pago devolvió", res.status)
-      })
-      .catch((err) => console.error("[confirmarPago] no se pudo avisar a Meta:", err))
-    onStatusChanged?.()
-    onClose()
-  }
-
-  const markAsAtendido = async () => {
+  // Un solo botón para "confirmar pago" + "atender": para este negocio son
+  // el mismo evento real — Eze solo marca atendido cuando ya cobró, nunca
+  // antes (a diferencia del supuesto original de separarlos en dos pasos).
+  // Marca "atendido" directo (salta el estado intermedio "confirmado", que
+  // ahora no lo pone nadie desde el panel — Mercado Pago lo sigue poniendo
+  // solo, automático, vía mp-webhook.mts) y dispara el aviso a Meta.
+  // capi-confirmar-pago.mts es idempotente (dedup local + el propio dedup
+  // de Meta por event_id, ver metaCapi.ts) — llamarlo también para pedidos
+  // de Mercado Pago que ya se lo mandaron solos no genera un duplicado.
+  const marcarAtendido = async () => {
     if (!hasKey) {
       setError("Esta reserva no tiene ID interno — actualizá el estado manualmente en el Sheet")
       return
@@ -414,6 +368,28 @@ function StatusActions({
       )
       return
     }
+    // Best-effort: si falla, no bloquea la confirmación (ya quedó bien en
+    // el Sheet) ni le muestra error al admin, capi-confirmar-pago.mts ya lo
+    // avisa por Discord. fetch() no rechaza en errores HTTP (401/400/500)
+    // — solo en fallas de red reales — así que sin chequear res.ok un
+    // rechazo de auth o de validación quedaría invisible del todo.
+    void fetch("/api/capi-confirmar-pago", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: getAdminToken(),
+        idempotencyKey: order.idempotencykey,
+        nombre: order.nombre,
+        whatsapp: order.whatsapp,
+        plan: order.plan,
+        monto: order.monto,
+        reservaTimestamp: order.timestamp,
+      }),
+    })
+      .then((res) => {
+        if (!res.ok) console.error("[marcarAtendido] capi-confirmar-pago devolvió", res.status)
+      })
+      .catch((err) => console.error("[marcarAtendido] no se pudo avisar a Meta:", err))
     onStatusChanged?.()
     onClose()
   }
@@ -546,35 +522,13 @@ function StatusActions({
           </motion.button>
         ))}
 
-      {/* Confirmar pago: deja constancia de que revisaste el comprobante.
-          Solo aparece mientras sigue "pendiente" — una vez confirmada (o
-          atendida) desaparece, no hace falta tocarla de nuevo. */}
-      {isPendiente && !confirmDelete && (
-        <motion.button
-          whileHover={{ scale: hasKey && !loading ? 1.01 : 1 }}
-          whileTap={{ scale: hasKey && !loading ? 0.99 : 1 }}
-          onClick={confirmarPago}
-          disabled={!!loading || !hasKey}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition shadow-lg shadow-blue-900/40"
-        >
-          {loading === "confirmar" ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" /> Actualizando…
-            </>
-          ) : (
-            <>
-              <Check className="w-4 h-4" /> Confirmar pago
-            </>
-          )}
-        </motion.button>
-      )}
-
-      {/* Botón principal de atender (si no está ya atendido) */}
+      {/* Botón único: confirma el pago (avisa a Meta) y marca atendido en el
+          mismo click — para este negocio son el mismo evento real. */}
       {!isAtendido && !confirmDelete && (
         <motion.button
           whileHover={{ scale: hasKey && !loading ? 1.01 : 1 }}
           whileTap={{ scale: hasKey && !loading ? 0.99 : 1 }}
-          onClick={markAsAtendido}
+          onClick={marcarAtendido}
           disabled={!!loading || !hasKey}
           className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-green-500 to-green-700 hover:from-green-400 hover:to-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition shadow-lg shadow-green-900/40"
         >
