@@ -4,6 +4,7 @@ import { sendMetaPurchaseEvent, MAX_EVENT_AGE_DAYS } from "./lib/metaCapi"
 import { notifyDiscord } from "./lib/discordAlert"
 import { isRateLimited } from "./lib/rateLimit"
 import { getAttribution } from "./lib/attribution"
+import { getPaymentMethod } from "./lib/facturacion"
 
 type Body = {
   token?: string
@@ -75,10 +76,21 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   // transfirió/mandó en USDT es exactamente order.monto). Mismo criterio
   // conceptual que Mercado Pago (precio del servicio, no un costo de
   // procesamiento), y acá coincide 1 a 1 porque no hay comisión que restar.
+  //
+  // Este endpoint también se llama para reservas de Mercado Pago (el botón
+  // "Marcar como atendido" del panel dispara este mismo fetch para
+  // cualquier reserva, MP incluido — ver OrderDetailModal.tsx). El evento
+  // en sí no se duplica (sendMetaPurchaseEvent dedupea por eventId), pero
+  // el `source` que queda en el log de entregas SÍ hay que resolverlo bien
+  // acá, o una venta real de MP queda etiquetada como transferencia para
+  // siempre en capi-delivery-log — dato de auditoría corrupto, aunque no
+  // afecta lo que le llega a Meta.
+  const metodo = await getPaymentMethod(body.idempotencyKey)
+  const source = metodo === "mercadopago" ? "mercadopago" : "transferencia_binance"
   const attribution = await getAttribution(body.idempotencyKey)
   const result = await sendMetaPurchaseEvent({
     eventId: body.idempotencyKey,
-    source: "transferencia_binance",
+    source,
     actionSource: "website",
     value: Number(body.monto) || 0,
     contentName: body.plan,
@@ -98,7 +110,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     // reserva (que ya quedó confirmada antes de llegar acá).
     await notifyDiscord(
       `capi-${body.idempotencyKey}`,
-      `⚠️ **No se pudo mandar el evento de Compra a Meta** (reserva ${body.idempotencyKey.slice(0, 8)}…, transferencia/binance)\nLa reserva está bien confirmada — esto solo afecta el tracking de anuncios.\n${result.error}`,
+      `⚠️ **No se pudo mandar el evento de Compra a Meta** (reserva ${body.idempotencyKey.slice(0, 8)}…, ${source})\nLa reserva está bien confirmada — esto solo afecta el tracking de anuncios.\n${result.error}`,
     )
   }
 

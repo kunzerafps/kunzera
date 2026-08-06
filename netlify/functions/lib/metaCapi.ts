@@ -1,4 +1,4 @@
-// Cliente para la API de Conversiones de Meta (server-side), compartido por
+﻿// Cliente para la API de Conversiones de Meta (server-side), compartido por
 // todos los caminos que le mandan un evento de Compra a Meta desde el
 // servidor: mp-webhook.mts (Mercado Pago), capi-confirmar-pago.mts
 // (transferencia/binance, al momento en que el admin confirma el
@@ -32,10 +32,32 @@ async function sha256Hex(input: string): Promise<string> {
 // usa el panel admin para armar links de WhatsApp (OrderDetailModal.tsx).
 export function normalizePhoneForHash(whatsapp: string): string {
   let digits = whatsapp.replace(/\D/g, "")
-  if (digits.startsWith("549")) return digits
-  if (digits.startsWith("54") && digits.length > 10) digits = digits.slice(2)
+  if (digits.startsWith("549")) digits = digits.slice(3)
+  else if (digits.startsWith("54") && digits.length > 10) digits = digits.slice(2)
   if (digits.startsWith("0")) digits = digits.slice(1)
+  // "15" pre-unificación: mucha gente todavía dicta el número como
+  // "<código de área> 15 <número local>" (ej. "3382 15 677871") — ese "15"
+  // no es parte del número real, Meta nunca lo va a tener así en el
+  // perfil del usuario, y dejarlo adentro del hash rompe el matching. Se
+  // busca justo después de un código de área de 2 a 4 dígitos y se saca,
+  // solo cuando eso deja exactamente los 10 dígitos esperados (código de
+  // área + número local) — evita tocar un "15" que sea parte legítima de
+  // otro número por casualidad.
+  for (const areaLen of [2, 3, 4]) {
+    if (digits.length === 12 && digits.slice(areaLen, areaLen + 2) === "15") {
+      digits = digits.slice(0, areaLen) + digits.slice(areaLen + 2)
+      break
+    }
+  }
   return "549" + digits
+}
+
+// Meta espera fn/ln sin acentos ni diacríticos (documentado en su spec de
+// Advanced Matching/CAPI) — Unicode NFD separa cada letra acentuada en
+// base + marca combinante, y se descarta la marca. "ñ" también cae acá
+// (se descompone en "n" + tilde combinante).
+function stripAccents(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 }
 
 // Meta rechaza el evento entero si event_time queda fuera de esta ventana
@@ -141,9 +163,19 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
       userData.ph = [await sha256Hex(normalizePhoneForHash(params.whatsapp))]
     }
     if (params.nombre) {
-      const [first, ...rest] = params.nombre.trim().toLowerCase().split(/\s+/)
-      if (first) userData.fn = [await sha256Hex(first)]
-      if (rest.length) userData.ln = [await sha256Hex(rest.join(" "))]
+      // La última palabra es el apellido, todo lo anterior es el nombre —
+      // no al revés (como estaba antes). Nombres compuestos ("Juan Carlos",
+      // "María José") son muy comunes en Argentina y son de LEJOS el caso
+      // más frecuente en 3+ palabras; "María José Pérez" con la lógica
+      // vieja mandaba fn="maría" / ln="josé pérez" (mal), con esta manda
+      // fn="maria jose" / ln="perez" (coincide con cómo Facebook separa
+      // nombre/apellido en el perfil real del usuario). Con 2 palabras el
+      // resultado es idéntico al de antes.
+      const words = params.nombre.trim().toLowerCase().split(/\s+/)
+      const last = words.length > 1 ? words.pop() : undefined
+      const first = words.join(" ")
+      if (first) userData.fn = [await sha256Hex(stripAccents(first))]
+      if (last) userData.ln = [await sha256Hex(stripAccents(last))]
     }
     // Campos sin hash — Meta los espera en texto plano, no como PII hasheada.
     const rawUserData: Record<string, string> = {}

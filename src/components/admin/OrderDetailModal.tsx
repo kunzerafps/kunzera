@@ -359,8 +359,8 @@ function StatusActions({
     setLoading("atender")
     setError(null)
     const result = await updateOrderStatus(String(order.idempotencykey), "atendido")
-    setLoading(null)
     if (!result.ok) {
+      setLoading(null)
       setError(
         result.error === "unauthorized"
           ? "Token admin inválido"
@@ -368,12 +368,21 @@ function StatusActions({
       )
       return
     }
-    // Best-effort: si falla, no bloquea la confirmación (ya quedó bien en
-    // el Sheet) ni le muestra error al admin, capi-confirmar-pago.mts ya lo
-    // avisa por Discord. fetch() no rechaza en errores HTTP (401/400/500)
-    // — solo en fallas de red reales — así que sin chequear res.ok un
-    // rechazo de auth o de validación quedaría invisible del todo.
-    void fetch("/api/capi-confirmar-pago", {
+    onStatusChanged?.() // la planilla ya quedó bien — avisar al dashboard pase lo que pase con Meta después de esto
+
+    // A diferencia de antes: esto ahora se espera y se chequea. Este
+    // endpoint usa el token de sesión del admin (vence a las 12hs, ver
+    // adminSession.ts) — no el token fijo que usa Apps Script para
+    // updateOrderStatus de arriba. Con una pestaña abierta muchas horas es
+    // real que ESTE fetch falle con 401 aunque el de arriba haya
+    // funcionado perfecto: la reserva queda bien marcada, pero el aviso a
+    // Meta nunca sale, y como el fallo de auth corta ANTES de llegar al
+    // notifyDiscord de capi-confirmar-pago.mts, nadie se entera salvo que
+    // se muestre acá. Antes esto era "fire and forget" con un
+    // console.error mudo — exactamente el tipo de falla silenciosa que no
+    // se puede permitir cuando de esto depende la plata que se gasta en
+    // publicidad.
+    const metaRes = await fetch("/api/capi-confirmar-pago", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -385,12 +394,24 @@ function StatusActions({
         monto: order.monto,
         reservaTimestamp: order.timestamp,
       }),
+    }).catch((err) => {
+      console.error("[marcarAtendido] no se pudo avisar a Meta:", err)
+      return null
     })
-      .then((res) => {
-        if (!res.ok) console.error("[marcarAtendido] capi-confirmar-pago devolvió", res.status)
-      })
-      .catch((err) => console.error("[marcarAtendido] no se pudo avisar a Meta:", err))
-    onStatusChanged?.()
+    setLoading(null)
+
+    if (!metaRes || !metaRes.ok) {
+      if (metaRes?.status === 401) {
+        setError(
+          "La reserva ya quedó marcada como atendida, pero tu sesión de admin venció y el aviso a Meta NO se mandó. Recargá la página, volvé a entrar, y abrí esta reserva de nuevo para reintentar el aviso a Meta.",
+        )
+      } else {
+        setError(
+          "La reserva ya quedó marcada como atendida, pero no se pudo avisar a Meta de esta venta — ya te va a llegar (o ya llegó) un aviso a Discord con el detalle.",
+        )
+      }
+      return // no cierra el modal a propósito: que el admin vea esto
+    }
     onClose()
   }
 

@@ -30,6 +30,19 @@ describe("normalizePhoneForHash", () => {
   it("saca el 54 sin el 9 y antepone 549 correctamente", () => {
     expect(normalizePhoneForHash("541123456789")).toBe("5491123456789")
   })
+  it("saca el '15' pre-unificación dictado en el medio del número (bug real: rompía el matching)", () => {
+    // "3382 15 677871" — código de área 3382 (4 dígitos) + 15 + número local
+    expect(normalizePhoneForHash("03382 15-677871")).toBe("5493382677871")
+  })
+  it("saca el '15' con código de área de 2 dígitos (ej. Buenos Aires, '011 15 ...')", () => {
+    // 011 -> 11 (área 2 dígitos) + 15 + 8 dígitos locales
+    expect(normalizePhoneForHash("011 15 23456789")).toBe("5491123456789")
+  })
+  it("no toca un número de 10 dígitos limpio aunque contenga '15' de casualidad", () => {
+    // 10 dígitos ya limpios (sin el 15 extra) no deben tocarse por más que
+    // aparezca "15" en algún lado del número real.
+    expect(normalizePhoneForHash("1115556789")).toBe("5491115556789")
+  })
 })
 
 describe("sendMetaPurchaseEvent", () => {
@@ -59,6 +72,60 @@ describe("sendMetaPurchaseEvent", () => {
     expect(userData.ph[0]).not.toContain("1123456789") // no viaja el teléfono en texto plano
     expect(userData.fn[0]).toHaveLength(64) // hash SHA-256 hex
     expect(userData.ln[0]).toHaveLength(64)
+  })
+
+  it("saca acentos y ñ del nombre antes de hashear (Meta lo exige; bug real: 'María' se mandaba con tilde)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-accent-1",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+      nombre: "María Núñez",
+    })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    const userData = body.data[0].user_data
+    expect(userData.fn[0]).toBe(await sha256HexNode("maria"))
+    expect(userData.ln[0]).toBe(await sha256HexNode("nunez"))
+  })
+
+  it("nombre compuesto de 3+ palabras: la última es el apellido, el resto es el nombre (bug real: 'María José Pérez' partía mal)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-compound-name",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+      nombre: "Juan Carlos Pérez",
+    })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    const userData = body.data[0].user_data
+    expect(userData.fn[0]).toBe(await sha256HexNode("juan carlos"))
+    expect(userData.ln[0]).toBe(await sha256HexNode("perez"))
+  })
+
+  it("nombre de una sola palabra: manda solo fn, sin ln (no inventa apellido)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-single-name",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+      nombre: "Juan",
+    })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    const userData = body.data[0].user_data
+    expect(userData.fn[0]).toBe(await sha256HexNode("juan"))
+    expect(userData.ln).toBeUndefined()
   })
 
   it("manda fbp/fbc/IP/user-agent SIN hashear, tal cual", async () => {

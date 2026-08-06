@@ -6,6 +6,7 @@ vi.mock("@netlify/blobs", () => ({ getStore: (name: string) => fakeGetStore(name
 
 const { createSessionToken } = await import("../lib/adminSession")
 const { saveAttribution } = await import("../lib/attribution")
+const { listRecentDeliveries } = await import("../lib/deliveryLog")
 const { default: confirmarPagoHandler } = await import("../capi-confirmar-pago.mts")
 
 // La IP de este Context es la del ADMIN (quien llama a este endpoint desde
@@ -133,6 +134,38 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
     expect(sentBody.data[0].user_data.client_ip_address).toBe("190.10.20.30")
     expect(sentBody.data[0].user_data.client_ip_address).not.toBe(FAKE_CTX.ip)
     expect(sentBody.data[0].user_data.client_user_agent).toContain("ComprdorReal")
+  })
+
+  it("por default (sin etiqueta de método de pago) registra la entrega como transferencia_binance", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await confirmarPagoHandler(
+      req({ token, idempotencyKey: "sin-metodo-1", nombre: "Cliente", monto: 50000 }),
+      FAKE_CTX,
+    )
+
+    const entries = await listRecentDeliveries(10)
+    const entry = entries.find((e) => e.eventId === "sin-metodo-1")
+    expect(entry?.source).toBe("transferencia_binance")
+  })
+
+  it("si la reserva está etiquetada como Mercado Pago (botón fusionado 'Marcar como atendido' llamado sobre un pedido de MP), registra la entrega con source='mercadopago', no transferencia_binance (bug real encontrado en auditoría: quedaba mal etiquetado)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    // Mismo store y mismo valor que mp-webhook.mts escribe vía
+    // tagAsMercadoPago() cuando confirma un pago real de MP.
+    await fakeGetStore("payment-methods").set("mp-order-1", "mercadopago")
+
+    await confirmarPagoHandler(
+      req({ token, idempotencyKey: "mp-order-1", nombre: "Cliente MP", monto: 70000 }),
+      FAKE_CTX,
+    )
+
+    const entries = await listRecentDeliveries(10)
+    const entry = entries.find((e) => e.eventId === "mp-order-1")
+    expect(entry?.source).toBe("mercadopago")
   })
 
   it("rechaza sin token admin válido, sin llegar a llamar a Meta", async () => {
