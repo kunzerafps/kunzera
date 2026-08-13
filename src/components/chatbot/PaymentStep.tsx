@@ -25,7 +25,10 @@ const METHODS: {
 }[] = [
   { id: "transferencia", label: "Transferencia", icon: CreditCard },
   { id: "binance", label: "Binance", icon: Wallet },
-  { id: "mercadopago", label: "Mercado Pago", icon: Landmark },
+  // Mercado Pago (Checkout Pro) desactivado temporalmente: la cuenta se está
+  // migrando a la de mi viejo y todavía no se puede verificar/confirmar el
+  // nuevo access token. Reactivar agregando de nuevo:
+  // { id: "mercadopago", label: "Mercado Pago", icon: Landmark },
 ]
 
 const ALIAS_METHODS: Record<
