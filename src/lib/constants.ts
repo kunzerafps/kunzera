@@ -20,7 +20,7 @@ export const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbzV4aBgPzLgRKnecqmisEhJ77l_yGWiFgqip-rE1kXdesYjMKkuB-70ahsV58eXf7-KWA/exec"
 
 // Alias de Mercado Pago donde el cliente transfiere
-export const MP_ALIAS = "esbozo.crin.huir.mp"
+export const MP_ALIAS = "juanmarquez2026.mp"
 
 // Email asociado a Binance Pay para cobrar en USDT
 export const BINANCE_EMAIL = "ezepalmero@gmail.com"
