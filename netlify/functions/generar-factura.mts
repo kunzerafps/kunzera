@@ -36,13 +36,19 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     return Response.json({ ok: false, error: "missing_field" }, { status: 400 })
   }
 
-  const result = await invoiceOrderNow({
-    idempotencykey: body.idempotencyKey,
-    nombre: body.nombre,
-    plan: body.plan as Pack,
-    monto: Number(body.monto) || 0,
-    turno: body.turno,
-  })
+  let result
+  try {
+    result = await invoiceOrderNow({
+      idempotencykey: body.idempotencyKey,
+      nombre: body.nombre,
+      plan: body.plan as Pack,
+      monto: Number(body.monto) || 0,
+      turno: body.turno,
+    })
+  } catch (err) {
+    console.error("[generar-factura] error inesperado:", err)
+    return Response.json({ ok: false, error: "error_inesperado" }, { status: 500 })
+  }
 
   return Response.json(result, { status: result.ok ? 200 : 400 })
 }

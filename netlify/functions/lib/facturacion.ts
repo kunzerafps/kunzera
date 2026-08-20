@@ -143,22 +143,40 @@ async function fetchConTimeout(url: string, init: RequestInit, timeoutMs: number
 // Netlify Blobs (esta versión del SDK, confirmado leyendo el paquete
 // instalado) no tiene ninguna operación atómica tipo "set solo si no
 // existe" — así que no hay forma de "reservar" un idempotencyKey de forma
-// perfectamente segura antes de facturar. Como mitigación (no una solución
-// perfecta): se guarda un "en_proceso" con timestamp ANTES de llamar a AFIP,
-// apenas confirmada la lectura de invoiceState — no después de chequear
-// método de pago o validar el monto, para que la ventana entre "leído como
-// libre" y "reservado" sea lo más chica posible (ver invoiceOrderNow). Un
-// claim de más de CLAIM_TTL_MS se considera abandonado (la función que lo
-// dejó ahí se cortó a mitad de camino) y se permite reintentar — 2 minutos
-// da margen de sobra por encima del límite real de ejecución de Netlify
-// (10s en el plan actual — ver AUTH/NUMERO/FECAE_TIMEOUT_MS más arriba),
-// así que si un claim sigue
-// "en_proceso" pasados los 2 minutos, es seguro asumir que ese intento ya
-// terminó (bien o mal) y no sigue corriendo en paralelo.
+// perfectamente segura antes de facturar. Como mitigación: se guarda un
+// "en_proceso" con timestamp y un token aleatorio propio ANTES de llamar a
+// AFIP, apenas confirmada la lectura de invoiceState — no después de
+// chequear método de pago o validar el monto, para que la ventana entre
+// "leído como libre" y "reservado" sea lo más chica posible (ver
+// invoiceOrderNow). Como el read-then-write de invoiceState()+claim() no es
+// atómico, dos llamadas casi simultáneas (dos admins, o una pestaña
+// duplicada) pueden pasar el chequeo de invoiceState() antes de que
+// cualquiera de las dos termine de escribir su claim — confirmClaim() de
+// abajo es lo que cierra esa ventana: cada llamada espera un toque después
+// de escribir su propio claim y vuelve a leer; si en ese momento el token
+// guardado no es el suyo, es porque la otra llamada escribió después y
+// "ganó" la reserva — la que pierde se corta acá, ANTES de tocar AFIP, en
+// vez de que las dos terminen pidiendo un CAE real cada una. Un claim de
+// más de CLAIM_TTL_MS se considera abandonado (la función que lo dejó ahí
+// se cortó a mitad de camino) y se permite reintentar — 2 minutos da
+// margen de sobra por encima del límite real de ejecución de Netlify (10s
+// en el plan actual — ver AUTH/NUMERO/FECAE_TIMEOUT_MS más arriba), así
+// que si un claim sigue "en_proceso" pasados los 2 minutos, es seguro
+// asumir que ese intento ya terminó (bien o mal) y no sigue corriendo en
+// paralelo.
 const CLAIM_TTL_MS = 2 * 60 * 1000
 
+// Cuánto se espera después de escribir el claim antes de releerlo para
+// confirmar que sigue siendo el nuestro. Tiene que ser bastante mayor a la
+// latencia real de un write de Blobs (típicamente muy por debajo de
+// 100ms) para que una escritura casi simultánea de otra llamada tenga
+// tiempo de llegar y poder detectarse acá — pero se suma al presupuesto
+// total de la función (ver AUTH/NUMERO/FECAE_TIMEOUT_MS), así que se
+// mantiene chico a propósito.
+const CLAIM_VERIFY_DELAY_MS = 250
+
 type InvoiceRecord =
-  | { status: "en_proceso"; claimedAt: number }
+  | { status: "en_proceso"; claimedAt: number; claimToken: string }
   | { status: "facturada"; cae: string; numero: number; monto: number }
 
 async function invoiceState(
@@ -176,17 +194,55 @@ async function invoiceState(
     // un intento anterior que se cortó, no bloquea el reintento.
     const ocupado = Date.now() - data.claimedAt < CLAIM_TTL_MS
     return { ya: false, ocupado }
-  } catch {
-    return { ya: false, ocupado: false }
+  } catch (err) {
+    // Un error de lectura acá NO es lo mismo que "nunca se facturó" — si
+    // esto devolviera libre por default y la reserva YA tenía un CAE real
+    // guardado, invoiceOrderNow seguiría de largo y generaría una SEGUNDA
+    // factura real. Mismo criterio que las llamadas a AFIP: ante la duda,
+    // bloquear (ocupado:true) en vez de arriesgar un duplicado — el admin
+    // ve "ya se está generando, esperá un momento" y reintenta, en vez de
+    // una factura de más.
+    console.error("[facturacion] no se pudo leer el estado de facturación:", err)
+    return { ya: false, ocupado: true }
   }
 }
 
-async function claim(idempotencyKey: string): Promise<void> {
+// Devuelve el token del claim si se pudo escribir, o null si el write en sí
+// falló (Blobs caído/timeout) — invoiceOrderNow trata null como "no se pudo
+// reservar, no seguir" en vez de proceder sin ninguna reserva real.
+async function claim(idempotencyKey: string): Promise<string | null> {
   try {
     const store = getStore(INVOICED_STORE)
-    await store.setJSON(idempotencyKey, { status: "en_proceso", claimedAt: Date.now() } satisfies InvoiceRecord)
+    const claimToken = crypto.randomUUID()
+    await store.setJSON(idempotencyKey, {
+      status: "en_proceso",
+      claimedAt: Date.now(),
+      claimToken,
+    } satisfies InvoiceRecord)
+    return claimToken
   } catch (err) {
     console.error("[facturacion] no se pudo reservar la facturación:", err)
+    return null
+  }
+}
+
+// Ver comentario largo arriba de CLAIM_TTL_MS — esto es lo que detecta a la
+// llamada "perdedora" de una reserva casi simultánea, antes de que llegue a
+// pedirle un CAE real a AFIP.
+async function confirmClaim(idempotencyKey: string, claimToken: string): Promise<boolean> {
+  await new Promise((resolve) => setTimeout(resolve, CLAIM_VERIFY_DELAY_MS))
+  try {
+    const store = getStore(INVOICED_STORE)
+    const data = (await store.get(idempotencyKey, {
+      type: "json",
+      consistency: "strong",
+    })) as InvoiceRecord | null
+    return data?.status === "en_proceso" && data.claimToken === claimToken
+  } catch (err) {
+    // No pudimos confirmar que la reserva sigue siendo nuestra — más seguro
+    // asumir que no, y frenar acá, que arriesgar una factura duplicada.
+    console.error("[facturacion] no se pudo confirmar la reserva:", err)
+    return false
   }
 }
 
@@ -638,11 +694,23 @@ export async function invoiceOrderNow(order: InvoiceableOrder): Promise<InvoiceO
     // reabrió el detalle) — recuperamos el CAE guardado en vez de facturar
     // de nuevo. Esto es lo que garantiza que no se pueda duplicar una
     // factura por doble click o por volver a abrir la reserva.
-    const store = getStore(INVOICED_STORE)
-    const data = (await store.get(idempotencyKey, {
-      type: "json",
-      consistency: "strong",
-    })) as InvoiceRecord | null
+    let data: InvoiceRecord | null
+    try {
+      const store = getStore(INVOICED_STORE)
+      data = (await store.get(idempotencyKey, {
+        type: "json",
+        consistency: "strong",
+      })) as InvoiceRecord | null
+    } catch (err) {
+      // invoiceState() ya vio "facturada" hace un instante, así que el CAE
+      // existe — esta relectura falló, pero eso no es motivo para dejar el
+      // error sin capturar (rompería la función entera sin un mensaje claro
+      // para el admin). Mismo criterio de "ante la duda, no decir que se
+      // puede reintentar": no es un error de facturación en sí, es que no
+      // pudimos volver a leer el CAE ya emitido.
+      console.error("[facturacion] no se pudo releer el registro ya facturado:", err)
+      return { ok: false, error: "no_se_pudo_verificar" }
+    }
     if (data?.status === "facturada") {
       // data.monto puede faltar en registros guardados ANTES de que este
       // campo existiera (ver markInvoiced) — para esos, order.monto es lo
@@ -664,7 +732,16 @@ export async function invoiceOrderNow(order: InvoiceableOrder): Promise<InvoiceO
   // entre "leído como libre" y "reservado" sea la más chica posible (ver
   // comentario largo en la sección de arriba). Si alguno de los chequeos
   // de acá abajo corta el flujo, se libera el claim enseguida.
-  await claim(idempotencyKey)
+  const claimToken = await claim(idempotencyKey)
+  if (!claimToken) return { ok: false, error: "no_se_pudo_reservar" }
+
+  // Confirma que nuestra reserva sigue siendo la vigente (ver comentario de
+  // confirmClaim) — si otra llamada casi simultánea escribió su propio
+  // claim después del nuestro, acá es donde nos enteramos y frenamos antes
+  // de llegar a pedirle un CAE real a AFIP. No liberamos el claim en ese
+  // caso: no es nuestro, es el de la llamada que ganó.
+  const claimConfirmado = await confirmClaim(idempotencyKey, claimToken)
+  if (!claimConfirmado) return { ok: false, error: "ya_se_esta_facturando" }
 
   const metodo = await getPaymentMethod(idempotencyKey)
   if (metodo === "binance") {
@@ -680,7 +757,10 @@ export async function invoiceOrderNow(order: InvoiceableOrder): Promise<InvoiceO
   const montoBase = Number(order.monto)
   if (!Number.isFinite(montoBase) || montoBase <= 0) {
     await releaseClaim(idempotencyKey)
-    return { ok: false, error: `monto_invalido (${order.monto})` }
+    // Código fijo (sin interpolar el monto acá) para que el panel admin
+    // pueda mapearlo a un mensaje claro por key exacta — ver
+    // OrderDetailModal.tsx, que sí muestra el valor recibido.
+    return { ok: false, error: "monto_invalido" }
   }
 
   // El contador confirmó (2026-08-04): hay que facturar lo que el cliente
