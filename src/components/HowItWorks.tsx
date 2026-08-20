@@ -1,38 +1,31 @@
 import { motion } from "framer-motion"
-import { MessageCircle, Monitor, Settings, Rocket } from "lucide-react"
-import { SiAnydesk, SiDiscord, SiWhatsapp } from "react-icons/si"
+import { CalendarCheck, Monitor, Rocket } from "lucide-react"
+import { SiAnydesk, SiWhatsapp } from "react-icons/si"
 
 const steps = [
   {
     n: "01",
-    icon: MessageCircle,
-    title: "Reservá por WhatsApp",
-    desc: "Elegís el pack y coordinamos día y hora. Te paso instrucciones previas.",
+    icon: CalendarCheck,
+    title: "Reservás el turno",
+    desc: "Elegís día y hora directo en la web, turnos de 13 a 21hs, sin tener que escribirme antes.",
   },
   {
     n: "02",
     icon: Monitor,
-    title: "Conectamos por Anydesk",
-    desc: "Me conecto de forma segura a tu PC. Vos ves todo lo que hago en tiempo real.",
+    title: "Nos conectamos",
+    desc: "Me conecto por AnyDesk y hacemos una llamada por WhatsApp mientras trabajo. Ves todo en pantalla en tiempo real, aplico los +800 ajustes según tu pack.",
   },
   {
     n: "03",
-    icon: Settings,
-    title: "Optimización completa",
-    desc: "Aplico los +30 tweaks, limpieza, debloat y ajustes según tu pack.",
-  },
-  {
-    n: "04",
     icon: Rocket,
-    title: "Testeo y entrega",
-    desc: "Probamos juntos, medimos FPS y dejamos todo funcionando al 100%.",
+    title: "PC a máximo rendimiento",
+    desc: "Termino los ajustes y te dejo todo funcionando al 100%. Ahora sí, a disfrutar de una jugabilidad como nunca.",
   },
 ]
 
 const tools = [
   { icon: SiAnydesk, label: "Anydesk", sub: "PC" },
-  { icon: SiDiscord, label: "Discord", sub: "Llamada" },
-  { icon: SiWhatsapp, label: "WhatsApp", sub: "Celular" },
+  { icon: SiWhatsapp, label: "WhatsApp", sub: "Llamada" },
 ]
 
 export default function HowItWorks() {
@@ -58,7 +51,7 @@ export default function HowItWorks() {
         </motion.div>
 
         {/* Steps */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5 mb-16">
+        <div className="grid md:grid-cols-3 gap-5 mb-16">
           {steps.map((s, i) => {
             const Icon = s.icon
             return (
@@ -68,25 +61,19 @@ export default function HowItWorks() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
+                whileHover={{ y: -4 }}
                 className="relative"
               >
-                <div className="glass-card rounded-2xl p-6 h-full relative overflow-hidden group">
-                  <div className="absolute top-4 right-4 font-display font-black text-5xl text-brand-900/50 group-hover:text-brand-700/60 transition">
+                <div className="glass-card rounded-2xl p-6 h-full relative overflow-hidden">
+                  <div className="absolute top-4 right-4 font-display font-black text-5xl text-brand-900/50">
                     {s.n}
                   </div>
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center mb-4 shadow-glow-red">
                     <Icon className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-display font-bold text-xl mb-2">
-                    {s.title}
-                  </h3>
-                  <p className="text-white/60 text-sm leading-relaxed">
-                    {s.desc}
-                  </p>
+                  <h3 className="font-display font-bold text-xl mb-2">{s.title}</h3>
+                  <p className="text-white/60 text-sm leading-relaxed">{s.desc}</p>
                 </div>
-                {i < steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-1/2 -right-3 w-6 h-px bg-gradient-to-r from-brand-700 to-transparent" />
-                )}
               </motion.div>
             )
           })}
@@ -111,7 +98,7 @@ export default function HowItWorks() {
                 Lo que necesitás
               </h3>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 max-w-xs gap-4">
               {tools.map((t) => {
                 const Icon = t.icon
                 return (

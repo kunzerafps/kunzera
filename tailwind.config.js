@@ -30,6 +30,7 @@ export default {
         "glow": "glow 2s ease-in-out infinite alternate",
         "scan": "scan 3s linear infinite",
         "marquee": "marquee 30s linear infinite",
+        "marquee-slow": "marquee 150s linear infinite",
       },
       keyframes: {
         "gradient-x": {

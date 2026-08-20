@@ -1,36 +1,56 @@
 import { motion } from "framer-motion"
-import { Check, Gem, Zap, ArrowRight, Crown } from "lucide-react"
+import { Check, Gem, Zap, ArrowRight, Crown, Layers, ShieldCheck, PiggyBank } from "lucide-react"
 import { useMemo } from "react"
 import { PACKS } from "../lib/packs"
 import { openChat } from "../lib/chatBus"
 import type { Pack } from "../types/order"
 import { useSiteConfig } from "../hooks/useWaMessages"
 
+const PLATINO_FEATURES = [
+  "Limpio tu PC de archivos y basura que la hacen más lenta",
+  "Apago procesos de Windows que corren de fondo sin que los uses",
+  "Bloqueo el rastreo de Microsoft que te consume recursos",
+  "Configuro tu procesador, placa de video y RAM para que den el máximo rendimiento, sin los límites de fábrica",
+  "Hago que tu mouse y teclado respondan más rápido, sin demora",
+  "Ajustes internos para que el juego no se trabe ni tironee",
+  "Estabilizo tu conexión para que no se corte ni suba el ping en medio de una partida",
+]
+
+const DIAMANTE_ONLY_FEATURES = [
+  "Entro a la configuración más profunda de tu PC (el BIOS), algo que Windows ni te deja tocar",
+  "Bajo el consumo del procesador sin perder potencia: más FPS y menos calor",
+  "Le saco un plus de rendimiento extra al hardware, de forma controlada y sin arriesgar nada",
+  "Calibro la ventilación para que no se recaliente, sin ruido de más",
+]
+
 const PACK_FEATURES = {
   platino: {
     headline: "+FPS · -Input Lag",
-    features: [
-      "Limpieza Profunda del Sistema — remoción de archivos residuales y caché para un sistema más ágil.",
-      "Windows Ultra-Debloat — eliminación de procesos nativos innecesarios para reducir la carga sobre el procesador.",
-      "Zero-Telemetry — bloqueo de servicios de rastreo de Microsoft, priorizando privacidad y ahorro de recursos.",
-      "Hardware Max-Performance — seteo de alto rendimiento para que CPU, GPU y RAM trabajen sin restricciones.",
-      "Reducción de Input Lag — ajuste de latencia en periféricos para una respuesta inmediata y precisa del mouse.",
-      "Tweaks de Registro Avanzados — modificaciones de bajo nivel para eliminar stuttering y asegurar fluidez visual.",
-      "Network Stability Pro — configuración de red orientada a estabilizar el ping y eliminar la pérdida de paquetes (loss).",
-    ],
+    features: PLATINO_FEATURES,
   },
   diamante: {
     headline: "Máximo rendimiento",
-    features: [
-      "Incluye todo el Pack Platino.",
-      "Configuración Profesional de BIOS — ajuste de bajo nivel para eliminar limitaciones y ahorros de energía de fábrica.",
-      "Undervolt de Precisión — maximizamos la frecuencia del procesador bajando el voltaje: más FPS con menores temperaturas.",
-      "Overclock Seguro y Estable — incremento de potencia bajo parámetros estrictos de seguridad para no degradar componentes.",
-      "Control Térmico Garantizado — calibración de curvas de ventilación para prevenir calor excesivo y proteger el hardware.",
-      "Core-Priority Mapping — forzamos al procesador a priorizar tu juego por encima de cualquier otra tarea.",
-    ],
+    features: [...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
   },
 } as const
+
+const TRUST_MINI = [
+  {
+    icon: Layers,
+    title: "Ambos packs incluyen:",
+    desc: "procesador, placa de video, RAM, mouse, teclado y cualquier otro periférico. Nada se cobra aparte.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Tu respaldo:",
+    desc: "punto de restauración y backup del registro antes de tocar nada. Si algo no te cierra, revierto todo.",
+  },
+  {
+    icon: PiggyBank,
+    title: "Antes de gastar en hardware nuevo:",
+    desc: "tu PC probablemente rinde muy por debajo de lo que puede dar. Optimizar sale una fracción de una placa nueva.",
+  },
+]
 
 export default function Pricing() {
   const { prices } = useSiteConfig()
@@ -80,10 +100,24 @@ export default function Pricing() {
             Elegí tu <span className="text-gradient-red">plan</span>
           </h2>
           <p className="text-white/60 text-lg">
-            Dos packs pensados para distintos niveles de optimización. Sin letra
-            chica, sin extras escondidos.
+            Platino ajusta tu Windows a fondo. Diamante hace eso y además entra al hardware.
+            Sin letra chica, sin sorpresas.
           </p>
         </motion.div>
+
+        <div className="grid md:grid-cols-3 gap-3.5 max-w-5xl mx-auto mb-8">
+          {TRUST_MINI.map(({ icon: Icon, title, desc }) => (
+            <div
+              key={title}
+              className="rounded-2xl bg-brand-950/60 border border-brand-900 p-4 flex items-start gap-3"
+            >
+              <Icon className="w-[19px] h-[19px] text-brand-400 flex-none mt-0.5" />
+              <p className="text-[13px] text-white/70 leading-relaxed">
+                <b className="text-white">{title}</b> {desc}
+              </p>
+            </div>
+          ))}
+        </div>
 
         <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
           {packs.map((pack, i) => {
@@ -158,6 +192,9 @@ export default function Pricing() {
                     <div className="text-white/40 text-sm mt-1">
                       Pago único · Sin mensualidades
                     </div>
+                    <div className="text-white/40 text-xs font-mono mt-2">
+                      💳 Transferencia · Mercado Pago · Binance (USDT)
+                    </div>
                   </div>
 
                   {/* Features */}
@@ -205,7 +242,7 @@ export default function Pricing() {
           transition={{ delay: 0.5 }}
           className="text-center text-white/40 text-sm mt-10 font-mono"
         >
-          * Transferencia bancaria, MercadoPago o Crypto. Consultá otros métodos por WhatsApp.
+          * Transferencia bancaria, Mercado Pago o Binance (USDT). Consultá otros métodos por WhatsApp.
         </motion.p>
       </div>
     </section>

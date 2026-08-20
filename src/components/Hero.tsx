@@ -1,10 +1,13 @@
 import { motion } from "framer-motion"
-import { ArrowRight, Trophy, Brain, ShieldCheck } from "lucide-react"
+import { ArrowRight, Check } from "lucide-react"
+import { useEffect, useState } from "react"
 import { openChat } from "../lib/chatBus"
+
+const BENEFIT_TAGS = ["Menos tirones", "Menos input lag", "Balas que pegan", "Conocé la PC que compraste"]
 
 export default function Hero() {
   return (
-    <section className="relative pt-32 pb-20 md:pt-40 md:pb-28 section-padding overflow-hidden">
+    <section id="hero" className="relative pt-32 pb-20 md:pt-40 md:pb-28 section-padding overflow-hidden">
       {/* Animated scanline */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-brand-500/40 to-transparent animate-scan" />
@@ -47,133 +50,137 @@ export default function Hero() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
-              className="text-white/70 text-lg md:text-xl max-w-xl mb-8 leading-relaxed"
+              className="text-white/70 text-lg md:text-xl max-w-xl mb-6 leading-relaxed"
             >
-              Optimización profesional y remota. Más de <b className="text-white">30 tweaks</b>,
-              tuning de BIOS y overclock para dejar tu equipo volando. Hecho
-              por un especialista con <b className="text-brand-400">+6000 clientes</b>.
+              Optimizo tu PC a fondo, desde WINDOWS hasta BIOS, con más de{" "}
+              <b className="text-white">800 ajustes</b>, 100% remoto. Ya lo hice en{" "}
+              <b className="text-brand-400">+6000 PCs</b> y sé exactamente qué mueve la aguja en FPS.
             </motion.p>
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-              className="flex flex-wrap gap-4 mb-10"
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="flex flex-wrap gap-2.5 mb-8"
             >
-              <button
-                onClick={() => openChat({ startReservation: true })}
-                className="btn-primary group"
-              >
-                Reservar turno
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </button>
-              <a href="#pricing" className="btn-ghost">
-                Ver packs
-              </a>
+              {BENEFIT_TAGS.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1.5 text-sm text-white/70 bg-white/5 border border-white/10 px-3.5 py-1.5 rounded-full"
+                >
+                  <Check className="w-3.5 h-3.5 text-brand-400" strokeWidth={3} />
+                  {tag}
+                </span>
+              ))}
             </motion.div>
 
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.5 }}
+              className="flex flex-col items-start gap-3 mb-2"
+            >
+              <div className="flex flex-wrap gap-4">
+                <a href="#pricing" className="btn-ghost">
+                  Ver packs
+                </a>
+                <button
+                  onClick={() => openChat({ startReservation: true })}
+                  className="btn-primary group"
+                >
+                  Reservar turno
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </button>
+              </div>
+              <span className="text-xs font-mono text-white/40 flex items-center gap-1.5">
+                ★ Sin letra chica, te lo explico yo mismo · Punto de restauración incluido
+              </span>
+            </motion.div>
           </div>
 
-          {/* Right: animated visual */}
-          <HeroVisual />
+          {/* Right: FPS proof card */}
+          <ProofCard />
         </div>
-
-        <WhyMe />
       </div>
     </section>
   )
 }
 
-function WhyMe() {
-  const items = [
-    {
-      icon: Trophy,
-      title: "Experiencia Real",
-      desc: "Pro Player de CS2. Sé lo que es perder una ronda por un micro-corte.",
-    },
-    {
-      icon: Brain,
-      title: "Lógica, no magia",
-      desc: "Sin “programas milagrosos”. Registros y configs basados en cómo funciona Windows.",
-    },
-    {
-      icon: ShieldCheck,
-      title: "Seguridad",
-      desc: "Optimizaciones probadas que no comprometen la estabilidad de tu PC.",
-    },
-  ]
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.6 }}
-      className="mt-0"
-    >
-      <div className="text-center mb-5">
-        <h3 className="font-display font-black text-2xl md:text-3xl">
-          ¿Por qué <span className="text-gradient-red">elegirme</span>?
-        </h3>
-      </div>
-      <div className="grid md:grid-cols-3 gap-4">
-        {items.map(({ icon: Icon, title, desc }) => (
-          <div
-            key={title}
-            className="glass-card rounded-xl p-5 flex items-start gap-3"
-          >
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-500/20 to-brand-900/40 border border-brand-600/40 flex items-center justify-center flex-shrink-0">
-              <Icon className="w-4 h-4 text-brand-400" />
-            </div>
-            <div>
-              <div className="font-semibold text-white text-sm md:text-base mb-0.5">
-                {title}
-              </div>
-              <div className="text-white/60 text-sm leading-relaxed">
-                {desc}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </motion.div>
-  )
-}
+function ProofCard() {
+  const [opt, setOpt] = useState(120)
 
-function HeroVisual() {
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (reduced) {
+      setOpt(224)
+      return
+    }
+    const t = setTimeout(() => {
+      const start = performance.now()
+      const dur = 1100
+      const from = 120
+      const to = 224
+      function step(ts: number) {
+        const p = Math.min((ts - start) / dur, 1)
+        const eased = 1 - Math.pow(1 - p, 3)
+        setOpt(Math.round(from + (to - from) * eased))
+        if (p < 1) requestAnimationFrame(step)
+      }
+      requestAnimationFrame(step)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [])
+
+  const stdPct = (120 / 224) * 100
+  const optPct = (opt / 224) * 100
+
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.8, delay: 0.3 }}
-      className="relative w-full max-w-[440px] sm:max-w-[560px] lg:max-w-[720px] mx-auto aspect-square"
+      className="relative rounded-[22px] p-7 border border-white/10 bg-gradient-to-br from-[#141416] to-black shadow-2xl shadow-black/50"
     >
-      {/* Aura rojo radial detrás del chico — suave, solo atmósfera */}
-      <div
-        className="absolute inset-[-10%] pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(ellipse at 50% 55%, rgba(239,19,19,0.28) 0%, rgba(239,19,19,0.08) 30%, transparent 60%)",
-        }}
-        aria-hidden
-      />
-      <div
-        className="absolute inset-[10%] pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(ellipse at 50% 60%, rgba(255,42,42,0.18) 0%, transparent 55%)",
-        }}
-        aria-hidden
-      />
+      <div className="flex items-center justify-between mb-5">
+        <span className="text-[11px] font-mono uppercase tracking-widest text-white/40">
+          Resultado promedio · clientes reales
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] font-mono text-brand-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
+          En vivo
+        </span>
+      </div>
 
-      {/* Imagen PNG del chico, sin marco, sin borde, sin filter */}
-      <img
-        src="/kun.png"
-        alt="Kun · Fundador de Kunzera"
-        loading="eager"
-        className="relative z-10 w-full h-full object-contain select-none pointer-events-none"
-        draggable={false}
-      />
+      <div className="flex items-baseline justify-between mb-4">
+        <span className="text-[11px] font-mono uppercase tracking-widest text-white/40">FPS promedio</span>
+        <span className="text-[11px] font-mono uppercase tracking-widest text-white/40">antes / después</span>
+      </div>
+
+      <div className="mb-3.5">
+        <div className="flex items-baseline justify-between text-sm mb-1.5">
+          <span className="text-white font-semibold">Optimizado</span>
+          <span className="font-mono font-bold text-white tabular-nums">{opt}</span>
+        </div>
+        <div className="h-2 rounded-full bg-white/[0.07] overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-700 transition-[width] duration-1000"
+            style={{ width: `${optPct}%` }}
+          />
+        </div>
+      </div>
+      <div className="mb-4">
+        <div className="flex items-baseline justify-between text-sm mb-1.5">
+          <span className="text-white/60 font-semibold">Estándar</span>
+          <span className="font-mono font-bold text-white/70 tabular-nums">120</span>
+        </div>
+        <div className="h-2 rounded-full bg-white/[0.07] overflow-hidden">
+          <div className="h-full rounded-full bg-white/25" style={{ width: `${stdPct}%` }} />
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-white/10 text-sm text-white/60 leading-relaxed">
+        Mejora de rendimiento: <b className="text-brand-400">+87%</b> — promedio real de clientes optimizados.
+      </div>
     </motion.div>
   )
 }
-

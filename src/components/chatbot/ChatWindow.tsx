@@ -214,7 +214,7 @@ const MessagesList = memo(function MessagesList({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#070003]"
+      className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#08090a]"
       style={{ scrollbarWidth: "thin", overscrollBehavior: "contain" }}
       role="log"
       aria-live="polite"

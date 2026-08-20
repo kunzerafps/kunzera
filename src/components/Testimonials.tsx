@@ -23,27 +23,6 @@ const testimonials = [
     rating: 5,
     specs: "i7 13700K · RTX 4070",
   },
-  {
-    name: "Marcos P.",
-    game: "Rocket League",
-    text: "Bajó la temperatura del CPU 10 grados y subí el FPS promedio. Reservé para mi hermano también.",
-    rating: 5,
-    specs: "Ryzen 7 5800X · RTX 3070",
-  },
-  {
-    name: "Camila T.",
-    game: "League of Legends",
-    text: "Muy profesional. Me explicó todo lo que hacía. Windows quedó impecable, limpio y volando.",
-    rating: 5,
-    specs: "i5 11400F · GTX 1660",
-  },
-  {
-    name: "Santiago D.",
-    game: "FiveM · GTA V",
-    text: "Tenía 30 FPS en FiveM, ahora 120+. No lo podía creer. Tipo copado y proceso re rápido.",
-    rating: 5,
-    specs: "Ryzen 5 3600 · RTX 2060",
-  },
 ]
 
 export default function Testimonials() {

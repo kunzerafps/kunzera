@@ -1,12 +1,13 @@
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
-import Marquee from './components/Marquee'
-import Features from './components/Features'
-import Stats from './components/Stats'
-import Pricing from './components/Pricing'
+import TrustStrip from './components/TrustStrip'
+import GamesStrip from './components/GamesStrip'
+import About from './components/About'
+import Results from './components/Results'
 import HowItWorks from './components/HowItWorks'
 import Testimonials from './components/Testimonials'
-import About from './components/About'
+import InstagramComments from './components/InstagramComments'
+import Pricing from './components/Pricing'
 import FAQ from './components/FAQ'
 import CTA from './components/CTA'
 import Footer from './components/Footer'
@@ -15,12 +16,8 @@ import AdminGate from './components/admin/AdminGate'
 
 function App() {
   return (
-    <div className="relative min-h-screen bg-[#070003] text-white overflow-hidden">
+    <div className="relative min-h-screen bg-[#08090a] text-white overflow-hidden">
       {/* Background — fixed para que NO repinte en cada scroll */}
-      <div
-        className="fixed inset-0 pointer-events-none z-0 bg-center bg-cover bg-no-repeat opacity-[0.08]"
-        style={{ backgroundImage: "url('/fondo.png')" }}
-      />
       <div className="fixed inset-0 grid-bg pointer-events-none z-0" />
       <div className="fixed w-[500px] h-[500px] top-[-200px] left-[-200px] rounded-full pointer-events-none z-0" style={{ background: "radial-gradient(circle, rgba(197,12,12,0.3) 0%, transparent 65%)" }} />
       <div className="fixed w-[500px] h-[500px] top-[30%] right-[-200px] rounded-full pointer-events-none z-0" style={{ background: "radial-gradient(circle, rgba(162,15,15,0.25) 0%, transparent 65%)" }} />
@@ -28,13 +25,14 @@ function App() {
       <div className="relative z-10">
         <Navbar />
         <Hero />
-        <Marquee />
-        <Features />
-        <Stats />
-        <Pricing />
+        <TrustStrip />
+        <GamesStrip />
+        <About />
+        <Results />
         <HowItWorks />
         <Testimonials />
-        <About />
+        <InstagramComments />
+        <Pricing />
         <FAQ />
         <CTA />
         <Footer />

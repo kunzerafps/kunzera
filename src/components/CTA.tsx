@@ -35,7 +35,7 @@ export default function CTA() {
               <span className="text-gradient-red">romperla</span>?
             </h2>
             <p className="text-white/70 text-lg md:text-xl max-w-xl mx-auto mb-10">
-              Reservá tu turno online en 1 minuto y en menos de 2 horas tenés tu
+              Reservá tu turno online y en 20 minutos tenés tu
               PC volando.
             </p>
 

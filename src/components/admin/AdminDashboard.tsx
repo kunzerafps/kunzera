@@ -60,7 +60,7 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-[55] overflow-y-auto bg-[#070003]"
+      className="fixed inset-0 z-[55] overflow-y-auto bg-[#08090a]"
     >
       {/* Background — radial-gradient en lugar de filter:blur para perf */}
       <div className="fixed inset-0 grid-bg pointer-events-none" />

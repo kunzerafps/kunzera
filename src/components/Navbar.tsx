@@ -1,18 +1,20 @@
-import { motion } from "framer-motion"
-import { Zap } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { Menu, X, Zap } from "lucide-react"
 import { useEffect, useState } from "react"
 import { openChat } from "../lib/chatBus"
 
 const links = [
-  { href: "#features", label: "Tweaks" },
-  { href: "#pricing", label: "Packs" },
-  { href: "#how", label: "Cómo funciona" },
-  { href: "#sobre-mi", label: "Sobre mí" },
+  { href: "#hero", label: "Inicio" },
+  { href: "#sobre-mi", label: "Quién soy" },
+  { href: "#resultados", label: "Resultados" },
+  { href: "#how", label: "Cómo hago mi trabajo" },
+  { href: "#pricing", label: "Planes" },
   { href: "#faq", label: "FAQ" },
 ]
 
 export default function Navbar() {
   const [activeId, setActiveId] = useState<string>("")
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
     const ids = links.map((l) => l.href.slice(1))
@@ -56,7 +58,7 @@ export default function Navbar() {
       transition={{ duration: 0.6, ease: "easeOut" }}
       className="fixed top-0 left-0 right-0 z-50"
     >
-      <div className="bg-black/85 border-b border-brand-900/40">
+      <div className="bg-[#08090a] border-b border-brand-900/40">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 md:px-10 lg:px-16 py-4">
           <a href="#" className="flex items-center gap-2 group">
             <div className="relative">
@@ -90,13 +92,49 @@ export default function Navbar() {
             })}
           </nav>
 
-          <button
-            onClick={() => openChat({ startReservation: true })}
-            className="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg bg-gradient-to-r from-brand-600 to-brand-800 hover:from-brand-500 hover:to-brand-700 transition shadow-lg shadow-brand-900/50"
-          >
-            Reservar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => openChat({ startReservation: true })}
+              className="inline-flex items-center gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg bg-gradient-to-r from-brand-600 to-brand-800 hover:from-brand-500 hover:to-brand-700 transition shadow-lg shadow-brand-900/50"
+            >
+              Reservar
+            </button>
+            <button
+              onClick={() => setMobileOpen((v) => !v)}
+              aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+              className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg border border-brand-900/60 text-white/80 hover:text-white hover:border-brand-600 transition"
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
+
+        <AnimatePresence>
+          {mobileOpen && (
+            <motion.nav
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="md:hidden overflow-hidden border-t border-brand-900/40 bg-[#08090a]"
+            >
+              <div className="px-6 py-3 flex flex-col">
+                {links.map((l) => (
+                  <a
+                    key={l.href}
+                    href={l.href}
+                    onClick={() => setMobileOpen(false)}
+                    className={`py-3 text-sm border-b border-white/5 last:border-b-0 ${
+                      activeId === l.href.slice(1) ? "text-brand-400" : "text-white/70"
+                    }`}
+                  >
+                    {l.label}
+                  </a>
+                ))}
+              </div>
+            </motion.nav>
+          )}
+        </AnimatePresence>
       </div>
     </motion.header>
   )

@@ -124,7 +124,7 @@ export default function ChatBot() {
               <motion.span
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white text-brand-700 text-[11px] font-bold flex items-center justify-center border-2 border-[#070003]"
+                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white text-brand-700 text-[11px] font-bold flex items-center justify-center border-2 border-[#08090a]"
               >
                 {unread}
               </motion.span>

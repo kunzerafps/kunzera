@@ -1,236 +1,173 @@
 import { motion } from "framer-motion"
-import {
-  Cpu,
-  Gauge,
-  Rocket,
-  Sparkles,
-  Trophy,
-  Users,
-  Wrench,
-  Zap,
-} from "lucide-react"
+import { Trophy, Brain, ShieldCheck } from "lucide-react"
+import { useEffect, useState } from "react"
 
-type TimelineItem = {
-  year: string
-  title: string
-  description: string
-  icon: React.ComponentType<{ className?: string }>
-  accent: string
-  image?: string
-  stat?: { value: string; label: string }
-}
+const SLIDES = [
+  { src: "/kun1.png", alt: "Ezequiel \"Kun\" Palmero", tag: null, contain: true },
+  { src: "/campeon.jpg", alt: "Equipo 9z, campeones de la Logitech G Challenge", tag: "🏆 Campeones · Logitech G Challenge", contain: false },
+  { src: "/9zz.jpg", alt: "Ezequiel \"Kun\" Palmero levantando el trofeo de campeón con 9z", tag: "🏆 Campeón con 9z · Counter-Strike", contain: false },
+  { src: "/kun-competencia.jpg", alt: "Ezequiel \"Kun\" Palmero jugando en un evento, transmitido por DRAFT5", tag: "🎮 En competencia · DRAFT5", contain: false },
+]
 
-const items: TimelineItem[] = [
+const WHO_CARDS = [
   {
-    year: "2014",
-    title: "Los inicios",
-    description:
-      "Mi primera PC gamer. Empecé rompiendo y armando de nuevo Windows hasta entender cómo funciona cada tweak.",
-    icon: Cpu,
-    accent: "from-brand-700 to-brand-950",
-    stat: { value: "10 años", label: "haciendo tweaks" },
-  },
-  {
-    year: "2017",
-    title: "Primera optimización seria",
-    description:
-      "Descubrí que podía bajar el input lag hasta 68%. Empecé a documentar cada cambio y a medirlo con benchmarks.",
-    icon: Gauge,
-    accent: "from-brand-600 to-brand-900",
-    stat: { value: "-68%", label: "input lag" },
-  },
-  {
-    year: "2020",
-    title: "Primeros clientes pagos",
-    description:
-      "Lo que antes era un hobby se convirtió en un servicio. Anydesk + método probado = resultados replicables.",
-    icon: Wrench,
-    accent: "from-brand-500 to-brand-800",
-    stat: { value: "+500", label: "PCs el primer año" },
-  },
-  {
-    year: "2023",
-    title: "Nace Kunzera",
-    description:
-      "Se forma la marca. Streamers, profesionales del esports y gamers casuales empiezan a recomendar el servicio.",
-    icon: Rocket,
-    accent: "from-brand-500 to-brand-700",
-    stat: { value: "+1.500", label: "clientes" },
-  },
-  {
-    year: "2025",
-    title: "+6000 PCs optimizadas",
-    description:
-      "BIOS, overclock, curvas de voltaje, tuning fino de XMP/EXPO y scripts propios. El método Kunzera es un estándar.",
     icon: Trophy,
-    accent: "from-brand-400 to-brand-700",
-    stat: { value: "+6.000", label: "PCs" },
+    title: 'Ezequiel "Kun" Palmero',
+    desc: (
+      <>
+        Jugué CS2 profesional en 9z, River y Coscu Army. Sé lo que es perder una ronda por un
+        micro-corte — no es teoría, lo viví compitiendo. Verificalo vos mismo:{" "}
+        <a
+          href="https://liquipedia.net/counterstrike/KUN"
+          target="_blank"
+          rel="noreferrer"
+          className="text-brand-400 underline underline-offset-2 hover:text-brand-300"
+        >
+          Liquipedia
+        </a>
+        ,{" "}
+        <a
+          href="https://www.hltv.org/player/12375/kun"
+          target="_blank"
+          rel="noreferrer"
+          className="text-brand-400 underline underline-offset-2 hover:text-brand-300"
+        >
+          HLTV
+        </a>{" "}
+        o{" "}
+        <a
+          href="https://www.instagram.com/ezekunnnn"
+          target="_blank"
+          rel="noreferrer"
+          className="text-brand-400 underline underline-offset-2 hover:text-brand-300"
+        >
+          Instagram @ezekunnnn
+        </a>
+        .
+      </>
+    ),
   },
   {
-    year: "Hoy",
-    title: "Tu turno",
-    description:
-      "Cada PC es distinta. Conectamos por Anydesk, aplicamos +30 tweaks y dejamos tu equipo volando.",
-    icon: Zap,
-    accent: "from-brand-400 to-brand-600",
-    stat: { value: "240 FPS", label: "avg" },
+    icon: Brain,
+    title: "Lógica, no magia",
+    desc: 'No vendo "programas milagrosos". Uso las mismas configuraciones que tengo en mi propia PC, basadas en cómo funciona Windows de verdad.',
+  },
+  {
+    icon: ShieldCheck,
+    title: "Tu PC no arriesga nada",
+    desc: "Te dejo ver todo lo que hago en pantalla durante la sesión. Cortás la conexión cuando quieras.",
   },
 ]
+
+function Carousel() {
+  const [i, setI] = useState(0)
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    const id = setInterval(() => setI((v) => (v + 1) % SLIDES.length), 4000)
+    return () => clearInterval(id)
+  }, [])
+
+  return (
+    <div className="relative rounded-[20px] overflow-hidden border border-white/10 bg-gradient-to-br from-[#141416] to-black shadow-2xl shadow-black/50 aspect-[4/5]">
+      {SLIDES.map((s, idx) => (
+        <div
+          key={s.src}
+          className="absolute inset-0 transition-opacity duration-1000"
+          style={{ opacity: idx === i ? 1 : 0 }}
+        >
+          {idx === 0 && (
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(ellipse at 50% 35%, rgba(255,42,42,.3) 0%, transparent 65%)",
+              }}
+            />
+          )}
+          <img
+            src={s.src}
+            alt={s.alt}
+            className={
+              s.contain
+                ? "relative w-full h-full object-contain p-6"
+                : "relative w-full h-full object-cover"
+            }
+          />
+          {s.tag && (
+            <div className="absolute left-3.5 bottom-3.5 bg-black/75 backdrop-blur border border-white/15 rounded-full px-3.5 py-2 text-xs font-mono text-white">
+              {s.tag}
+            </div>
+          )}
+        </div>
+      ))}
+      <div className="absolute bottom-4 right-3.5 flex gap-1.5 z-10">
+        {SLIDES.map((_, idx) => (
+          <span
+            key={idx}
+            className={`w-1.5 h-1.5 rounded-full transition-colors ${
+              idx === i ? "bg-brand-400" : "bg-white/30"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function About() {
   return (
     <section id="sobre-mi" className="relative py-24 md:py-32 section-padding overflow-hidden">
-      <div className="max-w-5xl mx-auto relative">
-        {/* Header */}
+      <div className="max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16 md:mb-20"
+          className="text-center max-w-2xl mx-auto mb-16"
         >
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-950/60 border border-brand-900 text-brand-300 text-xs font-mono uppercase tracking-widest mb-5">
-            <Sparkles className="w-3 h-3" />
-            Sobre mí
+            Antes de reservar
           </div>
           <h2 className="font-display font-black text-4xl md:text-5xl lg:text-6xl mb-4 leading-tight">
-            El camino hasta <span className="text-gradient-red">Kunzera</span>
+            ¿A quién le vas a <span className="text-gradient-red">comprar</span>?
           </h2>
-          <p className="text-white/60 text-lg max-w-2xl mx-auto">
-            De armar mi primera PC a optimizar +6000 equipos. Cada línea de tiempo es
-            una lección que hoy se aplica a tu setup.
-          </p>
+          <p className="text-white/60 text-lg">Nada de empresa grande ni call center. Te atiendo yo, directo.</p>
         </motion.div>
 
-        {/* Timeline */}
-        <div className="relative">
-          {/* Línea central vertical. Wrapper estático posiciona; motion.div interno solo anima scaleY
-             (evitamos que framer-motion pise el -translate-x-1/2 de Tailwind). */}
-          <div
-            className="absolute top-0 bottom-0 left-6 md:left-1/2 -translate-x-1/2 w-px"
-            aria-hidden
+        <div className="grid lg:grid-cols-[.85fr_1.15fr] gap-10 items-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-80px" }}
+            transition={{ duration: 0.6 }}
           >
-            <motion.div
-              initial={{ scaleY: 0 }}
-              whileInView={{ scaleY: 1 }}
-              viewport={{ once: true, amount: 0.05 }}
-              transition={{ duration: 1.2, ease: "easeOut" }}
-              style={{ transformOrigin: "top" }}
-              className="w-full h-full bg-gradient-to-b from-brand-500/60 via-brand-700/40 to-transparent"
-            />
-          </div>
+            <Carousel />
+          </motion.div>
 
-          {/* Items */}
-          <div className="space-y-16 md:space-y-24">
-            {items.map((item, i) => (
-              <TimelineNode key={item.year + item.title} item={item} index={i} />
+          <div className="flex flex-col gap-3.5">
+            {WHO_CARDS.map(({ icon: Icon, title, desc }, i) => (
+              <motion.div
+                key={title}
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.5, delay: i * 0.1 }}
+                whileHover={{ y: -4 }}
+                className="glass-card rounded-2xl p-5 flex items-start gap-3.5"
+              >
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-brand-500/20 to-brand-900/40 border border-brand-600/40 flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-4.5 h-4.5 text-brand-400" />
+                </div>
+                <div>
+                  <div className="font-display font-bold text-white text-base mb-1">{title}</div>
+                  <div className="text-white/60 text-sm leading-relaxed">{desc}</div>
+                </div>
+              </motion.div>
             ))}
           </div>
         </div>
       </div>
     </section>
-  )
-}
-
-function TimelineNode({ item, index }: { item: TimelineItem; index: number }) {
-  const Icon = item.icon
-  const isLeft = index % 2 === 0
-
-  return (
-    <div className="relative grid md:grid-cols-2 md:gap-10">
-      {/* Dot en la línea — wrapper estático para el posicionamiento,
-         motion.div interno solo anima scale/opacity (así Tailwind translate no se pisa). */}
-      <div className="absolute left-6 md:left-1/2 top-8 md:top-10 -translate-x-1/2 z-10">
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          whileInView={{ scale: 1, opacity: 1 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="relative"
-        >
-          <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${item.accent} flex items-center justify-center shadow-glow-red border-2 border-[#070003]`}>
-            <Icon className="w-5 h-5 text-white" />
-          </div>
-          <div className={`absolute inset-0 rounded-full bg-gradient-to-br ${item.accent} blur-xl opacity-40 -z-10`} />
-        </motion.div>
-      </div>
-
-      {/* Card (alternando lado en desktop, siempre a la derecha en mobile) */}
-      <div
-        className={`
-          pl-20 md:pl-0
-          ${isLeft
-            ? "md:col-start-1 md:pr-12 md:text-right"
-            : "md:col-start-2 md:pl-12 md:text-left"}
-        `}
-      >
-        <motion.article
-          initial={{ opacity: 0, x: isLeft ? -40 : 40, y: 20 }}
-          whileInView={{ opacity: 1, x: 0, y: 0 }}
-          viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          className="relative"
-        >
-          {/* Visual (placeholder con gradient + icon) */}
-          <motion.div
-            whileHover={{ scale: 1.02 }}
-            transition={{ type: "spring", stiffness: 260, damping: 22 }}
-            className={`relative aspect-[16/10] rounded-2xl overflow-hidden border border-brand-900/40 mb-4 bg-gradient-to-br ${item.accent}`}
-          >
-            {item.image ? (
-              <img
-                src={item.image}
-                alt={item.title}
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-                <div
-                  className="absolute inset-0 opacity-25"
-                  style={{
-                    backgroundImage:
-                      "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
-                    backgroundSize: "24px 24px",
-                  }}
-                />
-                <Icon className="w-16 h-16 md:w-20 md:h-20 mb-3 opacity-90 relative z-10" />
-                {item.stat && (
-                  <div className="relative z-10 text-center">
-                    <div className="font-display font-black text-3xl md:text-4xl drop-shadow-lg">
-                      {item.stat.value}
-                    </div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest opacity-80">
-                      {item.stat.label}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            {/* Corner tag con el año */}
-            <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-black/50 backdrop-blur text-[10px] font-mono uppercase tracking-widest text-white/90 border border-white/10">
-              {item.year}
-            </div>
-          </motion.div>
-
-          {/* Text */}
-          <div className={isLeft ? "md:text-right" : "md:text-left"}>
-            <div className="flex items-baseline gap-2 mb-1.5 md:justify-start md:flex-wrap"
-              style={{ justifyContent: isLeft ? undefined : undefined }}
-            >
-              <span className="text-xs font-mono text-brand-400 uppercase tracking-widest">
-                {item.year}
-              </span>
-              <span className="text-white/20 text-xs">·</span>
-              <h3 className="font-display font-bold text-white text-xl md:text-2xl">
-                {item.title}
-              </h3>
-            </div>
-            <p className="text-white/60 text-sm md:text-base leading-relaxed">
-              {item.description}
-            </p>
-          </div>
-        </motion.article>
-      </div>
-    </div>
   )
 }
