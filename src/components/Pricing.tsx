@@ -5,6 +5,7 @@ import { PACKS } from "../lib/packs"
 import { openChat } from "../lib/chatBus"
 import type { Pack } from "../types/order"
 import { useSiteConfig } from "../hooks/useWaMessages"
+import { trackPixelEvent } from "../lib/pixel"
 
 const PLATINO_FEATURES = [
   "Limpio tu PC de archivos y basura que la hacen más lenta",
@@ -91,6 +92,9 @@ export default function Pricing() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
+          onViewportEnter={() =>
+            trackPixelEvent("ViewContent", { content_name: "pricing_section", content_type: "product_group" })
+          }
           className="text-center max-w-2xl mx-auto mb-16"
         >
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-950/60 border border-brand-900 text-brand-300 text-xs font-mono uppercase tracking-widest mb-5">
