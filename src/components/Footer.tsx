@@ -103,28 +103,6 @@ export default function Footer() {
           <div>© {new Date().getFullYear()} KUNZERA · Todos los derechos reservados.</div>
           <div>PC Optimizer · Windows Tweaks & Advanced BIOS</div>
         </div>
-
-        <div className="mt-4 pt-4 border-t border-white/5 text-center text-xs text-white/40 font-mono flex items-center justify-center gap-1.5">
-          <span>Desarrollado por</span>
-          <a
-            href="https://www.nodemia.com"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 font-semibold hover:opacity-80 transition"
-            aria-label="Nodemia"
-          >
-            <img
-              src="/nodemia-logo.png"
-              alt=""
-              aria-hidden="true"
-              className="h-4 w-auto"
-              loading="lazy"
-            />
-            <span className="bg-gradient-to-r from-[#2b6bff] to-[#a855f7] bg-clip-text text-transparent">
-              Nodemia
-            </span>
-          </a>
-        </div>
       </div>
     </footer>
   )
