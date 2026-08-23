@@ -13,8 +13,11 @@ import CTA from './components/CTA'
 import Footer from './components/Footer'
 import ChatBot from './components/ChatBot'
 import AdminGate from './components/admin/AdminGate'
+import { useServerPageView } from './hooks/useServerPageView'
 
 function App() {
+  useServerPageView()
+
   return (
     <div className="relative min-h-screen bg-[#08090a] text-white overflow-hidden">
       {/* Background — fixed para que NO repinte en cada scroll */}

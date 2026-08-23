@@ -1,6 +1,7 @@
 import { Zap } from "lucide-react"
 import { SiWhatsapp, SiDiscord, SiInstagram, SiTiktok } from "react-icons/si"
 import { waLink, WHATSAPP_MESSAGE_GENERAL } from "../lib/constants"
+import { trackPixelEvent } from "../lib/pixel"
 
 export default function Footer() {
   return (
@@ -60,6 +61,7 @@ export default function Footer() {
                 href={waLink(WHATSAPP_MESSAGE_GENERAL)}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => trackPixelEvent("Contact", { content_name: "footer_whatsapp" })}
                 className="w-10 h-10 rounded-lg bg-white/5 hover:bg-brand-500/20 border border-white/10 hover:border-brand-500/60 flex items-center justify-center transition"
                 aria-label="WhatsApp"
               >

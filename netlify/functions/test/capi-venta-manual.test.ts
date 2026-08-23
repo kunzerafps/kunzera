@@ -9,6 +9,13 @@ const { default: ventaManualHandler } = await import("../capi-venta-manual.mts")
 
 const FAKE_CTX = { ip: "200.1.2.3" } as any
 
+// Relativo a "ahora" en vez de una fecha fija: capi-venta-manual.mts rechaza
+// cualquier fecha de más de MAX_EVENT_AGE_DAYS (7) atrás, así que una fecha
+// quemada como "2026-08-01" empieza a fallar sola apenas pasan esos 7 días.
+function daysAgoISO(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 function req(body: Record<string, unknown>) {
   return new Request("https://kunzera.com/api/capi-venta-manual", {
     method: "POST",
@@ -33,8 +40,8 @@ describe("capi-venta-manual (ventas offline por WhatsApp)", () => {
     fm.on("graph.facebook.com", () => jsonResponse({}))
 
     const base = { token, nombre: "Cliente Recurrente", whatsapp: "1155554444", monto: 50000 }
-    await ventaManualHandler(req({ ...base, fecha: "2026-08-01" }), FAKE_CTX)
-    await ventaManualHandler(req({ ...base, fecha: "2026-08-02" }), FAKE_CTX)
+    await ventaManualHandler(req({ ...base, fecha: daysAgoISO(2) }), FAKE_CTX)
+    await ventaManualHandler(req({ ...base, fecha: daysAgoISO(1) }), FAKE_CTX)
 
     expect(fm.callsTo("graph.facebook.com")).toHaveLength(2)
     const [first, second] = fm.callsTo("graph.facebook.com")
@@ -47,7 +54,7 @@ describe("capi-venta-manual (ventas offline por WhatsApp)", () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
 
-    const body = { token, nombre: "Cliente", whatsapp: "1155554444", monto: 50000, fecha: "2026-08-01" }
+    const body = { token, nombre: "Cliente", whatsapp: "1155554444", monto: 50000, fecha: daysAgoISO(1) }
     await ventaManualHandler(req(body), FAKE_CTX)
     await ventaManualHandler(req(body), FAKE_CTX) // carga duplicada por error
 

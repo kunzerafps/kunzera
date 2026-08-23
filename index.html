@@ -21,7 +21,11 @@
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
     fbq('init', '761377043609509');
-    fbq('track', 'PageView');
+    // eventID compartido con el envío server-side (ver useServerPageView.ts)
+    // para que Meta deduplique el PageView del navegador y el del servidor
+    // como un solo evento, en vez de contar la visita dos veces.
+    window.__kunzeraPvId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    fbq('track', 'PageView', {}, {eventID: window.__kunzeraPvId});
     </script>
     <!-- End Meta Pixel Code -->
   </head>

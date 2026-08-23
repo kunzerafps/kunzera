@@ -1,6 +1,6 @@
 import { motion } from "framer-motion"
 import { ArrowLeft, Check, Copy, CreditCard, Landmark, Wallet } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { OrderDraft } from "../../types/order"
 import { BINANCE_EMAIL, MP_ALIAS } from "../../lib/constants"
 import { formatARS } from "../../lib/formatters"
@@ -8,6 +8,7 @@ import { useSiteConfig } from "../../hooks/useWaMessages"
 import { randomId } from "../../lib/crypto"
 import { saveDraft } from "../../lib/storage"
 import { mpTotal } from "../../lib/pricing"
+import { trackPixelEvent } from "../../lib/pixel"
 
 type Props = {
   draft: OrderDraft
@@ -73,23 +74,31 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
   // para que reintentar o cambiar de método de pago apunten al mismo pedido.
   const [idempotencyKey] = useState(() => draft.idempotencyKey || randomId())
 
+  // Además del check de arriba (que cubre volver a entrar a pagar en una
+  // orden que ya tiene idempotencyKey), este ref cubre el doble-mount que
+  // hace React StrictMode en desarrollo: las dos invocaciones ocurren antes
+  // de que onKeyReady() alcance a actualizar draft.idempotencyKey en el
+  // padre, así que ese check solo no alcanza para frenar la segunda -
+  // duplicaba InitiateCheckout y el POST a capture-attribution (bug real,
+  // encontrado en review). El ref sí sobrevive el mount→cleanup→mount de
+  // StrictMode porque es la misma instancia de componente.
+  const setupDone = useRef(false)
+
   useEffect(() => {
-    if (draft.idempotencyKey) return // ya se hizo esto la primera vez que se entró a pagar
+    if (draft.idempotencyKey || setupDone.current) return // ya se hizo esto la primera vez que se entró a pagar
+    setupDone.current = true
     onKeyReady(idempotencyKey)
 
     // InitiateCheckout: señal de "entró a pagar", distinta de Purchase (que
     // recién se manda cuando el pago está confirmado de verdad, ver
     // useChatFlow.ts). Cliente-side está bien acá — a diferencia de
     // Purchase, no hace falta que sea a prueba de bloqueadores de anuncios.
-    const fbq = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq
-    if (typeof fbq === "function") {
-      fbq("track", "InitiateCheckout", {
-        value: draft.monto ?? 0,
-        currency: "ARS",
-        content_name: draft.pack,
-        content_type: "product",
-      })
-    }
+    trackPixelEvent("InitiateCheckout", {
+      value: draft.monto ?? 0,
+      currency: "ARS",
+      content_name: draft.pack,
+      content_type: "product",
+    })
 
     // Captura fbp/fbc (cookies que el propio píxel de Meta ya puso, nunca
     // se inventan) + IP/user-agent reales del comprador (del lado del

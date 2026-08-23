@@ -1,6 +1,7 @@
 import { motion } from "framer-motion"
 import { SiWhatsapp } from "react-icons/si"
 import { waLink, WHATSAPP_MESSAGE_GENERAL } from "../lib/constants"
+import { trackPixelEvent } from "../lib/pixel"
 
 export default function WhatsAppFloat() {
   return (
@@ -11,6 +12,7 @@ export default function WhatsAppFloat() {
       href={waLink(WHATSAPP_MESSAGE_GENERAL)}
       target="_blank"
       rel="noreferrer"
+      onClick={() => trackPixelEvent("Contact", { content_name: "whatsapp_float" })}
       className="fixed bottom-24 right-6 z-40 group"
       aria-label="Contactar por WhatsApp"
     >

@@ -72,6 +72,13 @@ documenta acá.
 - **event_id**: hash determinístico de teléfono+monto+día (no un UUID) — dos cargas iguales el mismo día deben dar el MISMO event_id y por lo tanto Meta los debe fusionar en 1 solo evento si se llegara a cargar dos veces por error.
 - **Validar también**: cargar una fecha de más de 7 días atrás o una fecha futura — el panel debe rechazarlo ANTES de llegar a Meta (mensaje de error visible, no un error silencioso).
 
+## Caso 11 — PageView cubierto por navegador + servidor
+- **Cómo generarlo**: entrar a `kunzera.com` (cualquier visita nueva a la home).
+- **Evento esperado**: `PageView`, 1 solo — aunque se manda desde 2 lugares (índice.html vía píxel, y `useServerPageView.ts` vía `/api/capi-pageview` ~400ms después), comparten el mismo `event_id` (`window.__kunzeraPvId`), así que Meta los debe deduplicar en 1 evento con `Server` y `Browser` combinados.
+- **Origen esperado en Events Manager**: debería aparecer con AMBAS fuentes ("Browser" y "Server") en el detalle del evento — si aparece solo una, revisar que `window.__kunzeraPvId` se esté generando antes de que el hook lo lea (abrir la consola del navegador y correr `window.__kunzeraPvId` para confirmar que existe).
+- **Con bloqueador de anuncios activado**: el navegador no manda nada, pero el `fetch` a `/api/capi-pageview` sigue funcionando (es same-origin, no lo bloquean los ad-blockers típicos) — el PageView debería seguir llegando, solo que como "Server" únicamente, sin `fbp`/`fbc` (esas cookies tampoco las pudo poner el píxel bloqueado).
+- **Qué NO debería pasar**: que aparezcan 2 eventos `PageView` separados (sin deduplicar) para la misma visita — señal de que el `event_id` no está coincidiendo entre el navegador y el servidor.
+
 ## Qué mirar en cada evento dentro de Events Manager
 
 Para cualquiera de los casos de arriba, al abrir el evento en Test Events / diagnóstico:

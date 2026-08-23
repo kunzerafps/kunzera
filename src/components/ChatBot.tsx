@@ -8,15 +8,29 @@ import { useOrderSubmit } from "../hooks/useOrderSubmit"
 import { isExpanded } from "../lib/chatFlow"
 import { listenOpenChat, type OpenChatDetail } from "../lib/chatBus"
 import { PACKS } from "../lib/packs"
+import { trackPixelEvent } from "../lib/pixel"
 
 export default function ChatBot() {
   const flow = useChatFlow()
   const { submit } = useOrderSubmit(flow.dispatch)
   const [unread, setUnread] = useState(1)
   const pendingIntent = useRef<OpenChatDetail | null>(null)
+  const contactFired = useRef(false)
 
   useEffect(() => {
     if (flow.open) setUnread(0)
+  }, [flow.open])
+
+  // Contact: señal de "abrió el chat de reserva", sin importar si entró por
+  // el botón "Reservar" (Navbar/Hero/Pricing/CTA, vía chatBus) o tocando
+  // directo el ícono flotante — una sola vez por carga de página, para no
+  // inflar el conteo si abre/cierra el chat varias veces mientras completa
+  // el flujo.
+  useEffect(() => {
+    if (flow.open && !contactFired.current) {
+      contactFired.current = true
+      trackPixelEvent("Contact", { content_name: "chat_bot" })
+    }
   }, [flow.open])
 
   // Escucha eventos externos ("Reservar" desde Navbar/Hero/Pricing/CTA)
