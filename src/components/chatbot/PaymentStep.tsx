@@ -9,6 +9,7 @@ import { randomId } from "../../lib/crypto"
 import { saveDraft } from "../../lib/storage"
 import { mpTotal } from "../../lib/pricing"
 import { trackPixelEvent } from "../../lib/pixel"
+import { getStoredUtm } from "../../lib/utm"
 
 type Props = {
   draft: OrderDraft
@@ -108,6 +109,7 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     // habría forma de saber la IP/cookies reales de quien compró. Best
     // effort: si falla, el Purchase se manda igual más tarde, sin estos
     // campos.
+    const utm = getStoredUtm()
     void fetch("/api/capture-attribution", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -115,6 +117,9 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
         idempotencyKey,
         fbp: getCookie("_fbp"),
         fbc: getCookie("_fbc"),
+        utm_source: utm.utm_source,
+        utm_medium: utm.utm_medium,
+        utm_campaign: utm.utm_campaign,
       }),
     }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps

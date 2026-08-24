@@ -6,10 +6,21 @@ const KEY_RE = /^[a-zA-Z0-9-]{6,80}$/
 const RATE_LIMIT_MAX = 20
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 
+const MAX_UTM_LEN = 100
+
+function cleanUtm(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim().slice(0, MAX_UTM_LEN)
+  return trimmed || undefined
+}
+
 type Body = {
   idempotencyKey?: string
   fbp?: string
   fbc?: string
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
 }
 
 // Se llama UNA vez, apenas el cliente entra a la pantalla de pago (ver
@@ -51,6 +62,9 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       // falsificar.
       ip: ctx.ip || undefined,
       userAgent: req.headers.get("user-agent") || undefined,
+      utmSource: cleanUtm(body.utm_source),
+      utmMedium: cleanUtm(body.utm_medium),
+      utmCampaign: cleanUtm(body.utm_campaign),
       capturedAt: Date.now(),
     })
   } catch (err) {

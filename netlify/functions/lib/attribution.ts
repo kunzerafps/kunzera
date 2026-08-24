@@ -14,6 +14,13 @@ export type AttributionData = {
   fbc?: string
   ip?: string
   userAgent?: string
+  // De qué campaña vino la visita, leído de los parámetros utm_* del link
+  // (ver src/lib/utm.ts) — solo se guarda si el link traía utm_source. Se usa
+  // para mostrarlo en el panel admin (get-attribution.mts), no se le manda a
+  // Meta.
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
   capturedAt: number
 }
 

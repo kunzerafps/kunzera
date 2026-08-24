@@ -55,4 +55,41 @@ describe("capture-attribution", () => {
     const data = await getAttribution("; drop table--")
     expect(data).toBeNull()
   })
+
+  it("guarda utm_source/utm_medium/utm_campaign tal cual vienen", async () => {
+    const ctx = { ip: "201.201.201.201" } as any
+    await captureHandler(
+      req({
+        idempotencyKey: "attr-key-utm",
+        utm_source: "facebook",
+        utm_medium: "cpc",
+        utm_campaign: "verano_promo",
+      }),
+      ctx,
+    )
+
+    const data = await getAttribution("attr-key-utm")
+    expect(data?.utmSource).toBe("facebook")
+    expect(data?.utmMedium).toBe("cpc")
+    expect(data?.utmCampaign).toBe("verano_promo")
+  })
+
+  it("no guarda campos utm cuando el cliente no manda ninguno (visita directa)", async () => {
+    const ctx = { ip: "201.201.201.201" } as any
+    await captureHandler(req({ idempotencyKey: "attr-key-no-utm" }), ctx)
+
+    const data = await getAttribution("attr-key-no-utm")
+    expect(data?.utmSource).toBeUndefined()
+    expect(data?.utmMedium).toBeUndefined()
+    expect(data?.utmCampaign).toBeUndefined()
+  })
+
+  it("recorta un utm_campaign extremadamente largo en vez de guardarlo entero", async () => {
+    const ctx = { ip: "201.201.201.201" } as any
+    const huge = "x".repeat(500)
+    await captureHandler(req({ idempotencyKey: "attr-key-long-utm", utm_source: huge }), ctx)
+
+    const data = await getAttribution("attr-key-long-utm")
+    expect(data?.utmSource?.length).toBe(100)
+  })
 })

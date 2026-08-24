@@ -9,11 +9,12 @@ import {
   MessageSquare,
   Phone,
   Receipt,
+  Tag,
   Trash2,
   User,
   X,
 } from "lucide-react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import type { Order } from "../../types/order"
 import { PACKS } from "../../lib/packs"
@@ -139,6 +140,8 @@ export default function OrderDetailModal({ order, onClose, onStatusChanged, onDe
                     <ComprobanteRow key={order.idempotencykey || order.timestamp} order={order} />
                   </div>
                 </Section>
+
+                <OrigenSection key={order.idempotencykey || order.timestamp} order={order} />
 
                 <StatusActions
                   key={order.idempotencykey || order.timestamp}
@@ -309,6 +312,56 @@ function ComprobanteRow({ order }: { order: Order }) {
     )
   }
   return <span className="text-xs text-white/70">{comprobante}</span>
+}
+
+type UtmInfo = { utmSource?: string; utmMedium?: string; utmCampaign?: string }
+
+// Muestra de qué campaña vino esta reserva, si el link que usó traía
+// utm_source (ver src/lib/utm.ts + capture-attribution.mts). No todo pedido
+// va a tener esto: solo aplica a quien entró desde un link con esos
+// parámetros — un pedido de alguien que entró directo o de organic queda
+// simplemente sin campaña, no es un error.
+function OrigenSection({ order }: { order: Order }) {
+  const [utm, setUtm] = useState<UtmInfo | null>(null)
+  const [loading, setLoading] = useState(false)
+  const key = order.idempotencykey
+  // Mismo motivo que setupDone en PaymentStep.tsx: sin este ref, el doble
+  // mount de React StrictMode en desarrollo dispara este fetch dos veces por
+  // apertura del modal. Acá no corrompe nada (es de solo lectura), pero
+  // gasta el doble del rate limit sin necesidad — el ref sobrevive el
+  // mount→cleanup→mount porque es la misma instancia de componente.
+  const fetchedRef = useRef(false)
+
+  useEffect(() => {
+    if (!key || fetchedRef.current) return
+    fetchedRef.current = true
+    setLoading(true)
+    fetch("/api/get-attribution", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: getAdminToken(), idempotencyKey: key }),
+    })
+      .then((res) => res.json())
+      .then((data) => setUtm(data?.ok ? data : {}))
+      .catch(() => setUtm({}))
+      .finally(() => setLoading(false))
+  }, [key])
+
+  if (!key) return null
+
+  const parts = utm ? [utm.utmSource, utm.utmMedium, utm.utmCampaign].filter(Boolean) : []
+
+  return (
+    <Section icon={<Tag className="w-4 h-4" />} label="Origen">
+      {loading ? (
+        <span className="text-xs text-white/40">Consultando…</span>
+      ) : parts.length > 0 ? (
+        <span className="text-sm text-white/90">{parts.join(" · ")}</span>
+      ) : (
+        <span className="text-xs text-white/40">Directo / sin campaña</span>
+      )}
+    </Section>
+  )
 }
 
 function StatusActions({
