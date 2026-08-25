@@ -1,6 +1,7 @@
 import type { Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { verifySessionToken } from "./lib/adminSession"
+import { PACKS } from "../../src/lib/packs"
 
 const STORE_NAME = "site-config"
 const KEY = "site-config"
@@ -19,8 +20,8 @@ const DEFAULTS = {
   clientTemplate:
     "¡Hola {nombre}! Soy Kun, de Kunzera. Gracias por reservar tu turno del pack {pack} para el {turno}. Te escribo para coordinar los detalles y comenzar la optimización de tu PC. ¿Te viene bien arrancar en ese horario?",
   prices: {
-    platino: { ars: 50000, usd: 45 } as PackPrices,
-    diamante: { ars: 70000, usd: 65 } as PackPrices,
+    platino: { ars: PACKS.platino.price, usd: PACKS.platino.usdPrice } as PackPrices,
+    diamante: { ars: PACKS.diamante.price, usd: PACKS.diamante.usdPrice } as PackPrices,
   },
   adminPasswordHash: "",
   blockedWindows: [] as BlockedWindow[],

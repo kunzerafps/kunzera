@@ -27,12 +27,12 @@ export default function Hero() {
               Windows Tweaks · Advanced BIOS
             </motion.div>
 
-            <motion.h1
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.1 }}
-              className="font-display font-black text-5xl md:text-6xl lg:text-7xl leading-[1.05] tracking-tight mb-6"
-            >
+            {/* Sin animación de entrada a propósito: es el elemento más grande
+                de la primera pantalla (LCP) — cualquier delay acá retrasa
+                directamente cuánto tarda en verse contenido real en mobile/
+                conexiones lentas, justo cuando llega alguien recién clickeado
+                desde un anuncio. */}
+            <h1 className="font-display font-black text-5xl md:text-6xl lg:text-7xl leading-[1.05] tracking-tight mb-6">
               Exprimí cada <br />
               <span className="text-gradient-red heading-glow">FPS</span> de tu{" "}
               <span className="relative inline-block">
@@ -44,7 +44,7 @@ export default function Hero() {
                   className="absolute -bottom-2 left-0 h-1 bg-gradient-to-r from-brand-500 to-transparent"
                 />
               </span>
-            </motion.h1>
+            </h1>
 
             <motion.p
               initial={{ opacity: 0, y: 20 }}

@@ -6,15 +6,9 @@
 // sin reserva en el sitio).
 import { getStore } from "@netlify/blobs"
 import { recordDelivery, type DeliverySource } from "./deliveryLog"
-
-// Configurable por variable de entorno para no depender de un valor
-// hardcodeado — el fallback es el ID que ya está público en index.html
-// (fbq('init', ...)), así que si no se configura META_PIXEL_ID en Netlify
-// el comportamiento no cambia. OJO: index.html NO lee esta misma variable
-// (es HTML estático, sin templating de build acá) — si alguna vez se migra
-// el Pixel a otro dataset, hay que actualizar los dos lugares a mano y
-// mantenerlos iguales.
-const META_PIXEL_ID = process.env.META_PIXEL_ID || "761377043609509"
+import { PACKS } from "../../../src/lib/packs"
+import type { Pack } from "../../../src/types/order"
+import { META_PIXEL_ID } from "./metaPixelId"
 
 const ALREADY_SENT_STORE = "capi-events-sent"
 
@@ -89,6 +83,13 @@ export type MetaCapiPurchase = {
   fbc?: string
   clientIpAddress?: string
   clientUserAgent?: string
+  // Geolocalización aproximada (ver lib/attribution.ts, resuelta gratis por
+  // Netlify desde la IP) — a diferencia de fbp/fbc/ip/ua, Meta SÍ espera
+  // ct/st/zp/country hasheados, igual que teléfono/nombre.
+  city?: string
+  region?: string
+  postalCode?: string
+  countryCode?: string
   // Unix seconds de cuándo pasó la venta de verdad — por default "ahora".
   // Para ventas offline cargadas un día después (capi-venta-manual.mts),
   // pasar la fecha real evita que Meta reciba un timestamp de compra que no
@@ -177,6 +178,20 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
       if (first) userData.fn = [await sha256Hex(stripAccents(first))]
       if (last) userData.ln = [await sha256Hex(stripAccents(last))]
     }
+    // Geolocalización aproximada (gratis, no pedida al cliente) — Meta SÍ
+    // espera estos hasheados, a diferencia de fbp/fbc/ip/ua de más abajo.
+    if (params.city) {
+      userData.ct = [await sha256Hex(stripAccents(params.city.trim().toLowerCase().replace(/\s+/g, "")))]
+    }
+    if (params.region) {
+      userData.st = [await sha256Hex(stripAccents(params.region.trim().toLowerCase().replace(/\s+/g, "")))]
+    }
+    if (params.postalCode) {
+      userData.zp = [await sha256Hex(params.postalCode.trim().toLowerCase().replace(/\s+/g, ""))]
+    }
+    if (params.countryCode) {
+      userData.country = [await sha256Hex(params.countryCode.trim().toLowerCase())]
+    }
     // Campos sin hash — Meta los espera en texto plano, no como PII hasheada.
     const rawUserData: Record<string, string> = {}
     if (params.fbp) rawUserData.fbp = params.fbp
@@ -215,8 +230,19 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
                 custom_data: {
                   currency: "ARS",
                   value: params.value,
-                  content_name: params.contentName,
+                  // contentName llega de los callers como el slug interno
+                  // ("platino"/"diamante") — content_name usa el nombre
+                  // visible del pack para que el reporting de Meta sea
+                  // legible; content_ids conserva el slug (identificador
+                  // estable) para que Meta pueda agrupar conversiones por
+                  // producto.
+                  content_name: params.contentName
+                    ? PACKS[params.contentName as Pack]?.name ?? params.contentName
+                    : undefined,
+                  content_ids: params.contentName ? [params.contentName] : undefined,
                   content_type: "product",
+                  order_id: params.eventId,
+                  num_items: 1,
                 },
               },
             ],

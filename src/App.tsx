@@ -12,6 +12,7 @@ import FAQ from './components/FAQ'
 import CTA from './components/CTA'
 import Footer from './components/Footer'
 import ChatBot from './components/ChatBot'
+import WhatsAppFloat from './components/WhatsAppFloat'
 import AdminGate from './components/admin/AdminGate'
 import { useServerPageView } from './hooks/useServerPageView'
 
@@ -42,6 +43,7 @@ function App() {
       </div>
 
       <ChatBot />
+      <WhatsAppFloat />
       <AdminGate />
     </div>
   )

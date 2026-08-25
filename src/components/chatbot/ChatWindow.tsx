@@ -7,6 +7,8 @@ import TypingBubble from "./TypingBubble"
 import FlowRenderer from "./FlowRenderer"
 import type { FlowContext } from "../../lib/chatFlow"
 import type { OrderDraft } from "../../types/order"
+import { trackPixelEvent } from "../../lib/pixel"
+import { PACKS } from "../../lib/packs"
 
 type Props = {
   ctx: FlowContext
@@ -35,6 +37,12 @@ export default function ChatWindow({
 }: Props) {
   const handleChip = useCallback(
     (payload: string, label: string) => {
+      if (payload === "platino" || payload === "diamante") {
+        trackPixelEvent("AddToCart", {
+          content_name: PACKS[payload].name,
+          content_type: "product",
+        })
+      }
       dispatch({ type: "SELECT_CHIP", payload, label })
     },
     [dispatch],

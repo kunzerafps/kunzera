@@ -11,9 +11,16 @@ type Return = {
 
 export function useOrderSubmit(dispatch: (ev: FlowEvent) => void): Return {
   const idempotencyRef = useRef<string>("")
+  // Sobrevive a que el chat se cierre/reabra (FlowRenderer se desmonta y
+  // vuelve a montar, pero este hook vive en ChatBot.tsx, que no). Sin esto,
+  // reabrir el chat mientras un envío sigue en curso dispara un segundo
+  // submit real y le muestra al cliente un error de "cooldown" aunque el
+  // primer envío termine bien poco después.
+  const inFlightRef = useRef(false)
 
   const submit = useCallback(
     async (draft: OrderDraft) => {
+      if (inFlightRef.current) return
       if (!canSubmit()) {
         dispatch({ type: "SUBMIT_ERR", error: "cooldown" })
         return
@@ -23,10 +30,12 @@ export function useOrderSubmit(dispatch: (ev: FlowEvent) => void): Return {
       }
       const key = idempotencyRef.current
 
+      inFlightRef.current = true
       dispatch({ type: "SUBMIT_START" })
       markSubmitted()
 
       const result = await submitOrder(draft, key)
+      inFlightRef.current = false
       if (result.ok) {
         if (draft.file) {
           // Fire-and-forget: no bloquea la confirmación al cliente.

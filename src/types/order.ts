@@ -4,6 +4,11 @@ export type PackInfo = {
   id: Pack
   name: string
   price: number
+  // Precio de referencia en USD (Binance) — vive acá para que sea la única
+  // fuente de verdad; antes estaba copiado a mano en prices.ts, waMessages.ts
+  // y wa-messages.mts, y podía desincronizarse (mismo bug que ya pasó una vez
+  // con los precios en ARS).
+  usdPrice: number
   tagline: string
   emoji: string
 }

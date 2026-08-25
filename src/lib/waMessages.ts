@@ -1,7 +1,6 @@
 import { getAdminToken } from "./storage"
-import { PACKS } from "./packs"
 import type { Pack } from "../types/order"
-import { setCurrentPrices } from "./prices"
+import { DEFAULT_PRICES, setCurrentPrices } from "./prices"
 
 export type PackPrices = { ars: number; usd: number }
 
@@ -33,10 +32,7 @@ export const DEFAULT_CLIENT_TEMPLATE =
 
 export const DEFAULT_SITE_CONFIG: SiteConfig = {
   clientTemplate: DEFAULT_CLIENT_TEMPLATE,
-  prices: {
-    platino: { ars: PACKS.platino.price, usd: 45 },
-    diamante: { ars: PACKS.diamante.price, usd: 65 },
-  },
+  prices: DEFAULT_PRICES,
   adminPasswordHash: "",
   blockedWindows: [],
 }

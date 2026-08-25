@@ -13,7 +13,10 @@ export default function WhatsAppFloat() {
       target="_blank"
       rel="noreferrer"
       onClick={() => trackPixelEvent("Contact", { content_name: "whatsapp_float" })}
-      className="fixed bottom-24 right-6 z-40 group"
+      // bottom-left, no bottom-right: el lanzador del chat y el panel de chat
+      // compacto ya ocupan esa esquina (bottom-24/bottom-6 right-6) — poner
+      // este botón ahí lo taparía cuando el chat está abierto.
+      className="fixed bottom-6 left-6 z-40 group"
       aria-label="Contactar por WhatsApp"
     >
       <motion.div

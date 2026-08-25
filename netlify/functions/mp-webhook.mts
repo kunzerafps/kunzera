@@ -225,6 +225,10 @@ async function sendMercadoPagoCapiEvent(
     fbc: attribution?.fbc,
     clientIpAddress: attribution?.ip,
     clientUserAgent: attribution?.userAgent,
+    city: attribution?.city,
+    region: attribution?.region,
+    postalCode: attribution?.postalCode,
+    countryCode: attribution?.countryCode,
   })
   if (!result.ok) {
     console.error("[mp-webhook] error mandando evento a Meta:", result.error)

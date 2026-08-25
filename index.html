@@ -35,6 +35,11 @@
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
+    // Este ID también vive server-side en netlify/functions/lib/metaPixelId.ts
+    // (configurable por la env var META_PIXEL_ID, con este mismo valor como
+    // fallback). Este archivo es HTML estático — no lee esa env var — así que
+    // si alguna vez se migra el Pixel a otro dataset, hay que actualizar ACÁ
+    // también a mano y mantenerlo igual.
     fbq('init', '761377043609509');
     // eventID compartido con el envío server-side (ver useServerPageView.ts)
     // para que Meta deduplique el PageView del navegador y el del servidor

@@ -8,6 +8,7 @@ import PaymentStep from "./PaymentStep"
 import FileUploader from "./FileUploader"
 import { normalizeWhatsapp, validateDiscord, validateName, validateWhatsapp } from "../../lib/validators"
 import { useTakenSlots } from "../../hooks/useTakenSlots"
+import { trackPixelEvent } from "../../lib/pixel"
 
 type Props = {
   ctx: FlowContext
@@ -55,6 +56,7 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
           onSubmit={(v) => {
             const err = validateWhatsapp(v)
             if (err) return err
+            trackPixelEvent("Lead", { content_name: ctx.draft.pack || "unknown" })
             dispatch({ type: "SET_WHATSAPP", value: normalizeWhatsapp(v) })
             return null
           }}
@@ -83,7 +85,10 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
           slots={slotsState.slots}
           loading={slotsState.loading}
           error={slotsState.error}
-          onPick={(iso) => dispatch({ type: "PICK_SLOT", slotIso: iso })}
+          onPick={(iso) => {
+            trackPixelEvent("Schedule", { content_name: ctx.draft.pack || "unknown" })
+            dispatch({ type: "PICK_SLOT", slotIso: iso })
+          }}
           onRefresh={slotsState.refresh}
         />
       )

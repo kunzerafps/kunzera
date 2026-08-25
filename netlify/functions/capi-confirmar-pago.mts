@@ -100,6 +100,10 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     fbc: attribution?.fbc,
     clientIpAddress: attribution?.ip,
     clientUserAgent: attribution?.userAgent,
+    city: attribution?.city,
+    region: attribution?.region,
+    postalCode: attribution?.postalCode,
+    countryCode: attribution?.countryCode,
     eventTime: resolveEventTime(body.reservaTimestamp),
   })
 

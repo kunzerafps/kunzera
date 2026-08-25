@@ -15,8 +15,8 @@
 // nombre/teléfono en este punto) y con su propio store de deduplicación,
 // completamente separado del de Purchase.
 import { getStore } from "@netlify/blobs"
+import { META_PIXEL_ID } from "./metaPixelId"
 
-const META_PIXEL_ID = process.env.META_PIXEL_ID || "761377043609509"
 const ALREADY_SENT_STORE = "capi-pageview-events-sent"
 const EVENT_SOURCE_URL = "https://kunzera.com/"
 

@@ -54,6 +54,13 @@ export const ADMIN_PASSWORD_HASH =
 // comprobantes y config del sitio, ver adminSession.ts) requeriría tocar
 // el código del Apps Script del lado de Google, que queda fuera de lo que
 // se toca en este repo.
+//
+// ⚠️ SI SE ROTA ESTE VALOR: también hay que actualizar a mano la Script
+// Property ADMIN_TOKEN en el proyecto de Google Apps Script (google-apps-
+// script/Code.gs, línea con `props.setProperty('ADMIN_TOKEN', ...)`). No hay
+// forma técnica de compartir este valor entre los dos sistemas — si se
+// olvida el lado de Apps Script, el panel admin empieza a fallar en
+// silencio (401 en getOrders/deleteOrder) sin ningún aviso.
 export const ADMIN_SECRET_TOKEN = "1bf8f203f7d5428c88da097596f51551"
 
 // ────────────────────────────────────────────────────────────

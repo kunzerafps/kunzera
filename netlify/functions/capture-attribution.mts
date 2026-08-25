@@ -65,6 +65,13 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       utmSource: cleanUtm(body.utm_source),
       utmMedium: cleanUtm(body.utm_medium),
       utmCampaign: cleanUtm(body.utm_campaign),
+      // Gratis: Netlify ya resuelve esto en el edge a partir de la IP, no es
+      // un dato que se le pida al cliente. Mejora el match quality de Meta
+      // sin sumar fricción al checkout.
+      city: ctx.geo?.city || undefined,
+      region: ctx.geo?.subdivision?.code || undefined,
+      postalCode: ctx.geo?.postalCode || undefined,
+      countryCode: ctx.geo?.country?.code || undefined,
       capturedAt: Date.now(),
     })
   } catch (err) {

@@ -29,7 +29,10 @@ export default function ChatBot() {
   useEffect(() => {
     if (flow.open && !contactFired.current) {
       contactFired.current = true
-      trackPixelEvent("Contact", { content_name: "chat_bot" })
+      const pack = pendingIntent.current?.pack
+      trackPixelEvent("Contact", {
+        content_name: pack ? PACKS[pack].name : "chat_bot",
+      })
     }
   }, [flow.open])
 

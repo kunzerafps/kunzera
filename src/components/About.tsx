@@ -3,7 +3,7 @@ import { Trophy, Brain, ShieldCheck } from "lucide-react"
 import { useEffect, useState } from "react"
 
 const SLIDES = [
-  { src: "/kun1.png", alt: "Ezequiel \"Kun\" Palmero", tag: null, contain: true },
+  { src: "/kun1.webp", alt: "Ezequiel \"Kun\" Palmero", tag: null, contain: true },
   { src: "/campeon.jpg", alt: "Equipo 9z, campeones de la Logitech G Challenge", tag: "🏆 Campeones · Logitech G Challenge", contain: false },
   { src: "/9zz.jpg", alt: "Ezequiel \"Kun\" Palmero levantando el trofeo de campeón con 9z", tag: "🏆 Campeón con 9z · Counter-Strike", contain: false },
   { src: "/kun-competencia.jpg", alt: "Ezequiel \"Kun\" Palmero jugando en un evento, transmitido por DRAFT5", tag: "🎮 En competencia · DRAFT5", contain: false },
@@ -88,6 +88,8 @@ function Carousel() {
           <img
             src={s.src}
             alt={s.alt}
+            loading="lazy"
+            decoding="async"
             className={
               s.contain
                 ? "relative w-full h-full object-contain p-6"

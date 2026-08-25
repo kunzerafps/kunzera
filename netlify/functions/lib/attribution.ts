@@ -21,6 +21,14 @@ export type AttributionData = {
   utmSource?: string
   utmMedium?: string
   utmCampaign?: string
+  // Geolocalización aproximada que Netlify ya resuelve gratis a partir de la
+  // IP del request (ctx.geo) — no se le pregunta nada nuevo al cliente. Sin
+  // hashear acá (igual que fbp/fbc/ip/userAgent); metaCapi.ts es quien hashea
+  // antes de mandarlo a Meta como ct/st/zp/country.
+  city?: string
+  region?: string
+  postalCode?: string
+  countryCode?: string
   capturedAt: number
 }
 
