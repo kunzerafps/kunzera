@@ -1,9 +1,6 @@
 import { useEffect } from "react"
-
-function getCookie(name: string): string | undefined {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return match ? decodeURIComponent(match[1]) : undefined
-}
+import { getFbp, getFbc } from "../lib/cookies"
+import { getVisitorId } from "../lib/visitorId"
 
 // Manda a Meta, desde el servidor, el mismo PageView que index.html ya
 // manda desde el navegador — comparten eventID (generado ahí, guardado en
@@ -33,8 +30,12 @@ export function useServerPageView(): void {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: pvId,
-          fbp: getCookie("_fbp"),
-          fbc: getCookie("_fbc"),
+          fbp: getFbp(),
+          fbc: getFbc(),
+          // ID propio del navegador (external_id) — es lo que le deja a Meta
+          // unir esta visita con una compra posterior aunque se pierda la
+          // cookie del píxel en el medio.
+          externalId: getVisitorId(),
         }),
       }).catch(() => {})
     }, 400)

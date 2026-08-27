@@ -90,6 +90,12 @@ export type MetaCapiPurchase = {
   region?: string
   postalCode?: string
   countryCode?: string
+  // ID propio y estable del navegador del comprador (ver src/lib/visitorId.ts),
+  // capturado en el momento de la reserva (lib/attribution.ts → visitorId).
+  // Meta lo espera hasheado, igual que teléfono/nombre. Es el mismo id que
+  // manda el PageView server-side, así que deja unir esta compra con la
+  // visita anónima que la originó. Ausente en ventas manuales (sin navegador).
+  externalId?: string
   // Unix seconds de cuándo pasó la venta de verdad — por default "ahora".
   // Para ventas offline cargadas un día después (capi-venta-manual.mts),
   // pasar la fecha real evita que Meta reciba un timestamp de compra que no
@@ -191,6 +197,9 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
     }
     if (params.countryCode) {
       userData.country = [await sha256Hex(params.countryCode.trim().toLowerCase())]
+    }
+    if (params.externalId) {
+      userData.external_id = [await sha256Hex(params.externalId.trim().toLowerCase())]
     }
     // Campos sin hash — Meta los espera en texto plano, no como PII hasheada.
     const rawUserData: Record<string, string> = {}

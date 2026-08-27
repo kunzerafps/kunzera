@@ -8,8 +8,10 @@ import { useSiteConfig } from "../../hooks/useWaMessages"
 import { randomId } from "../../lib/crypto"
 import { saveDraft } from "../../lib/storage"
 import { mpTotal } from "../../lib/pricing"
-import { trackPixelEvent } from "../../lib/pixel"
+import { trackServerBackedEvent } from "../../lib/pixel"
 import { getStoredUtm } from "../../lib/utm"
+import { getFbp, getFbc } from "../../lib/cookies"
+import { getVisitorId } from "../../lib/visitorId"
 
 type Props = {
   draft: OrderDraft
@@ -46,11 +48,6 @@ const ALIAS_METHODS: Record<
     helper:
       "Mandá el equivalente en USDT desde Binance Pay al email. Después subí el comprobante para confirmar la reserva.",
   },
-}
-
-function getCookie(name: string): string | undefined {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return match ? decodeURIComponent(match[1]) : undefined
 }
 
 export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props) {
@@ -94,12 +91,16 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     // recién se manda cuando el pago está confirmado de verdad, ver
     // useChatFlow.ts). Cliente-side está bien acá — a diferencia de
     // Purchase, no hace falta que sea a prueba de bloqueadores de anuncios.
-    trackPixelEvent("InitiateCheckout", {
-      value: draft.monto ?? 0,
-      currency: "ARS",
-      content_name: draft.pack,
-      content_type: "product",
-    })
+    trackServerBackedEvent(
+      "InitiateCheckout",
+      { whatsapp: draft.whatsapp, nombre: draft.nombre },
+      {
+        value: draft.monto ?? 0,
+        currency: "ARS",
+        content_name: draft.pack,
+        content_type: "product",
+      },
+    )
 
     // Captura fbp/fbc (cookies que el propio píxel de Meta ya puso, nunca
     // se inventan) + IP/user-agent reales del comprador (del lado del
@@ -115,8 +116,9 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         idempotencyKey,
-        fbp: getCookie("_fbp"),
-        fbc: getCookie("_fbc"),
+        fbp: getFbp(),
+        fbc: getFbc(),
+        visitorId: getVisitorId(),
         utm_source: utm.utm_source,
         utm_medium: utm.utm_medium,
         utm_campaign: utm.utm_campaign,

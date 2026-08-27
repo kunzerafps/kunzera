@@ -104,6 +104,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     region: attribution?.region,
     postalCode: attribution?.postalCode,
     countryCode: attribution?.countryCode,
+    externalId: attribution?.visitorId,
     eventTime: resolveEventTime(body.reservaTimestamp),
   })
 

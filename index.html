@@ -35,6 +35,43 @@
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
+
+    // ── IDs propios para mejorar la coincidencia de eventos con Meta ──
+    // Corre antes de que cargue el bundle; src/lib/visitorId.ts y
+    // src/lib/cookies.ts los leen desde window.* / la cookie.
+    (function () {
+      try {
+        var vid = localStorage.getItem('kz_vid');
+        if (!vid) {
+          vid = (self.crypto && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : ('v-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+          localStorage.setItem('kz_vid', vid);
+        }
+        window.__kunzeraVid = vid;
+      } catch (e) { /* modo privado: seguimos sin external_id */ }
+      try {
+        // _fbc a partir de ?fbclid=... cuando el pixel no la pudo crear
+        // (bloqueador de anuncios, Safari). Formato que espera Meta:
+        // fb.1.<timestamp>.<fbclid>. max-age = 90 días. Se (re)escribe sólo
+        // si no había _fbc o si el fbclid del link es otro — así no le
+        // cambiamos el timestamp a Meta en cada navegación de la misma
+        // visita, pero sí lo actualizamos si la persona vuelve por otro aviso.
+        var m = window.location.search.match(/[?&]fbclid=([^&]+)/);
+        if (m) {
+          var fbclid = decodeURIComponent(m[1]);
+          var existing = (document.cookie.match(/_fbc=([^;]*)/) || [])[1];
+          if (!existing || existing.split('.').pop() !== fbclid) {
+            var fbc = 'fb.1.' + Date.now() + '.' + fbclid;
+            document.cookie = '_fbc=' + fbc + ';path=/;max-age=7776000;samesite=lax';
+            window.__kunzeraFbc = fbc;
+          } else {
+            window.__kunzeraFbc = existing;
+          }
+        }
+      } catch (e) { /* noop */ }
+    })();
+
     // Este ID también vive server-side en netlify/functions/lib/metaPixelId.ts
     // (configurable por la env var META_PIXEL_ID, con este mismo valor como
     // fallback). Este archivo es HTML estático — no lee esa env var — así que

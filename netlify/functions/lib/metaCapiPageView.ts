@@ -16,6 +16,7 @@
 // completamente separado del de Purchase.
 import { getStore } from "@netlify/blobs"
 import { META_PIXEL_ID } from "./metaPixelId"
+import { sha256Hex } from "./metaUserData"
 
 const ALREADY_SENT_STORE = "capi-pageview-events-sent"
 const EVENT_SOURCE_URL = "https://kunzera.com/"
@@ -24,6 +25,10 @@ export type MetaCapiPageView = {
   eventId: string
   fbp?: string
   fbc?: string
+  // ID propio y estable del navegador (ver src/lib/visitorId.ts). Es lo
+  // único de este evento que Meta espera hasheado — deja unir la visita
+  // anónima con una compra posterior aunque se pierda la cookie del píxel.
+  externalId?: string
   clientIpAddress?: string
   clientUserAgent?: string
 }
@@ -48,6 +53,9 @@ export async function sendMetaPageViewEvent(params: MetaCapiPageView): Promise<M
   const userData: Record<string, string> = {}
   if (params.fbp) userData.fbp = params.fbp
   if (params.fbc) userData.fbc = params.fbc
+  if (params.externalId) {
+    userData.external_id = await sha256Hex(params.externalId.trim().toLowerCase())
+  }
   if (params.clientIpAddress) userData.client_ip_address = params.clientIpAddress
   if (params.clientUserAgent) userData.client_user_agent = params.clientUserAgent
 

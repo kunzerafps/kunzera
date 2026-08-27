@@ -29,6 +29,11 @@ export type AttributionData = {
   region?: string
   postalCode?: string
   countryCode?: string
+  // ID propio y estable del navegador (ver src/lib/visitorId.ts) — se guarda
+  // acá sin hashear; metaCapi.ts lo hashea antes de mandarlo como external_id
+  // en el evento de Compra. Deja que Meta una esa compra con la visita
+  // anónima previa (el PageView server-side manda el mismo id).
+  visitorId?: string
   capturedAt: number
 }
 

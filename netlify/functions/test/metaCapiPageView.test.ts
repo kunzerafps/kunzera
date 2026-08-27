@@ -47,6 +47,20 @@ describe("sendMetaPageViewEvent", () => {
     })
   })
 
+  it("hashea el external_id con SHA-256 (no viaja el id del navegador en texto plano)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPageViewEvent({ eventId: "pv-ext", externalId: "ABC-vid-123" })
+
+    async function ref(input: string) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input))
+      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("")
+    }
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.data[0].user_data.external_id).toBe(await ref("abc-vid-123"))
+  })
+
   it("no manda user_data vacío de más cuando no hay fbp/fbc", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))

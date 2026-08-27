@@ -48,6 +48,22 @@ describe("capture-attribution", () => {
     expect(data?.fbc).toBeUndefined()
   })
 
+  it("guarda el visitorId (id del navegador) tal cual, para usarlo como external_id en la Compra", async () => {
+    const ctx = { ip: "201.201.201.201" } as any
+    await captureHandler(req({ idempotencyKey: "attr-key-vid", visitorId: "vid-abc-123" }), ctx)
+
+    const data = await getAttribution("attr-key-vid")
+    expect(data?.visitorId).toBe("vid-abc-123")
+  })
+
+  it("no guarda visitorId cuando el cliente no manda uno", async () => {
+    const ctx = { ip: "201.201.201.201" } as any
+    await captureHandler(req({ idempotencyKey: "attr-key-no-vid" }), ctx)
+
+    const data = await getAttribution("attr-key-no-vid")
+    expect(data?.visitorId).toBeUndefined()
+  })
+
   it("una idempotencyKey inválida no se guarda", async () => {
     const ctx = { ip: "201.201.201.201" } as any
     await captureHandler(req({ idempotencyKey: "; drop table--" }), ctx)

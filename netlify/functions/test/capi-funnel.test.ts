@@ -1,0 +1,104 @@
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { fakeGetStore, resetBlobsMock } from "./helpers/blobsMock"
+import { installFetchMock, jsonResponse } from "./helpers/fetchMock"
+
+vi.mock("@netlify/blobs", () => ({ getStore: (name: string) => fakeGetStore(name) }))
+
+const { default: funnelHandler } = await import("../capi-funnel.mts")
+
+function req(body: Record<string, unknown>, userAgent = "Mozilla/5.0 Visitante") {
+  return new Request("https://kunzera.com/api/capi-funnel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "user-agent": userAgent },
+    body: JSON.stringify(body),
+  })
+}
+
+describe("capi-funnel", () => {
+  beforeEach(() => {
+    resetBlobsMock()
+    process.env.META_CAPI_ACCESS_TOKEN = "test-token"
+  })
+
+  it("manda a Meta el evento con la IP real del request (ctx.ip) y el user-agent", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "201.201.201.201" } as any
+
+    await funnelHandler(req({ eventId: "cf-lead-1", event: "Lead", whatsapp: "1123456789" }), ctx)
+
+    const userData = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].user_data
+    expect(userData.client_ip_address).toBe("201.201.201.201")
+    expect(userData.client_user_agent).toBe("Mozilla/5.0 Visitante")
+    expect(userData.ph[0]).toHaveLength(64)
+  })
+
+  it("acepta InitiateCheckout", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "1.2.3.4" } as any
+
+    await funnelHandler(req({ eventId: "cf-ic-1", event: "InitiateCheckout", value: 50000 }), ctx)
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.data[0].event_name).toBe("InitiateCheckout")
+    expect(body.data[0].custom_data.value).toBe(50000)
+  })
+
+  it("un event_name no permitido (ej. Purchase) no manda nada a Meta", async () => {
+    const fm = installFetchMock()
+    const ctx = { ip: "1.2.3.4" } as any
+
+    const res = await funnelHandler(req({ eventId: "cf-bad-evt", event: "Purchase", value: 999999 }), ctx)
+
+    expect(res.status).toBe(200)
+    expect(fm.calls.length).toBe(0)
+  })
+
+  it("un eventId inválido no manda nada a Meta", async () => {
+    const fm = installFetchMock()
+    const ctx = { ip: "1.2.3.4" } as any
+
+    const res = await funnelHandler(req({ eventId: "; drop table--", event: "Lead" }), ctx)
+
+    expect(res.status).toBe(200)
+    expect(fm.calls.length).toBe(0)
+  })
+
+  it("sin eventId o sin event no manda nada", async () => {
+    const fm = installFetchMock()
+    const ctx = { ip: "1.2.3.4" } as any
+
+    await funnelHandler(req({ event: "Lead" }), ctx)
+    await funnelHandler(req({ eventId: "cf-missing" }), ctx)
+
+    expect(fm.calls.length).toBe(0)
+  })
+
+  it("respeta el límite de requests por IP", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "9.9.9.9" } as any
+
+    for (let i = 0; i < 40; i++) {
+      await funnelHandler(req({ eventId: `cf-rl-${i}`, event: "Lead" }), ctx)
+    }
+    const callsAfterLimit = fm.calls.length
+    await funnelHandler(req({ eventId: "cf-rl-extra", event: "Lead" }), ctx)
+
+    expect(fm.calls.length).toBe(callsAfterLimit)
+  })
+
+  it("un método distinto de POST no hace nada", async () => {
+    const fm = installFetchMock()
+    const ctx = { ip: "1.2.3.4" } as any
+
+    const res = await funnelHandler(
+      new Request("https://kunzera.com/api/capi-funnel", { method: "GET" }),
+      ctx,
+    )
+
+    expect(res.status).toBe(200)
+    expect(fm.calls.length).toBe(0)
+  })
+})

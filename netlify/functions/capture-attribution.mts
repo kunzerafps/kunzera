@@ -18,6 +18,7 @@ type Body = {
   idempotencyKey?: string
   fbp?: string
   fbc?: string
+  visitorId?: string
   utm_source?: string
   utm_medium?: string
   utm_campaign?: string
@@ -57,6 +58,10 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     await saveAttribution(body.idempotencyKey, {
       fbp: typeof body.fbp === "string" && body.fbp ? body.fbp : undefined,
       fbc: typeof body.fbc === "string" && body.fbc ? body.fbc : undefined,
+      visitorId:
+        typeof body.visitorId === "string" && body.visitorId
+          ? body.visitorId.slice(0, 200)
+          : undefined,
       // ctx.ip es la IP que Netlify ya resolvió en el edge — a diferencia de
       // un header tipo x-forwarded-for, quien hace el request no la puede
       // falsificar.

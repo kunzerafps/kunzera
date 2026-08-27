@@ -8,7 +8,7 @@ import PaymentStep from "./PaymentStep"
 import FileUploader from "./FileUploader"
 import { normalizeWhatsapp, validateDiscord, validateName, validateWhatsapp } from "../../lib/validators"
 import { useTakenSlots } from "../../hooks/useTakenSlots"
-import { trackPixelEvent } from "../../lib/pixel"
+import { trackPixelEvent, trackServerBackedEvent } from "../../lib/pixel"
 
 type Props = {
   ctx: FlowContext
@@ -56,8 +56,16 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
           onSubmit={(v) => {
             const err = validateWhatsapp(v)
             if (err) return err
-            trackPixelEvent("Lead", { content_name: ctx.draft.pack || "unknown" })
-            dispatch({ type: "SET_WHATSAPP", value: normalizeWhatsapp(v) })
+            const whatsapp = normalizeWhatsapp(v)
+            // Lead: la señal más fuerte de "interés real" del embudo. Se
+            // manda por el píxel Y por el servidor (con teléfono/nombre
+            // hasheados, que ya tenemos acá) — ver trackServerBackedEvent.
+            trackServerBackedEvent(
+              "Lead",
+              { whatsapp, nombre: ctx.draft.nombre },
+              { content_name: ctx.draft.pack || "unknown" },
+            )
+            dispatch({ type: "SET_WHATSAPP", value: whatsapp })
             return null
           }}
         />

@@ -229,6 +229,7 @@ async function sendMercadoPagoCapiEvent(
     region: attribution?.region,
     postalCode: attribution?.postalCode,
     countryCode: attribution?.countryCode,
+    externalId: attribution?.visitorId,
   })
   if (!result.ok) {
     console.error("[mp-webhook] error mandando evento a Meta:", result.error)

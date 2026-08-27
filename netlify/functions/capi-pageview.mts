@@ -10,6 +10,7 @@ type Body = {
   eventId?: string
   fbp?: string
   fbc?: string
+  externalId?: string
 }
 
 // Respaldo server-side del PageView del navegador (ver useServerPageView.ts
@@ -41,6 +42,10 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       eventId: body.eventId,
       fbp: typeof body.fbp === "string" && body.fbp ? body.fbp : undefined,
       fbc: typeof body.fbc === "string" && body.fbc ? body.fbc : undefined,
+      externalId:
+        typeof body.externalId === "string" && body.externalId
+          ? body.externalId.slice(0, 200)
+          : undefined,
       clientIpAddress: ctx.ip || undefined,
       clientUserAgent: req.headers.get("user-agent") || undefined,
     })

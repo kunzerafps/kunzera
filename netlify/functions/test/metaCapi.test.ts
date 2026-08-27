@@ -168,6 +168,37 @@ describe("sendMetaPurchaseEvent", () => {
     expect(body.data[0].user_data.fbc).toBeUndefined()
   })
 
+  it("hashea el external_id (id del navegador) con SHA-256 en user_data.external_id", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-ext-id",
+      source: "mercadopago",
+      actionSource: "website",
+      value: 70000,
+      externalId: "Visitor-XYZ-1",
+    })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.data[0].user_data.external_id[0]).toBe(await sha256HexNode("visitor-xyz-1"))
+  })
+
+  it("no manda external_id cuando no se lo pasan", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-no-ext",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+    })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.data[0].user_data.external_id).toBeUndefined()
+  })
+
   it("manda value y currency correctos", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
