@@ -6,6 +6,7 @@ vi.mock("@netlify/blobs", () => ({ getStore: (name: string) => fakeGetStore(name
 
 const { createSessionToken } = await import("../lib/adminSession")
 const { default: ventaManualHandler } = await import("../capi-venta-manual.mts")
+const { listManualSales } = await import("../lib/manualSalesStore")
 
 const FAKE_CTX = { ip: "200.1.2.3" } as any
 
@@ -16,6 +17,21 @@ function daysAgoISO(days: number): string {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
+// Body base con un email válido — el email es obligatorio desde que se
+// agregó para reforzar el match con Meta.
+function base(extra: Record<string, unknown> = {}) {
+  return {
+    token: TOKEN,
+    nombre: "Cliente",
+    whatsapp: "1155554444",
+    email: "cliente@mail.com",
+    monto: 50000,
+    ...extra,
+  }
+}
+
+let TOKEN: string
+
 function req(body: Record<string, unknown>) {
   return new Request("https://kunzera.com/api/capi-venta-manual", {
     method: "POST",
@@ -25,48 +41,53 @@ function req(body: Record<string, unknown>) {
 }
 
 describe("capi-venta-manual (ventas offline por WhatsApp)", () => {
-  let token: string
-
   beforeEach(() => {
     resetBlobsMock()
     process.env.ADMIN_SESSION_SECRET = "test-admin-secret"
     process.env.META_CAPI_ACCESS_TOKEN = "test-meta-token"
     delete process.env.MP_DISCORD_WEBHOOK_URL
-    token = createSessionToken()!
+    TOKEN = createSessionToken()!
   })
 
   it("dos compras distintas del mismo cliente y mismo monto, en días distintos, SÍ se registran por separado", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
 
-    const base = { token, nombre: "Cliente Recurrente", whatsapp: "1155554444", monto: 50000 }
-    await ventaManualHandler(req({ ...base, fecha: daysAgoISO(2) }), FAKE_CTX)
-    await ventaManualHandler(req({ ...base, fecha: daysAgoISO(1) }), FAKE_CTX)
+    const b = { ...base(), nombre: "Cliente Recurrente" }
+    await ventaManualHandler(req({ ...b, fecha: daysAgoISO(2) }), FAKE_CTX)
+    await ventaManualHandler(req({ ...b, fecha: daysAgoISO(1) }), FAKE_CTX)
 
     expect(fm.callsTo("graph.facebook.com")).toHaveLength(2)
     const [first, second] = fm.callsTo("graph.facebook.com")
     const firstId = JSON.parse(String(first.init?.body)).data[0].event_id
     const secondId = JSON.parse(String(second.init?.body)).data[0].event_id
     expect(firstId).not.toBe(secondId)
+
+    const ventas = await listManualSales()
+    expect(ventas).toHaveLength(2)
   })
 
   it("la misma carga (mismo teléfono+monto+día) mandada dos veces por error no duplica la venta", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
 
-    const body = { token, nombre: "Cliente", whatsapp: "1155554444", monto: 50000, fecha: daysAgoISO(1) }
-    await ventaManualHandler(req(body), FAKE_CTX)
-    await ventaManualHandler(req(body), FAKE_CTX) // carga duplicada por error
+    const body = base({ fecha: daysAgoISO(1) })
+    const r1 = await ventaManualHandler(req(body), FAKE_CTX)
+    const r2 = await ventaManualHandler(req(body), FAKE_CTX) // carga duplicada por error
 
     expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
+    const d1 = await r1.json()
+    const d2 = await r2.json()
+    expect(d2.duplicate).toBe(true)
+    expect(d2.id).toBe(d1.id)
+
+    const ventas = await listManualSales()
+    expect(ventas).toHaveLength(1)
   })
 
   it("rechaza una fecha futura", async () => {
     const mañana = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const res = await ventaManualHandler(
-      req({ token, nombre: "Cliente", whatsapp: "1155554444", monto: 50000, fecha: mañana }),
-      FAKE_CTX,
-    )
+    const res = await ventaManualHandler(req(base({ fecha: mañana })), FAKE_CTX)
     const data = await res.json()
     expect(data.ok).toBe(false)
     expect(data.error).toBe("fecha_futura")
@@ -74,10 +95,7 @@ describe("capi-venta-manual (ventas offline por WhatsApp)", () => {
 
   it("rechaza una fecha de más de 7 días atrás", async () => {
     const hace10dias = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const res = await ventaManualHandler(
-      req({ token, nombre: "Cliente", whatsapp: "1155554444", monto: 50000, fecha: hace10dias }),
-      FAKE_CTX,
-    )
+    const res = await ventaManualHandler(req(base({ fecha: hace10dias })), FAKE_CTX)
     const data = await res.json()
     expect(data.ok).toBe(false)
     expect(data.error).toBe("fecha_muy_vieja")
@@ -87,30 +105,86 @@ describe("capi-venta-manual (ventas offline por WhatsApp)", () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
 
-    const res = await ventaManualHandler(
-      req({ token, nombre: "Cliente", whatsapp: "   ", monto: 50000 }),
-      FAKE_CTX,
-    )
+    const res = await ventaManualHandler(req(base({ whatsapp: "   " })), FAKE_CTX)
     const data = await res.json()
     expect(data.ok).toBe(false)
     expect(fm.callsTo("graph.facebook.com")).toHaveLength(0)
   })
 
+  it("rechaza si falta el email, antes de mandar nada a Meta", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    const { email: _omit, ...sinEmail } = base()
+    const res = await ventaManualHandler(req(sinEmail), FAKE_CTX)
+    const data = await res.json()
+    expect(data.ok).toBe(false)
+    expect(data.error).toBe("email_invalido")
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(0)
+  })
+
+  it("rechaza un email con formato inválido", async () => {
+    const res = await ventaManualHandler(req(base({ email: "no-es-un-email" })), FAKE_CTX)
+    const data = await res.json()
+    expect(data.ok).toBe(false)
+    expect(data.error).toBe("email_invalido")
+  })
+
+  it("manda el email hasheado (em) y el país (ar) a Meta", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await ventaManualHandler(req(base({ email: "  Test.Cliente@GMAIL.com " })), FAKE_CTX)
+
+    const sent = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    const userData = sent.data[0].user_data
+    // hash SHA-256 hex del email ya normalizado (minúsculas + trim)
+    const expected = await sha256HexNode("test.cliente@gmail.com")
+    expect(userData.em[0]).toBe(expected)
+    expect(userData.em[0]).not.toContain("gmail")
+    expect(userData.country[0]).toBe(await sha256HexNode("ar"))
+  })
+
+  it("guarda la venta en el registro con un ID legible KZM-...", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    const res = await ventaManualHandler(req(base({ fecha: daysAgoISO(1), campania: "Reel PC lenta" })), FAKE_CTX)
+    const data = await res.json()
+    expect(data.ok).toBe(true)
+    expect(data.metaStatus).toBe("ok")
+    expect(data.id).toMatch(/^KZM-\d{6}-[A-HJ-NP-Z2-9]{4}$/)
+
+    const [venta] = await listManualSales()
+    expect(venta.id).toBe(data.id)
+    expect(venta.email).toBe("cliente@mail.com")
+    expect(venta.campania).toBe("Reel PC lenta")
+    expect(venta.metaStatus).toBe("ok")
+  })
+
+  it("si Meta falla, la venta igual queda registrada como pendiente", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({ error: "meta caido" }, 500))
+
+    const res = await ventaManualHandler(req(base({ fecha: daysAgoISO(1) })), FAKE_CTX)
+    const data = await res.json()
+    expect(data.ok).toBe(true)
+    expect(data.metaStatus).toBe("error")
+    expect(data.id).toMatch(/^KZM-/)
+
+    const [venta] = await listManualSales()
+    expect(venta.metaStatus).toBe("error")
+    expect(venta.metaError).toBeTruthy()
+  })
+
   it("event_time nunca queda en el futuro al cargar una venta de 'hoy' antes del mediodía Argentina (bug real encontrado probando en vivo)", async () => {
-    // Simula las 8:00 UTC (5:00 de la mañana en Argentina, UTC-3) de un día
-    // fijo — antes de las 15:00 UTC que usa el cálculo de "mediodía
-    // Argentina". Meta rechazó exactamente este caso en una prueba real:
-    // "La marca de tiempo del evento es posterior a la actual".
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-08-05T08:00:00Z"))
     try {
       const fm = installFetchMock()
       fm.on("graph.facebook.com", () => jsonResponse({}))
 
-      await ventaManualHandler(
-        req({ token, nombre: "Cliente", whatsapp: "1155554444", monto: 50000, fecha: "2026-08-05" }),
-        FAKE_CTX,
-      )
+      await ventaManualHandler(req(base({ fecha: "2026-08-05" })), FAKE_CTX)
 
       const sentBody = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
       const nowSeconds = Math.floor(Date.now() / 1000)
@@ -124,12 +198,19 @@ describe("capi-venta-manual (ventas offline por WhatsApp)", () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
 
-    await ventaManualHandler(
-      req({ token, nombre: "Cliente", whatsapp: "1155554444", monto: 50000 }),
-      FAKE_CTX,
-    )
+    await ventaManualHandler(req(base()), FAKE_CTX)
 
     const sentBody = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
     expect(sentBody.data[0].action_source).toBe("business_messaging")
   })
 })
+
+// Cálculo independiente del hash (mismo algoritmo, recalculado a mano) para
+// no "probar la función contra sí misma".
+async function sha256HexNode(input: string): Promise<string> {
+  const enc = new TextEncoder().encode(input)
+  const buf = await crypto.subtle.digest("SHA-256", enc)
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+}

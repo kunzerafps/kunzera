@@ -75,6 +75,13 @@ export type MetaCapiPurchase = {
   contentName?: string
   whatsapp?: string
   nombre?: string
+  // Email del comprador. Meta lo espera hasheado (SHA-256) como `em`, pero
+  // ANTES de hashear pide normalizarlo: minúsculas y sin espacios al borde
+  // (spec de Advanced Matching). A diferencia de fn/ln NO se le sacan
+  // acentos — un email es ASCII y "normalizar de más" solo rompería el
+  // match. Es la señal que más sube la calidad de coincidencia en ventas
+  // por WhatsApp, donde no hay cookie de navegador (fbc/fbp) para aportar.
+  email?: string
   // Contexto del comprador capturado en el momento de la reserva (ver
   // lib/attribution.ts) — NUNCA se hashean (a diferencia de teléfono/
   // nombre/email). fbc solo debe venir seteado si existía un fbclid/cookie
@@ -168,6 +175,10 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
     const userData: Record<string, string[]> = {}
     if (params.whatsapp) {
       userData.ph = [await sha256Hex(normalizePhoneForHash(params.whatsapp))]
+    }
+    if (params.email) {
+      // minúsculas + trim antes de hashear (ver comentario en el tipo).
+      userData.em = [await sha256Hex(params.email.trim().toLowerCase())]
     }
     if (params.nombre) {
       // La última palabra es el apellido, todo lo anterior es el nombre —

@@ -3,17 +3,31 @@ import { verifySessionToken } from "./lib/adminSession"
 import { sendMetaPurchaseEvent, normalizePhoneForHash, MAX_EVENT_AGE_DAYS } from "./lib/metaCapi"
 import { notifyDiscord } from "./lib/discordAlert"
 import { isRateLimited } from "./lib/rateLimit"
+import {
+  generateManualSaleId,
+  getManualSaleByEvent,
+  saveManualSale,
+  type ManualSale,
+} from "./lib/manualSalesStore"
 
 type Body = {
   token?: string
   nombre?: string
   whatsapp?: string
+  email?: string
   monto?: number | string
   pack?: string
+  // De qué campaña/anuncio vino (lo que el admin ve en WhatsApp Business).
+  // Opcional, texto libre.
+  campania?: string
   fecha?: string // YYYY-MM-DD, opcional — default hoy (hora Argentina)
 }
 
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/
+// Validación deliberadamente laxa: exige "algo@algo.algo" sin espacios y
+// nada más. No es tarea de este endpoint decidir si un dominio existe; sí
+// evita mandar a Meta un `em` que claramente no es un email.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const RATE_LIMIT_MAX = 30
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 
@@ -81,6 +95,15 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     return Response.json({ ok: false, error: "missing_field" }, { status: 400 })
   }
 
+  // El email es obligatorio: es la señal que más sube la calidad de
+  // coincidencia con Meta en ventas por WhatsApp (no hay cookie de navegador
+  // que aporte). Si en algún caso puntual el cliente no lo da, se afloja
+  // esto a opcional en una línea — hoy se pide siempre a propósito.
+  const email = (body.email || "").trim().toLowerCase()
+  if (!EMAIL_RE.test(email)) {
+    return Response.json({ ok: false, error: "email_invalido" }, { status: 400 })
+  }
+
   const fecha = body.fecha && FECHA_RE.test(body.fecha) ? body.fecha : todayInArgentina()
   // FECHA_RE solo valida la FORMA (4 dígitos-2 dígitos-2 dígitos) — algo
   // como "2026-13-45" la pasa igual pero no es una fecha real.
@@ -108,6 +131,22 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   const eventTime = Math.min(eventTimeMidday, Math.floor(Date.now() / 1000))
   const eventId = await offlineEventId(body.whatsapp!, monto, fecha)
 
+  // Si esta misma venta (mismo teléfono+monto+fecha) ya se cargó, no se crea
+  // una segunda fila ni se vuelve a llamar a Meta: se devuelve la que ya
+  // existe. Un envío fallido NO se reintenta por acá — para eso está el
+  // botón "Reintentar Meta" de la lista, que es una acción explícita.
+  const yaCargada = await getManualSaleByEvent(eventId)
+  if (yaCargada) {
+    return Response.json({
+      ok: true,
+      id: yaCargada.id,
+      metaStatus: yaCargada.metaStatus,
+      metaError: yaCargada.metaError,
+      duplicate: true,
+    })
+  }
+
+  const nombre = body.nombre!.trim()
   const result = await sendMetaPurchaseEvent({
     eventId,
     source: "venta_manual",
@@ -115,20 +154,60 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     value: monto,
     contentName: body.pack,
     whatsapp: body.whatsapp,
-    nombre: body.nombre,
+    nombre,
+    email,
+    // Todos los clientes son de Argentina — mandar el país es match gratis
+    // que hasta ahora no se aprovechaba en las ventas manuales.
+    countryCode: "ar",
     eventTime,
     saleDate: fecha,
   })
 
   if (!result.ok) {
-    console.error("[capi-venta-manual] error mandando evento a Meta:", result.error)
+    console.error("[capi-venta-manual] error avisando la venta a Meta:", result.error)
     await notifyDiscord(
       `capi-manual-${eventId}`,
-      `⚠️ **No se pudo cargar una venta manual a Meta** (${body.nombre}, $${monto})\n${result.error}`,
+      `⚠️ **No se pudo avisar una venta manual a Meta** (${nombre}, $${monto})\nQuedó registrada — reintentá desde el panel.\n${result.error}`,
     )
   }
 
-  return Response.json(result)
+  const sale: ManualSale = {
+    id: generateManualSaleId(fecha),
+    createdAt: Date.now(),
+    saleDate: fecha,
+    nombre,
+    whatsapp: body.whatsapp!.trim(),
+    email,
+    monto,
+    pack: body.pack?.trim() || undefined,
+    campania: body.campania?.trim() || undefined,
+    metaEventId: eventId,
+    metaStatus: result.ok ? "ok" : "error",
+    metaError: result.ok ? undefined : result.error,
+  }
+
+  try {
+    await saveManualSale(sale)
+  } catch (err) {
+    // La venta ya se avisó a Meta (o se intentó) pero no quedó en el
+    // registro local — se avisa para poder recargarla a mano.
+    console.error("[capi-venta-manual] no se pudo guardar la venta en el registro:", err)
+    await notifyDiscord(
+      `venta-manual-store-${eventId}`,
+      `⚠️ **Venta avisada a Meta pero NO guardada en el registro** (${nombre}, $${monto}). Revisar el store "ventas-manuales".`,
+    )
+    return Response.json(
+      { ok: false, error: "no_se_guardo", metaStatus: sale.metaStatus },
+      { status: 500 },
+    )
+  }
+
+  return Response.json({
+    ok: true,
+    id: sale.id,
+    metaStatus: sale.metaStatus,
+    metaError: sale.metaError,
+  })
 }
 
 export const config: Config = {

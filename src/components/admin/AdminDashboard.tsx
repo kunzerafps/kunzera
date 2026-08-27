@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   BarChart3,
   CalendarDays,
+  ListChecks,
   LogOut,
   MessageCircleHeart,
   RefreshCw,
@@ -21,8 +22,9 @@ import DayDetailModal from "./DayDetailModal"
 import ErrorBoundary from "./ErrorBoundary"
 import WaMessagesEditor from "./WaMessagesEditor"
 import ManualSaleModal from "./ManualSaleModal"
+import ManualSalesList from "./ManualSalesList"
 
-type Tab = "dashboard" | "turnos" | "config"
+type Tab = "dashboard" | "turnos" | "ventasWa" | "config"
 
 type Props = {
   onLogout: () => void
@@ -38,6 +40,9 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
   const [returnToDay, setReturnToDay] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("dashboard")
   const [manualSaleOpen, setManualSaleOpen] = useState(false)
+  // Se incrementa tras cargar una venta manual — fuerza a ManualSalesList a
+  // recargar sin tener que refrescar toda la página.
+  const [manualSalesRefresh, setManualSalesRefresh] = useState(0)
 
   const load = async () => {
     setLoading(true)
@@ -133,6 +138,12 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
             badge={orders.length > 0 ? orders.length : undefined}
           />
           <TabButton
+            active={tab === "ventasWa"}
+            onClick={() => setTab("ventasWa")}
+            icon={<ListChecks className="w-4 h-4" />}
+            label="Ventas WA"
+          />
+          <TabButton
             active={tab === "config"}
             onClick={() => setTab("config")}
             icon={<Settings className="w-4 h-4" />}
@@ -165,6 +176,17 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
             transition={{ duration: 0.2 }}
           >
             <CalendarView orders={orders} onSelectDay={setSelectedDay} />
+          </motion.div>
+        )}
+
+        {tab === "ventasWa" && (
+          <motion.div
+            key="ventasWa"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ManualSalesList refreshKey={manualSalesRefresh} />
           </motion.div>
         )}
 
@@ -220,7 +242,11 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
         />
       </ErrorBoundary>
 
-      <ManualSaleModal open={manualSaleOpen} onClose={() => setManualSaleOpen(false)} />
+      <ManualSaleModal
+        open={manualSaleOpen}
+        onClose={() => setManualSaleOpen(false)}
+        onSaved={() => setManualSalesRefresh((n) => n + 1)}
+      />
     </motion.div>
   )
 }

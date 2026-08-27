@@ -199,6 +199,55 @@ describe("sendMetaPurchaseEvent", () => {
     expect(body.data[0].user_data.external_id).toBeUndefined()
   })
 
+  it("hashea el email (em) en minúsculas y sin espacios al borde", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-email-1",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+      email: "  Juan.Perez@GMAIL.com ",
+    })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    const userData = body.data[0].user_data
+    expect(userData.em[0]).toBe(await sha256HexNode("juan.perez@gmail.com"))
+    expect(userData.em[0]).not.toContain("gmail") // no viaja en texto plano
+  })
+
+  it("no manda em cuando no se pasa email", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-no-email",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+    })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.data[0].user_data.em).toBeUndefined()
+  })
+
+  it("hashea el país (country) cuando se lo pasan", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-country-1",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+      countryCode: "AR",
+    })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.data[0].user_data.country[0]).toBe(await sha256HexNode("ar"))
+  })
+
   it("manda value y currency correctos", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
