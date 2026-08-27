@@ -49,6 +49,7 @@ describe("sendMetaPurchaseEvent", () => {
   beforeEach(() => {
     resetBlobsMock()
     process.env.META_CAPI_ACCESS_TOKEN = "test-token"
+    delete process.env.META_CAPI_TEST_EVENT_CODE
   })
 
   it("hashea teléfono y nombre con SHA-256 (no manda texto plano)", async () => {
@@ -230,6 +231,30 @@ describe("sendMetaPurchaseEvent", () => {
 
     const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
     expect(body.data[0].user_data.em).toBeUndefined()
+  })
+
+  it("agrega test_event_code al body solo cuando META_CAPI_TEST_EVENT_CODE está seteado", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-no-test-code",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+    })
+    expect(JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).test_event_code).toBeUndefined()
+
+    fm.reset()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    process.env.META_CAPI_TEST_EVENT_CODE = "TEST12345"
+    await sendMetaPurchaseEvent({
+      eventId: "evt-with-test-code",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+    })
+    expect(JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).test_event_code).toBe("TEST12345")
   })
 
   it("hashea el país (country) cuando se lo pasan", async () => {

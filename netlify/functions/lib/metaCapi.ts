@@ -231,6 +231,16 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            // Si está seteado META_CAPI_TEST_EVENT_CODE, TODOS los eventos de
+            // este deploy caen en la pestaña "Eventos de prueba" de Meta: no
+            // se cuentan como conversión, no se atribuyen a ninguna campaña y
+            // no ensucian el aprendizaje. Se usa SOLO en el deploy de prueba
+            // (la variable está atada al contexto deploy-preview, nunca a
+            // producción), para poder cargar ventas de prueba de punta a
+            // punta contra el Meta real sin impacto.
+            ...(process.env.META_CAPI_TEST_EVENT_CODE
+              ? { test_event_code: process.env.META_CAPI_TEST_EVENT_CODE }
+              : {}),
             data: [
               {
                 event_name: "Purchase",
