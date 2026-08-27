@@ -123,7 +123,7 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-white/10 w-fit">
+        <div className="mb-6 flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-white/10 w-fit max-w-full overflow-x-auto">
           <TabButton
             active={tab === "dashboard"}
             onClick={() => setTab("dashboard")}

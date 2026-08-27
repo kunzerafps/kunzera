@@ -135,4 +135,73 @@ describe("capi-venta-manual-update", () => {
     )
     expect(res.status).toBe(404)
   })
+
+  it("no deja reintentar el aviso a Meta de una venta cancelada", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({ error: "meta caido" }, 500))
+    await cargarVenta() // queda en metaStatus "error"
+    const [v] = await listManualSales()
+    await updateHandler(updateReq({ token: TOKEN, eventId: v.metaEventId, action: "cancel" }), FAKE_CTX)
+
+    fm.reset()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const res = await updateHandler(
+      updateReq({ token: TOKEN, eventId: v.metaEventId, action: "retry-meta" }),
+      FAKE_CTX,
+    )
+    const data = await res.json()
+    expect(res.status).toBe(409)
+    expect(data.error).toBe("venta_cancelada")
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(0)
+  })
+
+  it("reintentar una venta que ya está en ok es un noop (no re-llama a Meta)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    await cargarVenta() // metaStatus "ok"
+    const [v] = await listManualSales()
+
+    fm.reset()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const res = await updateHandler(
+      updateReq({ token: TOKEN, eventId: v.metaEventId, action: "retry-meta" }),
+      FAKE_CTX,
+    )
+    const data = await res.json()
+    expect(data.ok).toBe(true)
+    expect(data.noop).toBe(true)
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(0)
+  })
+
+  it("si el reintento a Meta vuelve a fallar: 502 y el error queda actualizado en el registro", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({ error: "sigue caido" }, 500))
+    await cargarVenta()
+    const [v] = await listManualSales()
+
+    const res = await updateHandler(
+      updateReq({ token: TOKEN, eventId: v.metaEventId, action: "retry-meta" }),
+      FAKE_CTX,
+    )
+    expect(res.status).toBe(502)
+    const [after] = await listManualSales()
+    expect(after.metaStatus).toBe("error")
+    expect(after.metaError).toBeTruthy()
+  })
+
+  it("rechaza una acción desconocida y un eventId ausente", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    await cargarVenta()
+    const [v] = await listManualSales()
+
+    const bad1 = await updateHandler(
+      updateReq({ token: TOKEN, eventId: v.metaEventId, action: "explotar" as any }),
+      FAKE_CTX,
+    )
+    expect((await bad1.json()).error).toBe("accion_invalida")
+
+    const bad2 = await updateHandler(updateReq({ token: TOKEN, action: "cancel" }), FAKE_CTX)
+    expect((await bad2.json()).error).toBe("missing_event_id")
+  })
 })

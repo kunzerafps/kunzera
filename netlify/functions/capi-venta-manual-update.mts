@@ -71,6 +71,11 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   }
 
   if (body.action === "retry-meta") {
+    if (venta.canceled) {
+      // La venta está marcada como caída — no tiene sentido (y es
+      // contradictorio) empujarla a Meta como compra. Reactivar primero.
+      return Response.json({ ok: false, error: "venta_cancelada" }, { status: 409 })
+    }
     if (venta.metaStatus === "ok") {
       // Ya está enviada — no se reintenta (Meta la deduplicaría igual, pero
       // no tiene sentido gastar la llamada ni confundir el estado).
@@ -79,13 +84,17 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
 
     // La ventana de 7 días de Meta se mide contra HOY, no contra cuándo se
     // cargó: una venta que quedó en "error" hace más de una semana ya no se
-    // puede reintentar.
+    // puede reintentar. Chequeo de día entero primero (barato) y después el
+    // fino sobre el event_time real (mismo criterio que capi-venta-manual.mts).
     if (venta.saleDate < daysAgoInArgentina(MAX_EVENT_AGE_DAYS)) {
       return Response.json({ ok: false, error: "fecha_muy_vieja" }, { status: 400 })
     }
 
     const eventTimeMidday = Math.floor(new Date(`${venta.saleDate}T15:00:00Z`).getTime() / 1000)
     const eventTime = Math.min(eventTimeMidday, Math.floor(Date.now() / 1000))
+    if (eventTime < Math.floor(Date.now() / 1000) - MAX_EVENT_AGE_DAYS * 24 * 60 * 60) {
+      return Response.json({ ok: false, error: "fecha_muy_vieja" }, { status: 400 })
+    }
 
     const result = await sendMetaPurchaseEvent({
       eventId: venta.metaEventId,

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { fakeGetStore, resetBlobsMock } from "./helpers/blobsMock"
+import { fakeGetStore, resetBlobsMock, setStoreWritesFail } from "./helpers/blobsMock"
 import { installFetchMock, jsonResponse } from "./helpers/fetchMock"
 
 vi.mock("@netlify/blobs", () => ({ getStore: (name: string) => fakeGetStore(name) }))
@@ -202,6 +202,96 @@ describe("capi-venta-manual (ventas offline por WhatsApp)", () => {
 
     const sentBody = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
     expect(sentBody.data[0].action_source).toBe("business_messaging")
+  })
+
+  it("NO le saca los acentos al email antes de hashear (a diferencia de nombre/apellido)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await ventaManualHandler(req(base({ email: "José.Núñez@Gmail.com" })), FAKE_CTX)
+
+    const userData = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].user_data
+    expect(userData.em[0]).toBe(await sha256HexNode("josé.núñez@gmail.com"))
+  })
+
+  it("si el registro no se puede guardar, devuelve 500 no_se_guardo y no persiste nada", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    setStoreWritesFail("ventas-manuales")
+
+    const res = await ventaManualHandler(req(base({ fecha: daysAgoISO(1) })), FAKE_CTX)
+    const data = await res.json()
+    expect(res.status).toBe(500)
+    expect(data.ok).toBe(false)
+    expect(data.error).toBe("no_se_guardo")
+    expect(data.metaStatus).toBe("ok") // Meta sí recibió el evento
+
+    setStoreWritesFail("ventas-manuales", false)
+    expect(await listManualSales()).toHaveLength(0)
+  })
+
+  it("tras un no_se_guardo, recargar la venta la persiste sin re-mandarla a Meta", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const body = base({ fecha: daysAgoISO(1) })
+
+    setStoreWritesFail("ventas-manuales")
+    await ventaManualHandler(req(body), FAKE_CTX) // 500, Meta ya recibió
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
+
+    setStoreWritesFail("ventas-manuales", false)
+    const res = await ventaManualHandler(req(body), FAKE_CTX)
+    const data = await res.json()
+    expect(data.ok).toBe(true)
+    // metaCapi deduplica por su propio marcador: no se vuelve a llamar a Meta.
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
+    expect(await listManualSales()).toHaveLength(1)
+  })
+
+  it("recargar una venta cuyo primer intento a Meta falló devuelve duplicate sin re-llamar a Meta", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({ error: "meta caido" }, 500))
+    const body = base({ fecha: daysAgoISO(1) })
+
+    const r1 = await ventaManualHandler(req(body), FAKE_CTX)
+    const d1 = await r1.json()
+    expect(d1.metaStatus).toBe("error")
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
+
+    const r2 = await ventaManualHandler(req(body), FAKE_CTX)
+    const d2 = await r2.json()
+    expect(d2.duplicate).toBe(true)
+    expect(d2.metaStatus).toBe("error")
+    expect(d2.id).toBe(d1.id)
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(1) // no re-intentó por acá
+  })
+
+  it("rechaza una venta fechada 7 días atrás cargada por la tarde (event_time > 168h aunque la fecha 'entre')", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-08-27T18:00:00Z")) // 15:00 hora Argentina
+    try {
+      const freshToken = createSessionToken()!
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+
+      const res = await ventaManualHandler(
+        req({
+          token: freshToken,
+          nombre: "Cliente",
+          whatsapp: "1155554444",
+          email: "cliente@mail.com",
+          monto: 50000,
+          fecha: "2026-08-20", // exactamente 7 días antes
+        }),
+        FAKE_CTX,
+      )
+      const data = await res.json()
+      expect(data.ok).toBe(false)
+      expect(data.error).toBe("fecha_muy_vieja")
+      expect(fm.callsTo("graph.facebook.com")).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

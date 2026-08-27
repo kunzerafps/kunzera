@@ -125,7 +125,7 @@ export default function ManualSaleModal({ open, onClose, onSaved }: Props) {
           fecha_muy_vieja: "La fecha no puede ser de hace más de 7 días — Meta rechaza eventos más viejos",
           rate_limited: "Demasiadas cargas en poco tiempo, esperá un momento",
           no_se_guardo:
-            "El aviso a Meta salió, pero la venta no se pudo guardar en el registro. Avisá que lo revisen.",
+            "La venta no se pudo guardar en el registro (el aviso a Meta puede haber salido igual). Volvé a cargarla y avisá que lo revisen.",
         }
         setError(
           (data.error && mensajes[data.error]) ||
@@ -197,9 +197,9 @@ export default function ManualSaleModal({ open, onClose, onSaved }: Props) {
                       <>
                         <AlertTriangle className="w-10 h-10 text-amber-400" />
                         <p className="text-white/80 text-sm">
-                          Venta <span className="text-white">registrada</span>, pero el aviso a Meta
-                          falló. Reintentá desde <span className="text-white">“Ventas WA”</span> en el
-                          panel.
+                          {saved.duplicate ? "Esta venta ya estaba cargada. " : "Venta "}
+                          <span className="text-white">registrada</span>, pero el aviso a Meta falló.
+                          Reintentá desde <span className="text-white">“Ventas WA”</span> en el panel.
                         </p>
                       </>
                     )}

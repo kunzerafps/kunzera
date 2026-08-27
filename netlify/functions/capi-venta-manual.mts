@@ -129,6 +129,17 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   // la actual"). Nunca se manda más adelante que "ahora mismo".
   const eventTimeMidday = Math.floor(new Date(`${fecha}T15:00:00Z`).getTime() / 1000)
   const eventTime = Math.min(eventTimeMidday, Math.floor(Date.now() / 1000))
+
+  // La comprobación de "fecha_muy_vieja" de arriba es de día entero, pero la
+  // ventana real de Meta son ~7×24h medidos en segundos. Una venta fechada
+  // justo 7 días atrás pero cargada a la tarde tiene un event_time de más de
+  // 168h y Meta rechaza el lote entero — y el reintento después queda
+  // trabado igual. Este chequeo fino sobre el event_time real cierra ese
+  // borde (sin rechear de más: una venta de 6 días cargada a la mañana pasa).
+  if (eventTime < Math.floor(Date.now() / 1000) - MAX_EVENT_AGE_DAYS * 24 * 60 * 60) {
+    return Response.json({ ok: false, error: "fecha_muy_vieja" }, { status: 400 })
+  }
+
   const eventId = await offlineEventId(body.whatsapp!, monto, fecha)
 
   // Si esta misma venta (mismo teléfono+monto+fecha) ya se cargó, no se crea
@@ -192,9 +203,10 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     // La venta ya se avisó a Meta (o se intentó) pero no quedó en el
     // registro local — se avisa para poder recargarla a mano.
     console.error("[capi-venta-manual] no se pudo guardar la venta en el registro:", err)
+    const metaTxt = result.ok ? "avisada a Meta" : "con el aviso a Meta TAMBIÉN fallado"
     await notifyDiscord(
       `venta-manual-store-${eventId}`,
-      `⚠️ **Venta avisada a Meta pero NO guardada en el registro** (${nombre}, $${monto}). Revisar el store "ventas-manuales".`,
+      `⚠️ **Venta ${metaTxt} pero NO guardada en el registro** (${nombre}, $${monto}). Revisar el store "ventas-manuales" y recargarla a mano.`,
     )
     return Response.json(
       { ok: false, error: "no_se_guardo", metaStatus: sale.metaStatus },

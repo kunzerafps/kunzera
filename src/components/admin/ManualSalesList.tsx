@@ -34,7 +34,11 @@ function shortSaleDate(d: string): string {
 
 function loadedAt(ms: number): string {
   try {
-    return new Date(ms).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
+    return new Date(ms).toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone: "America/Argentina/Buenos_Aires",
+    })
   } catch {
     return "—"
   }
@@ -89,12 +93,17 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
         setVentas((prev) => prev.map((v) => (v.metaEventId === venta.metaEventId ? (data.venta as ManualSale) : v)))
       }
       if (!data.ok) {
+        const msg: Record<string, string> = {
+          unauthorized: "Sesión vencida, volvé a entrar",
+          rate_limited: "Demasiadas acciones seguidas, esperá un momento",
+          fecha_muy_vieja: "Esa venta ya tiene más de 7 días — Meta no la acepta aunque reintentes",
+          venta_cancelada: "La venta está cancelada. Reactivala antes de reintentar el aviso a Meta.",
+        }
         setError(
-          data.error === "fecha_muy_vieja"
-            ? "Esa venta ya tiene más de 7 días — Meta no la acepta aunque reintentes"
-            : action === "retry-meta"
+          (data.error && msg[data.error]) ||
+            (action === "retry-meta"
               ? "El reintento a Meta volvió a fallar. Probá de nuevo en un rato."
-              : "No se pudo aplicar el cambio",
+              : "No se pudo aplicar el cambio"),
         )
       } else {
         setError(null)

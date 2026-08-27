@@ -4,9 +4,20 @@
 // nombre de store tiene su propio Map, igual que en Blobs real cada store
 // es un namespace separado.
 const stores = new Map<string, Map<string, unknown>>()
+// Stores cuyo set/setJSON debe tirar error — para probar los caminos de
+// "no se pudo guardar" sin tener que simular una caída real de Blobs.
+const writeFailStores = new Set<string>()
 
 export function resetBlobsMock(): void {
   stores.clear()
+  writeFailStores.clear()
+}
+
+// Hace que las escrituras a `name` fallen (o dejen de fallar) — opt-in, no
+// afecta a ningún test que no lo llame.
+export function setStoreWritesFail(name: string, fail = true): void {
+  if (fail) writeFailStores.add(name)
+  else writeFailStores.delete(name)
 }
 
 function storeFor(name: string) {
@@ -21,9 +32,11 @@ export function fakeGetStore(name: string) {
       return data.has(key) ? data.get(key) : null
     },
     async set(key: string, value: unknown) {
+      if (writeFailStores.has(name)) throw new Error(`[blobsMock] escritura forzada a fallar en "${name}"`)
       data.set(key, value)
     },
     async setJSON(key: string, value: unknown) {
+      if (writeFailStores.has(name)) throw new Error(`[blobsMock] escritura forzada a fallar en "${name}"`)
       data.set(key, value)
     },
     async getWithMetadata(key: string) {
