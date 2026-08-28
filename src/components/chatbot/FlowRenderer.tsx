@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import type { FlowEvent, OrderDraft } from "../../types/order"
 import type { FlowContext } from "../../lib/chatFlow"
 import FormField from "./FormField"
@@ -8,7 +8,7 @@ import PaymentStep from "./PaymentStep"
 import FileUploader from "./FileUploader"
 import { normalizeWhatsapp, validateDiscord, validateName, validateWhatsapp } from "../../lib/validators"
 import { useTakenSlots } from "../../hooks/useTakenSlots"
-import { trackPixelEvent, trackServerBackedEvent } from "../../lib/pixel"
+import { trackServerBackedEvent } from "../../lib/pixel"
 import { packEventParams } from "../../lib/prices"
 
 type Props = {
@@ -19,6 +19,7 @@ type Props = {
 
 export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
   const slotsState = useTakenSlots(ctx.state === "pickSlot")
+  const seleccionFired = useRef(false)
 
   useEffect(() => {
     if (ctx.state === "submitting" && ctx.draft.file) {
@@ -97,7 +98,13 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
           loading={slotsState.loading}
           error={slotsState.error}
           onPick={(iso) => {
-            trackPixelEvent("Schedule", { content_name: ctx.draft.pack || "unknown" })
+            // Señal temprana de intención (tocó un horario), NO es "reservó"
+            // — ese es el evento Schedule que se manda al confirmar la
+            // reserva (ver useChatFlow.ts). Una vez por sesión.
+            if (!seleccionFired.current) {
+              seleccionFired.current = true
+              trackServerBackedEvent("turno_seleccionado", {}, packEventParams(ctx.draft.pack))
+            }
             dispatch({ type: "PICK_SLOT", slotIso: iso })
           }}
           onRefresh={slotsState.refresh}

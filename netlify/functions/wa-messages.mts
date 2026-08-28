@@ -25,6 +25,7 @@ const DEFAULTS = {
   },
   adminPasswordHash: "",
   blockedWindows: [] as BlockedWindow[],
+  campaigns: [] as string[],
 }
 
 const HEX_64_RE = /^[a-f0-9]{64}$/i
@@ -82,6 +83,21 @@ function sanitizeBlockedWindows(o: unknown): BlockedWindow[] {
     .slice(0, 50)
 }
 
+function sanitizeCampaigns(o: unknown): string[] {
+  if (!Array.isArray(o)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of o) {
+    if (typeof raw !== "string") continue
+    const c = raw.trim().slice(0, 80)
+    if (!c || seen.has(c.toLowerCase())) continue
+    seen.add(c.toLowerCase())
+    out.push(c)
+    if (out.length >= 50) break
+  }
+  return out
+}
+
 function sanitize(input: unknown): Config {
   const o = (input ?? {}) as Partial<Record<keyof Config, unknown>>
   const clientTemplate =
@@ -97,7 +113,8 @@ function sanitize(input: unknown): Config {
   }
   const adminPasswordHash = sanitizeHash(o.adminPasswordHash)
   const blockedWindows = sanitizeBlockedWindows(o.blockedWindows)
-  return { clientTemplate, prices, adminPasswordHash, blockedWindows }
+  const campaigns = sanitizeCampaigns(o.campaigns)
+  return { clientTemplate, prices, adminPasswordHash, blockedWindows, campaigns }
 }
 
 function corsHeaders(): HeadersInit {

@@ -1,8 +1,8 @@
 import type { Config, Context } from "@netlify/functions"
-import { APPS_SCRIPT_URL, ADMIN_SECRET_TOKEN } from "../../src/lib/constants"
 import type { Order } from "../../src/types/order"
 import { dateOnlyInArgentina, daysAgoInArgentina } from "./lib/argentinaTime"
 import { listRecentDeliveries, type DeliveryLogEntry } from "./lib/deliveryLog"
+import { getSheetOrders } from "./lib/sheetOrders"
 import { notifyDiscord } from "./lib/discordAlert"
 
 // Cuenta cuántas ventas reales hubo "ayer" (hora Argentina) según dos
@@ -19,12 +19,9 @@ const META_AD_ACCOUNT_ID = process.env.META_AD_ACCOUNT_ID || "215090675"
 // pensado para nunca superar ese techo ni siquiera en el peor caso —
 // incluye el fetch de Meta DENTRO del mismo Promise.all que Apps Script
 // (ver más abajo) para que corran en paralelo, no en serie.
-const APPS_SCRIPT_ATTEMPTS = 3
-const APPS_SCRIPT_TIMEOUT_MS = 7000
-const APPS_SCRIPT_RETRY_WAIT_MS = 400
-// Peor caso: 3 × 7s + 2 × 0.4s ≈ 21.8s, corriendo en paralelo con el fetch
-// de Meta (10s) — bien por debajo de los 30s límite, con margen para el
-// resto del handler.
+// Peor caso del fetch del Sheet (ver lib/sheetOrders.ts): 3 × 7s + 2 × 0.4s
+// ≈ 21.8s, corriendo en paralelo con el fetch de Meta (10s) — bien por
+// debajo de los 30s límite, con margen para el resto del handler.
 const META_FETCH_TIMEOUT_MS = 10000
 
 // Alias que Meta usa para reportar la MISMA compra bajo distintos recortes
@@ -44,37 +41,6 @@ const PURCHASE_ACTION_TYPES = new Set([
   "web_in_store_purchase",
   "web_app_in_store_purchase",
 ])
-
-// Mismo bug de CORS intermitente que appsScript.ts (getOrders) del lado del
-// cliente — algunos intentos fallan solos, reintentar es más simple y más
-// confiable que investigar el redirect de Apps Script a fondo. Presupuesto
-// de reintentos recortado respecto al del cliente (que corre en el
-// navegador, sin límite de tiempo real) porque acá SÍ hay un techo duro de
-// 30s de Netlify — ver constantes arriba.
-async function fetchOrders(): Promise<Order[]> {
-  const url = `${APPS_SCRIPT_URL}?action=getOrders&token=${encodeURIComponent(ADMIN_SECRET_TOKEN)}`
-  let lastErr = "unknown"
-  for (let attempt = 0; attempt < APPS_SCRIPT_ATTEMPTS; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, APPS_SCRIPT_RETRY_WAIT_MS))
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), APPS_SCRIPT_TIMEOUT_MS)
-    try {
-      const res = await fetch(url, { signal: controller.signal, redirect: "follow" })
-      clearTimeout(timer)
-      if (!res.ok) {
-        lastErr = `http_${res.status}`
-        continue
-      }
-      const data = (await res.json()) as { ok: boolean; orders?: Order[]; error?: string }
-      if (data.ok) return data.orders || []
-      lastErr = data.error || "unknown"
-    } catch (err) {
-      clearTimeout(timer)
-      lastErr = err instanceof Error ? err.message : String(err)
-    }
-  }
-  throw new Error(`no se pudieron leer las reservas del Sheet: ${lastErr}`)
-}
 
 // Ventas confirmadas en el Sheet (Mercado Pago + transferencia/binance ya
 // revisadas por el admin) — no cuenta "pendiente", que todavía no generó
@@ -157,7 +123,7 @@ export default async (_req: Request, _ctx: Context): Promise<Response> => {
     // (Apps Script primero, Meta después) puede superar el límite de 30s de
     // las Scheduled Functions de Netlify en el peor caso de reintentos.
     const [orders, deliveries, meta] = await Promise.all([
-      fetchOrders(),
+      getSheetOrders(),
       listRecentDeliveries(500),
       fetchMetaPurchaseCount(dateStr),
     ])

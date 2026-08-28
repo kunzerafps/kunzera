@@ -51,6 +51,8 @@ export default function WaMessagesEditor() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [blockedWindows, setBlockedWindows] = useState<BlockedWindow[]>([])
+  const [campaigns, setCampaigns] = useState<string[]>([])
+  const [newCampaign, setNewCampaign] = useState("")
   const [windowStart, setWindowStart] = useState("")
   const [windowEnd, setWindowEnd] = useState("")
   const [windowLabel, setWindowLabel] = useState("")
@@ -73,6 +75,7 @@ export default function WaMessagesEditor() {
       })
       setSavedHash(c.adminPasswordHash)
       setBlockedWindows(c.blockedWindows)
+      setCampaigns(c.campaigns)
       setLoading(false)
     })
     return () => {
@@ -112,7 +115,8 @@ export default function WaMessagesEditor() {
     JSON.stringify(parsedPrices) !== JSON.stringify(DEFAULT_SITE_CONFIG.prices) ||
     passwordTouched ||
     savedHash !== "" ||
-    blockedWindows.length > 0
+    blockedWindows.length > 0 ||
+    campaigns.length > 0
 
   const onSave = async () => {
     if (!trimmed || tooLong || anyPriceInvalid || !passwordValid) return
@@ -123,6 +127,7 @@ export default function WaMessagesEditor() {
       prices: parsedPrices,
       adminPasswordHash: nextHash,
       blockedWindows,
+      campaigns,
     })
     if (result.ok) {
       setPrices(parsedPrices)
@@ -167,6 +172,22 @@ export default function WaMessagesEditor() {
 
   const onRemoveWindow = (id: string) => {
     setBlockedWindows((ws) => ws.filter((w) => w.id !== id))
+    if (saveState.kind !== "idle") setSaveState({ kind: "idle" })
+  }
+
+  const onAddCampaign = () => {
+    const c = newCampaign.trim().slice(0, 80)
+    if (!c || campaigns.some((x) => x.toLowerCase() === c.toLowerCase())) {
+      setNewCampaign("")
+      return
+    }
+    setCampaigns((cs) => [...cs, c])
+    setNewCampaign("")
+    if (saveState.kind !== "idle") setSaveState({ kind: "idle" })
+  }
+
+  const onRemoveCampaign = (c: string) => {
+    setCampaigns((cs) => cs.filter((x) => x !== c))
     if (saveState.kind !== "idle") setSaveState({ kind: "idle" })
   }
 
@@ -540,6 +561,60 @@ export default function WaMessagesEditor() {
             ))
           )}
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 md:p-5">
+        <h3 className="text-sm font-semibold text-white mb-1">Campañas de Meta</h3>
+        <p className="text-[11px] text-white/40 leading-relaxed mb-3">
+          Los nombres que pongas acá aparecen como menú en el campo “Campaña” de Venta manual, para
+          no escribirlos a mano. Poné el mismo nombre que usás en el Administrador de anuncios.
+        </p>
+        <div className="flex gap-2 mb-3">
+          <input
+            type="text"
+            value={newCampaign}
+            maxLength={80}
+            placeholder="Ej: Reel PC lenta"
+            onChange={(e) => setNewCampaign(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                onAddCampaign()
+              }
+            }}
+            className="flex-1 bg-white/5 border border-white/10 focus:border-brand-500/60 focus:bg-white/10 outline-none rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/30"
+          />
+          <button
+            onClick={onAddCampaign}
+            disabled={!newCampaign.trim()}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-sm transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            <Plus className="w-4 h-4" /> Agregar
+          </button>
+        </div>
+        {campaigns.length === 0 ? (
+          <div className="text-[11px] font-mono text-white/30">
+            Sin campañas. El campo “Campaña” sigue siendo de texto libre.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {campaigns.map((c) => (
+              <span
+                key={c}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/30 pl-2.5 pr-1.5 py-1 text-xs text-white/80"
+              >
+                {c}
+                <button
+                  onClick={() => onRemoveCampaign(c)}
+                  className="inline-flex items-center justify-center w-4 h-4 rounded hover:bg-red-500/20 text-white/40 hover:text-red-300 transition"
+                  aria-label={`Eliminar ${c}`}
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

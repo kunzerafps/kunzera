@@ -32,7 +32,17 @@ type Identity = {
 // nombre que no esté acá es ignorado por /api/capi-funnel (no queremos que
 // un cliente manipulado mande "Purchase" por esa vía, que es 100%
 // server-side y auditada).
-const SERVER_BACKED_EVENTS = ["Lead", "InitiateCheckout", "ViewContent", "AddToCart"] as const
+const SERVER_BACKED_EVENTS = [
+  "Lead",
+  "InitiateCheckout",
+  "ViewContent",
+  "AddToCart",
+  // "turno_seleccionado": señal temprana (tocó un horario), sirve para armar
+  // públicos de "gente con intención". "Schedule": el turno reservado de
+  // verdad (reserva confirmada), el evento que las campañas usan como objetivo.
+  "turno_seleccionado",
+  "Schedule",
+] as const
 export type ServerBackedEventName = (typeof SERVER_BACKED_EVENTS)[number]
 
 // Dispara un evento de mitad de embudo por DOS vías con el mismo eventID:

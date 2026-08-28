@@ -16,6 +16,9 @@ export type SiteConfig = {
   prices: Record<Pack, PackPrices>
   adminPasswordHash: string
   blockedWindows: BlockedWindow[]
+  // Nombres de campañas de Meta para el menú del campo "campaña" en Venta
+  // manual (evita que se escriba a mano con variantes distintas).
+  campaigns: string[]
 }
 
 const HEX_64_RE = /^[a-f0-9]{64}$/i
@@ -35,6 +38,22 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   prices: DEFAULT_PRICES,
   adminPasswordHash: "",
   blockedWindows: [],
+  campaigns: [],
+}
+
+function sanitizeCampaigns(o: unknown): string[] {
+  if (!Array.isArray(o)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of o) {
+    if (typeof raw !== "string") continue
+    const c = raw.trim().slice(0, 80)
+    if (!c || seen.has(c.toLowerCase())) continue
+    seen.add(c.toLowerCase())
+    out.push(c)
+    if (out.length >= 50) break
+  }
+  return out
 }
 
 const ENDPOINT = "/api/wa-messages"
@@ -103,7 +122,8 @@ function sanitize(o: unknown): SiteConfig {
   }
   const adminPasswordHash = sanitizeHash(obj.adminPasswordHash)
   const blockedWindows = sanitizeBlockedWindows(obj.blockedWindows)
-  return { clientTemplate, prices, adminPasswordHash, blockedWindows }
+  const campaigns = sanitizeCampaigns(obj.campaigns)
+  return { clientTemplate, prices, adminPasswordHash, blockedWindows, campaigns }
 }
 
 export function applyTemplate(

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import type { Pack } from "../../types/order"
 import { PACK_LIST } from "../../lib/packs"
 import { getAdminToken } from "../../lib/storage"
+import { useSiteConfig } from "../../hooks/useWaMessages"
 
 type Props = {
   open: boolean
@@ -43,6 +44,10 @@ export default function ManualSaleModal({ open, onClose, onSaved }: Props) {
   const [monto, setMonto] = useState("")
   const [pack, setPack] = useState<Pack | "">("")
   const [campania, setCampania] = useState("")
+  // Menú de campañas (editable desde Configuración). Si está vacío, el
+  // campo sigue siendo texto libre como antes.
+  const { campaigns } = useSiteConfig()
+  const [campaniaOtra, setCampaniaOtra] = useState(false)
   const [fecha, setFecha] = useState(() => todayInArgentina())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +63,7 @@ export default function ManualSaleModal({ open, onClose, onSaved }: Props) {
     setMonto("")
     setPack("")
     setCampania("")
+    setCampaniaOtra(false)
     setFecha(todayInArgentina())
     setLoading(false)
     setError(null)
@@ -307,12 +313,36 @@ export default function ManualSaleModal({ open, onClose, onSaved }: Props) {
                         </select>
                       </Field>
                       <Field label="Campaña (opcional)">
-                        <input
-                          value={campania}
-                          onChange={(e) => setCampania(e.target.value)}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none focus:border-brand-500/60 transition"
-                          placeholder="ej: Reel PC lenta"
-                        />
+                        {campaigns.length > 0 && !campaniaOtra ? (
+                          <select
+                            value={campaigns.includes(campania) ? campania : ""}
+                            onChange={(e) => {
+                              if (e.target.value === "__otra__") {
+                                setCampaniaOtra(true)
+                                setCampania("")
+                              } else {
+                                setCampania(e.target.value)
+                              }
+                            }}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500/60 transition"
+                          >
+                            <option value="">—</option>
+                            {campaigns.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                            <option value="__otra__">Otra…</option>
+                          </select>
+                        ) : (
+                          <input
+                            value={campania}
+                            onChange={(e) => setCampania(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none focus:border-brand-500/60 transition"
+                            placeholder="ej: Reel PC lenta"
+                            autoFocus={campaniaOtra}
+                          />
+                        )}
                       </Field>
                     </div>
 

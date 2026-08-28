@@ -31,7 +31,14 @@ const EVENT_SOURCE_URL = "https://kunzera.com/"
 // queremos que un cliente manipulado mande "Purchase" por acá y ensucie el
 // reporting de ventas, que es 100% server-side y auditado). Purchase NUNCA
 // va en esta lista.
-export const FUNNEL_EVENTS = ["Lead", "InitiateCheckout", "ViewContent", "AddToCart"] as const
+export const FUNNEL_EVENTS = [
+  "Lead",
+  "InitiateCheckout",
+  "ViewContent",
+  "AddToCart",
+  "turno_seleccionado",
+  "Schedule",
+] as const
 export type FunnelEventName = (typeof FUNNEL_EVENTS)[number]
 
 export type MetaCapiFunnelEvent = {

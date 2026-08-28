@@ -8,6 +8,7 @@ import {
   MessageCircleHeart,
   RefreshCw,
   Settings,
+  Wallet,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { Order, AdminMetrics, Pack } from "../../types/order"
@@ -23,8 +24,9 @@ import ErrorBoundary from "./ErrorBoundary"
 import WaMessagesEditor from "./WaMessagesEditor"
 import ManualSaleModal from "./ManualSaleModal"
 import ManualSalesList from "./ManualSalesList"
+import IngresosPanel from "./IngresosPanel"
 
-type Tab = "dashboard" | "turnos" | "ventasWa" | "config"
+type Tab = "dashboard" | "turnos" | "ventasWa" | "ingresos" | "config"
 
 type Props = {
   onLogout: () => void
@@ -144,6 +146,12 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
             label="Ventas WA"
           />
           <TabButton
+            active={tab === "ingresos"}
+            onClick={() => setTab("ingresos")}
+            icon={<Wallet className="w-4 h-4" />}
+            label="Ingresos"
+          />
+          <TabButton
             active={tab === "config"}
             onClick={() => setTab("config")}
             icon={<Settings className="w-4 h-4" />}
@@ -187,6 +195,19 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
             transition={{ duration: 0.2 }}
           >
             <ManualSalesList refreshKey={manualSalesRefresh} />
+          </motion.div>
+        )}
+
+        {tab === "ingresos" && (
+          <motion.div
+            key="ingresos"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ErrorBoundary label="Panel de ingresos" onReset={() => setTab("dashboard")}>
+              <IngresosPanel />
+            </ErrorBoundary>
           </motion.div>
         )}
 

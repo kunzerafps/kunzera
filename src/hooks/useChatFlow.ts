@@ -8,6 +8,8 @@ import {
 } from "../lib/chatFlow"
 import type { FlowEvent } from "../types/order"
 import { canResume, clearDraft, loadDraft, saveDraft } from "../lib/storage"
+import { trackServerBackedEvent } from "../lib/pixel"
+import { packEventParams } from "../lib/prices"
 
 type FlowReturn = {
   ctx: FlowContext
@@ -31,6 +33,7 @@ export function useChatFlow(): FlowReturn {
   const [resumable, setResumable] = useState(() => loadDraft())
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const greeted = useRef(false)
+  const scheduleFired = useRef(false)
 
   const dispatch = useCallback((ev: FlowEvent) => {
     const isUserMove =
@@ -84,6 +87,19 @@ export function useChatFlow(): FlowReturn {
     if (ctx.state === "confirmed") {
       clearDraft()
       setResumable(null)
+      // "Schedule" = el turno quedó reservado de verdad (reserva confirmada,
+      // comprobante subido / MP aprobado). Esta SÍ va cliente-side +
+      // server-side (a diferencia de Purchase): no tiene el problema de la
+      // ventana de dedup de 48hs porque se dispara justo cuando el cliente
+      // termina, no días después. Una sola vez por sesión.
+      if (!scheduleFired.current) {
+        scheduleFired.current = true
+        trackServerBackedEvent(
+          "Schedule",
+          { whatsapp: ctx.draft.whatsapp, nombre: ctx.draft.nombre },
+          packEventParams(ctx.draft.pack),
+        )
+      }
       // El evento de Compra para Meta Ads NUNCA se manda desde acá — se
       // manda 100% server-side: mp-webhook.mts para Mercado Pago (al
       // confirmarse el pago), capi-confirmar-pago.mts para

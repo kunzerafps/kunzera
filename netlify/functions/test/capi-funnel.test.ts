@@ -77,6 +77,21 @@ describe("capi-funnel", () => {
     expect(bodies[1].data[0].custom_data.content_ids).toEqual(["diamante"])
   })
 
+  it("acepta turno_seleccionado y Schedule (item 03: las dos señales de turno)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "1.2.3.4" } as any
+
+    await funnelHandler(req({ eventId: "cf-sel-1", event: "turno_seleccionado", value: 50000 }), ctx)
+    await funnelHandler(req({ eventId: "cf-sch-1", event: "Schedule", value: 70000, whatsapp: "1155554444" }), ctx)
+
+    const bodies = fm.callsTo("graph.facebook.com").map((c) => JSON.parse(String(c.init?.body)))
+    expect(bodies[0].data[0].event_name).toBe("turno_seleccionado")
+    expect(bodies[1].data[0].event_name).toBe("Schedule")
+    expect(bodies[1].data[0].custom_data.value).toBe(70000)
+    expect(bodies[1].data[0].user_data.ph[0]).toHaveLength(64)
+  })
+
   it("un array gigante de contentIds se recorta a 5", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
