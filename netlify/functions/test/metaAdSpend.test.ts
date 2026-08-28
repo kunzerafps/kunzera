@@ -26,6 +26,44 @@ describe("fetchAdSpend", () => {
     expect(s.porCampana["Historia FPS"]).toBe(800)
   })
 
+  it("pide level=campaign + time_range y sigue la paginación", async () => {
+    const fm = installFetchMock()
+    let call = 0
+    fm.on("graph.facebook.com", () => {
+      call++
+      if (call === 1) {
+        return jsonResponse({
+          data: [{ spend: "100", campaign_name: "A", account_currency: "ARS" }],
+          paging: { next: "https://graph.facebook.com/v21.0/act_x/insights?after=CURSOR" },
+        })
+      }
+      return jsonResponse({ data: [{ spend: "50", campaign_name: "B" }] })
+    })
+
+    const s = await fetchAdSpend("2026-08-01", "2026-08-27")
+    const firstUrl = fm.callsTo("graph.facebook.com")[0].url
+    expect(firstUrl).toContain("level=campaign")
+    expect(firstUrl).toContain("time_range=")
+    expect(firstUrl).toContain("limit=500")
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(2) // siguió paging.next
+    expect(s.total).toBe(150)
+    expect(s.porCampana["B"]).toBe(50)
+  })
+
+  it("data vacía → total 0, sin campañas", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({ data: [] }))
+    const s = await fetchAdSpend("2026-08-01", "2026-08-27")
+    expect(s.total).toBe(0)
+    expect(Object.keys(s.porCampana)).toHaveLength(0)
+  })
+
+  it("respuesta no-JSON no tumba: tira un error con el status", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => new Response("<html>502 Bad Gateway</html>", { status: 502 }))
+    await expect(fetchAdSpend("2026-08-01", "2026-08-27")).rejects.toThrow("502")
+  })
+
   it("tira error si Meta responde con error", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({ error: { message: "token vencido" } }, 400))

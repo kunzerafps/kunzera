@@ -103,6 +103,56 @@ describe("admin-ingresos", () => {
     expect(d.totales.retorno).toBe(null)
   })
 
+  it("agrupa campañas sin importar mayúsculas y no cuenta el gasto doble", async () => {
+    const fm = installFetchMock()
+    fm.on("script.google.com", () => jsonResponse({ ok: true, orders: [] }))
+    fm.on("graph.facebook.com", () =>
+      jsonResponse({ data: [{ spend: "10000", campaign_name: "Reel PC lenta" }] }),
+    )
+    await seedManual({ campania: "Reel PC lenta", monto: 70000, metaEventId: "e1" })
+    await seedManual({ campania: "reel pc lenta", monto: 50000, metaEventId: "e2" })
+
+    const res = await ingresosHandler(req(`?token=${token}`), FAKE_CTX)
+    const d = await res.json()
+    expect(d.porCampana).toHaveLength(1) // las dos casings se fusionan
+    expect(d.porCampana[0].ventas).toBe(2)
+    expect(d.porCampana[0].ingresos).toBe(120000)
+    expect(d.porCampana[0].gasto).toBe(10000) // no duplicado
+  })
+
+  it("si falla la lectura del Sheet, responde 500", async () => {
+    const fm = installFetchMock()
+    fm.on("script.google.com", () => jsonResponse({ ok: false, error: "sheet caido" }))
+    fm.on("graph.facebook.com", () => jsonResponse({ data: [] }))
+    const res = await ingresosHandler(req(`?token=${token}`), FAKE_CTX)
+    expect(res.status).toBe(500)
+  })
+
+  it("sin ventas: devuelve todo en cero, sin romper (a diferencia del gap-report)", async () => {
+    const fm = installFetchMock()
+    fm.on("script.google.com", () => jsonResponse({ ok: true, orders: [] }))
+    fm.on("graph.facebook.com", () => jsonResponse({ data: [] }))
+    const res = await ingresosHandler(req(`?token=${token}`), FAKE_CTX)
+    const d = await res.json()
+    expect(d.ok).toBe(true)
+    expect(d.totales.ingresos).toBe(0)
+    expect(d.recompra.clientesUnicos).toBe(0)
+    expect(d.recompra.ingresoPromedioPorCliente).toBe(0)
+  })
+
+  it("clampa el parámetro days (max 180, default 30, ignora basura)", async () => {
+    const fm = installFetchMock()
+    fm.on("script.google.com", () => jsonResponse({ ok: true, orders: [] }))
+    fm.on("graph.facebook.com", () => jsonResponse({ data: [] }))
+
+    const r1 = await (await ingresosHandler(req(`?token=${token}&days=9999`), FAKE_CTX)).json()
+    expect(r1.rango.dias).toBe(180)
+    const r2 = await (await ingresosHandler(req(`?token=${token}&days=abc`), FAKE_CTX)).json()
+    expect(r2.rango.dias).toBe(30)
+    const r3 = await (await ingresosHandler(req(`?token=${token}&days=-5`), FAKE_CTX)).json()
+    expect(r3.rango.dias).toBe(30)
+  })
+
   it("detecta clientes que volvieron a comprar (item 17)", async () => {
     const fm = installFetchMock()
     // mismo teléfono en el Sheet y en una venta manual -> cliente recurrente

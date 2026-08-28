@@ -8,7 +8,7 @@ type Ingresos = {
   ok: boolean
   rango: { desde: string; hasta: string; dias: number }
   web: { ventas: number; ingresos: number }
-  whatsapp: { ventas: number; ingresos: number }
+  whatsapp: { ventas: number; ingresos: number; error: string | null }
   meta: { gasto: number | null; moneda: string; error: string | null }
   totales: { ingresos: number; gasto: number | null; retorno: number | null }
   porCampana: {
@@ -121,12 +121,21 @@ export default function IngresosPanel() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card titulo="Ventas web" valor={String(data.web.ventas)} sub={formatARS(data.web.ingresos)} />
-            <Card titulo="Ventas WhatsApp" valor={String(data.whatsapp.ventas)} sub={formatARS(data.whatsapp.ingresos)} />
-            <Card titulo="Clientes distintos" valor={String(data.recompra.clientesUnicos)} sub={`en ${data.rango.dias} días`} />
+            <Card
+              titulo="Ventas WhatsApp"
+              valor={String(data.whatsapp.ventas)}
+              sub={data.whatsapp.error ? "no se pudo leer" : formatARS(data.whatsapp.ingresos)}
+              alerta={!!data.whatsapp.error}
+            />
+            <Card
+              titulo="Clientes distintos"
+              valor={String(data.recompra.clientesUnicos)}
+              sub="histórico total"
+            />
             <Card
               titulo="Volvieron a comprar"
               valor={String(data.recompra.clientesQueVolvieron)}
-              sub={`≈ ${formatARS(data.recompra.ingresosDeRecompra)} de recompra`}
+              sub={`histórico · ≈ ${formatARS(data.recompra.ingresosDeRecompra)} de recompra`}
             />
           </div>
 
@@ -135,6 +144,13 @@ export default function IngresosPanel() {
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               El gasto de Meta no se pudo leer ({data.meta.error}). El resto de los números son reales;
               solo falta el gasto y el retorno.
+            </div>
+          )}
+          {data.whatsapp.error && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              El registro de ventas por WhatsApp no se pudo leer ({data.whatsapp.error}). Los números
+              muestran solo las ventas web.
             </div>
           )}
 

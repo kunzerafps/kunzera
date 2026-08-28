@@ -4,6 +4,29 @@ import { getVisitorId } from "./visitorId"
 
 type Fbq = (...args: unknown[]) => void
 
+// Eventos estándar de Meta — el resto se manda con "trackCustom" (Meta tira
+// un warning si le pasás un nombre desconocido por "track").
+const STANDARD_META_EVENTS = new Set([
+  "PageView",
+  "ViewContent",
+  "AddToCart",
+  "AddToWishlist",
+  "InitiateCheckout",
+  "AddPaymentInfo",
+  "Purchase",
+  "Lead",
+  "CompleteRegistration",
+  "Contact",
+  "CustomizeProduct",
+  "Donate",
+  "FindLocation",
+  "Schedule",
+  "StartTrial",
+  "SubmitApplication",
+  "Subscribe",
+  "Search",
+])
+
 // Wrapper minimo sobre window.fbq (inyectado por el snippet del Meta Pixel
 // en index.html) - evita repetir el cast inseguro en cada componente que
 // necesita mandar un evento cliente-side. Si se pasa `eventId`, se manda
@@ -16,10 +39,11 @@ export function trackPixelEvent(
 ): void {
   const fbq = (window as unknown as { fbq?: Fbq }).fbq
   if (typeof fbq !== "function") return
+  const method = STANDARD_META_EVENTS.has(eventName) ? "track" : "trackCustom"
   if (eventId) {
-    fbq("track", eventName, params, { eventID: eventId })
+    fbq(method, eventName, params, { eventID: eventId })
   } else {
-    fbq("track", eventName, params)
+    fbq(method, eventName, params)
   }
 }
 

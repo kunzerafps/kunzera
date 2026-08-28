@@ -7,7 +7,7 @@ import {
   reduce,
 } from "../lib/chatFlow"
 import type { FlowEvent } from "../types/order"
-import { canResume, clearDraft, loadDraft, saveDraft } from "../lib/storage"
+import { canResume, clearDraft, clearTurnoSelFired, loadDraft, saveDraft } from "../lib/storage"
 import { trackServerBackedEvent } from "../lib/pixel"
 import { packEventParams } from "../lib/prices"
 
@@ -87,6 +87,7 @@ export function useChatFlow(): FlowReturn {
     if (ctx.state === "confirmed") {
       clearDraft()
       setResumable(null)
+      clearTurnoSelFired()
       // "Schedule" = el turno quedó reservado de verdad (reserva confirmada,
       // comprobante subido / MP aprobado). Esta SÍ va cliente-side +
       // server-side (a diferencia de Purchase): no tiene el problema de la
@@ -94,10 +95,20 @@ export function useChatFlow(): FlowReturn {
       // termina, no días después. Una sola vez por sesión.
       if (!scheduleFired.current) {
         scheduleFired.current = true
+        const pp = packEventParams(ctx.draft.pack)
+        const ppValue = typeof pp.value === "number" ? pp.value : undefined
         trackServerBackedEvent(
           "Schedule",
           { whatsapp: ctx.draft.whatsapp, nombre: ctx.draft.nombre },
-          packEventParams(ctx.draft.pack),
+          {
+            ...pp,
+            // draft.monto es el precio exacto que vio y aceptó el cliente,
+            // guardado con el draft — más confiable que el precio "actual"
+            // (que en el regreso de Mercado Pago puede no haberse cargado
+            // todavía desde la config del sitio).
+            value: ctx.draft.monto ?? ppValue ?? 0,
+            currency: "ARS",
+          },
         )
       }
       // El evento de Compra para Meta Ads NUNCA se manda desde acá — se

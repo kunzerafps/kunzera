@@ -101,9 +101,18 @@ export async function updateManualSaleByEvent(
 export async function listManualSales(limit = 500): Promise<ManualSale[]> {
   const store = getStore(STORE_NAME)
   const { blobs } = await store.list()
-  const entries = await Promise.all(
-    blobs.map((b) => store.get(b.key, { type: "json" }) as Promise<ManualSale | null>),
-  )
+  // Concurrencia acotada — hay que traer todas para ordenar por fecha, pero
+  // sin disparar N fetch en paralelo (mismo criterio que
+  // deliveryLog.listRecentDeliveries).
+  const CONCURRENCY = 25
+  const entries: (ManualSale | null)[] = []
+  for (let i = 0; i < blobs.length; i += CONCURRENCY) {
+    const chunk = blobs.slice(i, i + CONCURRENCY)
+    const got = await Promise.all(
+      chunk.map((b) => store.get(b.key, { type: "json" }) as Promise<ManualSale | null>),
+    )
+    entries.push(...got)
+  }
   return entries
     .filter((s): s is ManualSale => s !== null)
     .sort((a, b) => b.createdAt - a.createdAt)

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import type { FlowEvent, OrderDraft } from "../../types/order"
 import type { FlowContext } from "../../lib/chatFlow"
 import FormField from "./FormField"
@@ -10,6 +10,7 @@ import { normalizeWhatsapp, validateDiscord, validateName, validateWhatsapp } fr
 import { useTakenSlots } from "../../hooks/useTakenSlots"
 import { trackServerBackedEvent } from "../../lib/pixel"
 import { packEventParams } from "../../lib/prices"
+import { markTurnoSelFired, turnoSelAlreadyFired } from "../../lib/storage"
 
 type Props = {
   ctx: FlowContext
@@ -19,7 +20,6 @@ type Props = {
 
 export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
   const slotsState = useTakenSlots(ctx.state === "pickSlot")
-  const seleccionFired = useRef(false)
 
   useEffect(() => {
     if (ctx.state === "submitting" && ctx.draft.file) {
@@ -100,9 +100,9 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
           onPick={(iso) => {
             // Señal temprana de intención (tocó un horario), NO es "reservó"
             // — ese es el evento Schedule que se manda al confirmar la
-            // reserva (ver useChatFlow.ts). Una vez por sesión.
-            if (!seleccionFired.current) {
-              seleccionFired.current = true
+            // reserva (ver useChatFlow.ts). Una vez por sesión de navegador.
+            if (!turnoSelAlreadyFired()) {
+              markTurnoSelFired()
               trackServerBackedEvent("turno_seleccionado", {}, packEventParams(ctx.draft.pack))
             }
             dispatch({ type: "PICK_SLOT", slotIso: iso })

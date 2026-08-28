@@ -99,6 +99,37 @@ export function clearAdminAuth(): void {
   }
 }
 
+// Guard "una vez por sesión de navegador" para el evento turno_seleccionado
+// (ver FlowRenderer). Vive en sessionStorage, no en un ref de React, porque
+// el chat se desmonta al cerrarse y un ref se reiniciaría. Se limpia cuando
+// una reserva se confirma, para que un intento nuevo en la misma sesión
+// vuelva a mandar la señal de intención.
+const TURNO_SEL_KEY = "kz_turno_sel_fired"
+
+export function turnoSelAlreadyFired(): boolean {
+  try {
+    return sessionStorage.getItem(TURNO_SEL_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
+export function markTurnoSelFired(): void {
+  try {
+    sessionStorage.setItem(TURNO_SEL_KEY, "1")
+  } catch {
+    // modo privado — en el peor caso se manda alguna vez de más
+  }
+}
+
+export function clearTurnoSelFired(): void {
+  try {
+    sessionStorage.removeItem(TURNO_SEL_KEY)
+  } catch {
+    // noop
+  }
+}
+
 const SUBMIT_COOLDOWN_KEY = "kz_last_submit"
 const SUBMIT_COOLDOWN_MS = 30 * 1000
 

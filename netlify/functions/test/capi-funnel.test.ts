@@ -87,9 +87,25 @@ describe("capi-funnel", () => {
 
     const bodies = fm.callsTo("graph.facebook.com").map((c) => JSON.parse(String(c.init?.body)))
     expect(bodies[0].data[0].event_name).toBe("turno_seleccionado")
+    expect(bodies[0].data[0].custom_data.value).toBe(50000)
+    expect(bodies[0].data[0].action_source).toBe("website")
     expect(bodies[1].data[0].event_name).toBe("Schedule")
     expect(bodies[1].data[0].custom_data.value).toBe(70000)
     expect(bodies[1].data[0].user_data.ph[0]).toHaveLength(64)
+  })
+
+  it("turno_seleccionado y Schedule también respetan META_CAPI_TEST_EVENT_CODE", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    process.env.META_CAPI_TEST_EVENT_CODE = "TESTQ"
+    const ctx = { ip: "1.2.3.4" } as any
+    try {
+      await funnelHandler(req({ eventId: "cf-tsel-tc", event: "turno_seleccionado" }), ctx)
+      const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+      expect(body.test_event_code).toBe("TESTQ")
+    } finally {
+      delete process.env.META_CAPI_TEST_EVENT_CODE
+    }
   })
 
   it("un array gigante de contentIds se recorta a 5", async () => {

@@ -177,7 +177,11 @@ export default function WaMessagesEditor() {
 
   const onAddCampaign = () => {
     const c = newCampaign.trim().slice(0, 80)
-    if (!c || campaigns.some((x) => x.toLowerCase() === c.toLowerCase())) {
+    if (
+      !c ||
+      campaigns.length >= 50 ||
+      campaigns.some((x) => x.toLowerCase() === c.toLowerCase())
+    ) {
       setNewCampaign("")
       return
     }

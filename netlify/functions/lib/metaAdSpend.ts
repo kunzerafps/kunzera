@@ -20,36 +20,60 @@ type InsightRow = {
   account_currency?: string
 }
 
+type InsightsResponse = {
+  data?: InsightRow[]
+  paging?: { next?: string }
+  error?: { message: string }
+}
+
+// Tope de páginas por si algo se va de mano (500 campañas/página × 8 = 4000).
+const MAX_PAGES = 8
+
 // since / until en formato YYYY-MM-DD (hora de la cuenta de Meta).
-export async function fetchAdSpend(since: string, until: string): Promise<AdSpend> {
+export async function fetchAdSpend(
+  since: string,
+  until: string,
+  timeoutMs: number = FETCH_TIMEOUT_MS,
+): Promise<AdSpend> {
   const token = process.env.META_MARKETING_ACCESS_TOKEN
   if (!token) throw new Error("META_MARKETING_ACCESS_TOKEN no está configurado")
 
   const timeRange = encodeURIComponent(JSON.stringify({ since, until }))
-  const url =
+  let url =
     `https://graph.facebook.com/v21.0/act_${META_AD_ACCOUNT_ID}/insights` +
     `?fields=spend,campaign_name,account_currency&level=campaign&time_range=${timeRange}` +
     `&limit=500&access_token=${encodeURIComponent(token)}`
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const res = await fetch(url, { signal: controller.signal })
-    const data = (await res.json()) as { data?: InsightRow[]; error?: { message: string } }
-    if (!res.ok || data.error) {
-      throw new Error(data.error?.message || `http_${res.status}`)
-    }
-    const rows = data.data || []
     let total = 0
     let currency = "ARS"
     const porCampana: Record<string, number> = {}
-    for (const r of rows) {
-      const spend = Number(r.spend) || 0
-      total += spend
-      if (r.account_currency) currency = r.account_currency
-      const name = (r.campaign_name || "sin nombre").trim()
-      porCampana[name] = (porCampana[name] || 0) + spend
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const res = await fetch(url, { signal: controller.signal })
+      const body = await res.text()
+      let data: InsightsResponse
+      try {
+        data = JSON.parse(body) as InsightsResponse
+      } catch {
+        throw new Error(`http_${res.status}: respuesta no-JSON`)
+      }
+      if (!res.ok || data.error) {
+        throw new Error(data.error?.message || `http_${res.status}`)
+      }
+      for (const r of data.data || []) {
+        const spend = Number(r.spend) || 0
+        total += spend
+        if (r.account_currency) currency = r.account_currency
+        const name = (r.campaign_name || "sin nombre").trim()
+        porCampana[name] = (porCampana[name] || 0) + spend
+      }
+      if (!data.paging?.next) break
+      url = data.paging.next
     }
+
     return { total: Math.round(total * 100) / 100, currency, porCampana }
   } finally {
     clearTimeout(timer)
