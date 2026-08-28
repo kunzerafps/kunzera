@@ -3,7 +3,11 @@ import { sendMetaFunnelEvent, FUNNEL_EVENTS, type FunnelEventName } from "./lib/
 import { isRateLimited } from "./lib/rateLimit"
 
 const KEY_RE = /^[a-zA-Z0-9-]{6,80}$/
-const RATE_LIMIT_MAX = 40
+// Antes 40. Con ViewContent + AddToCart yendo server-side, casi toda visita
+// gasta ≥1 request — 40/hora por IP quedaba corto para redes de celular
+// compartidas (CGNAT), donde una ráfaga podía dejar sin la copia server-side
+// a un comprador real detrás de esa misma IP.
+const RATE_LIMIT_MAX = 150
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 const MAX_STR = 200
 

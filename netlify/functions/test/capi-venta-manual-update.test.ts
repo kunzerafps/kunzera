@@ -92,6 +92,65 @@ describe("capi-venta-manual-update", () => {
     expect((await listManualSales())[0].cancelMetaStatus).toBe("ok")
   })
 
+  it("si el aviso de cancelación a Meta falla, la venta se cancela igual y queda cancelMetaStatus error", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    await cargarVenta() // metaStatus "ok"
+    const [v] = await listManualSales()
+
+    fm.reset()
+    fm.on("graph.facebook.com", () => jsonResponse({ error: "caido" }, 500))
+    const res = await updateHandler(
+      updateReq({ token: TOKEN, eventId: v.metaEventId, action: "cancel" }),
+      FAKE_CTX,
+    )
+    const data = await res.json()
+    expect(data.ok).toBe(true) // la cancelación local SÍ se aplica
+    expect(data.cancelMetaStatus).toBe("error")
+    const [after] = await listManualSales()
+    expect(after.canceled).toBe(true)
+    expect(after.cancelMetaStatus).toBe("error")
+  })
+
+  it("retry-cancel-meta reintenta el aviso de cancelación y lo deja en ok", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    await cargarVenta()
+    const [v] = await listManualSales()
+
+    // cancelar con Meta caído -> cancelMetaStatus "error"
+    fm.reset()
+    fm.on("graph.facebook.com", () => jsonResponse({ error: "caido" }, 500))
+    await updateHandler(updateReq({ token: TOKEN, eventId: v.metaEventId, action: "cancel" }), FAKE_CTX)
+    expect((await listManualSales())[0].cancelMetaStatus).toBe("error")
+
+    // Meta se recupera -> reintentar
+    fm.reset()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const res = await updateHandler(
+      updateReq({ token: TOKEN, eventId: v.metaEventId, action: "retry-cancel-meta" }),
+      FAKE_CTX,
+    )
+    const data = await res.json()
+    expect(data.ok).toBe(true)
+    expect(data.cancelMetaStatus).toBe("ok")
+    expect((await listManualSales())[0].cancelMetaStatus).toBe("ok")
+  })
+
+  it("retry-cancel-meta sobre una venta NO cancelada devuelve 409", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    await cargarVenta()
+    const [v] = await listManualSales()
+
+    const res = await updateHandler(
+      updateReq({ token: TOKEN, eventId: v.metaEventId, action: "retry-cancel-meta" }),
+      FAKE_CTX,
+    )
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe("no_cancelada")
+  })
+
   it("cancelar una venta que Meta NUNCA recibió no hace una llamada extra a Meta", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({ error: "meta caido" }, 500))
@@ -106,7 +165,7 @@ describe("capi-venta-manual-update", () => {
     )
     const data = await res.json()
     expect(data.ok).toBe(true)
-    expect(data.cancelMetaStatus).toBe("ok") // no había nada que anular
+    expect(data.cancelMetaStatus).toBe("skipped") // no había nada que anular
     expect(fm.callsTo("graph.facebook.com")).toHaveLength(0)
     expect((await listManualSales())[0].canceled).toBe(true)
   })

@@ -3,6 +3,7 @@ import { Check, Copy, Download, Loader2, RefreshCw, RotateCw, Search, Undo2, XCi
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { formatARS } from "../../lib/formatters"
 import { getAdminToken } from "../../lib/storage"
+import { ventasToCsv } from "../../lib/manualSalesCsv"
 
 // Espejo del tipo de netlify/functions/lib/manualSalesStore.ts — solo lo que
 // consume esta pantalla.
@@ -20,63 +21,11 @@ type ManualSale = {
   metaStatus: "ok" | "error"
   metaError?: string
   canceled?: boolean
-  cancelMetaStatus?: "ok" | "error"
+  cancelMetaStatus?: "ok" | "error" | "skipped"
   nota?: string
 }
 
 type StatusFilter = "todas" | "enviadas" | "pendientes" | "canceladas"
-
-// Última palabra = apellido, el resto = nombre (mismo criterio que el envío a
-// Meta del lado del servidor).
-function splitNombre(nombre: string): { fn: string; ln: string } {
-  const words = nombre.trim().split(/\s+/)
-  if (words.length <= 1) return { fn: words[0] || "", ln: "" }
-  return { fn: words.slice(0, -1).join(" "), ln: words[words.length - 1] }
-}
-
-function csvCell(v: string | number): string {
-  const s = String(v)
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
-
-// Genera un CSV con el formato que Meta pide para subir "conversiones
-// offline" (email/phone/fn/ln/value/currency/event_name/event_time/order_id),
-// más campaña y estado para que quien maneja las campañas concilie.
-function ventasToCsv(rows: ManualSale[]): string {
-  const header = [
-    "email",
-    "phone",
-    "fn",
-    "ln",
-    "value",
-    "currency",
-    "event_name",
-    "event_time",
-    "order_id",
-    "campania",
-    "estado",
-  ]
-  const lines = rows.map((v) => {
-    const { fn, ln } = splitNombre(v.nombre)
-    const estado = v.canceled ? "cancelada" : v.metaStatus === "ok" ? "enviada" : "pendiente"
-    return [
-      v.email,
-      v.whatsapp,
-      fn,
-      ln,
-      v.monto,
-      "ARS",
-      "Purchase",
-      `${v.saleDate}T12:00:00-03:00`,
-      v.metaEventId,
-      v.campania || "",
-      estado,
-    ]
-      .map(csvCell)
-      .join(",")
-  })
-  return [header.join(","), ...lines].join("\n")
-}
 
 function downloadCsv(filename: string, content: string): void {
   // BOM (﻿) para que Excel abra el CSV en UTF-8 y no rompa los acentos.
@@ -141,7 +90,10 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
     load()
   }, [load, refreshKey])
 
-  const act = async (venta: ManualSale, action: "cancel" | "reactivate" | "retry-meta") => {
+  const act = async (
+    venta: ManualSale,
+    action: "cancel" | "reactivate" | "retry-meta" | "retry-cancel-meta",
+  ) => {
     setBusyId(venta.id)
     try {
       const res = await fetch("/api/capi-venta-manual-update", {
@@ -154,23 +106,26 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
         venta?: ManualSale
         error?: string
         metaError?: string
-        cancelMetaStatus?: "ok" | "error"
+        cancelMetaStatus?: "ok" | "error" | "skipped"
       }
       if (data.venta) {
         setVentas((prev) => prev.map((v) => (v.metaEventId === venta.metaEventId ? (data.venta as ManualSale) : v)))
       }
       if (data.ok && action === "cancel" && data.cancelMetaStatus === "error") {
-        setError("La venta quedó cancelada, pero no se pudo avisarle a Meta. Volvé a intentarlo en un rato.")
+        setError(
+          "La venta quedó cancelada, pero no se pudo avisarle a Meta. Usá “Reintentar aviso” en la fila.",
+        )
       } else if (!data.ok) {
         const msg: Record<string, string> = {
           unauthorized: "Sesión vencida, volvé a entrar",
           rate_limited: "Demasiadas acciones seguidas, esperá un momento",
           fecha_muy_vieja: "Esa venta ya tiene más de 7 días — Meta no la acepta aunque reintentes",
           venta_cancelada: "La venta está cancelada. Reactivala antes de reintentar el aviso a Meta.",
+          no_cancelada: "Esa venta no está cancelada.",
         }
         setError(
           (data.error && msg[data.error]) ||
-            (action === "retry-meta"
+            (action === "retry-meta" || action === "retry-cancel-meta"
               ? "El reintento a Meta volvió a fallar. Probá de nuevo en un rato."
               : "No se pudo aplicar el cambio"),
         )
@@ -230,10 +185,14 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
     return { enviadasN, enviadasMonto, canceladasN, canceladasMonto }
   }, [ventas])
 
+  // Exporta lo que estás viendo, pero SIN las canceladas (el CSV es para
+  // subir a Meta como compras).
+  const exportables = filtered.filter((v) => !v.canceled)
+
   const exportar = () => {
-    if (filtered.length === 0) return
-    const hoy = new Date().toISOString().slice(0, 10)
-    downloadCsv(`ventas-whatsapp-${hoy}.csv`, ventasToCsv(filtered))
+    if (exportables.length === 0) return
+    const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+    downloadCsv(`ventas-whatsapp-${hoy}.csv`, ventasToCsv(exportables))
   }
 
   return (
@@ -265,9 +224,9 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
         </div>
         <button
           onClick={exportar}
-          disabled={filtered.length === 0}
+          disabled={exportables.length === 0}
           className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-xs transition disabled:opacity-40 shrink-0"
-          title="Descargar un CSV con las ventas que estás viendo, para subir a Meta como conversiones offline"
+          title="Descargar un CSV de las ventas que estás viendo (sin las canceladas) para subir a Meta como conversiones offline"
         >
           <Download className="w-4 h-4" /> <span className="hidden sm:inline">Exportar</span>
         </button>
@@ -283,6 +242,7 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
 
       {!loading && ventas.length > 0 && (
         <div className="flex flex-wrap gap-x-5 gap-y-1 mb-4 text-[11px] font-mono text-white/50">
+          <span className="text-white/35 uppercase tracking-wide">Total</span>
           <span>
             <span className="text-emerald-300">{resumen.enviadasN}</span> enviadas ·{" "}
             {formatARS(resumen.enviadasMonto)}
@@ -392,6 +352,17 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
                         >
                           {busyId === v.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}
                           Reintentar
+                        </button>
+                      )}
+                      {v.canceled && v.cancelMetaStatus === "error" && (
+                        <button
+                          onClick={() => act(v, "retry-cancel-meta")}
+                          disabled={busyId === v.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 text-xs transition disabled:opacity-50"
+                          title="El aviso de cancelación a Meta falló"
+                        >
+                          {busyId === v.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}
+                          Reintentar aviso
                         </button>
                       )}
                       {v.canceled ? (

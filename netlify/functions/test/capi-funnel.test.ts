@@ -70,6 +70,8 @@ describe("capi-funnel", () => {
     // contentIds llega tal cual, sin pasar por la conversión de slug
     expect(bodies[0].data[0].custom_data.content_ids).toEqual(["platino", "diamante"])
     expect(bodies[0].data[0].custom_data.content_type).toBe("product_group")
+    // ViewContent de la sección no lleva value (no es una compra con monto)
+    expect(bodies[0].data[0].custom_data.value).toBeUndefined()
     expect(bodies[1].data[0].event_name).toBe("AddToCart")
     expect(bodies[1].data[0].custom_data.value).toBe(70000)
     expect(bodies[1].data[0].custom_data.content_ids).toEqual(["diamante"])
@@ -122,7 +124,7 @@ describe("capi-funnel", () => {
     fm.on("graph.facebook.com", () => jsonResponse({}))
     const ctx = { ip: "9.9.9.9" } as any
 
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 150; i++) {
       await funnelHandler(req({ eventId: `cf-rl-${i}`, event: "Lead" }), ctx)
     }
     const callsAfterLimit = fm.calls.length

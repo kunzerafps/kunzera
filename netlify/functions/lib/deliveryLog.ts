@@ -66,9 +66,18 @@ export async function recordDelivery(entry: {
 export async function listRecentDeliveries(limit: number): Promise<DeliveryLogEntry[]> {
   const store = getStore(STORE_NAME)
   const { blobs } = await store.list()
-  const entries = await Promise.all(
-    blobs.map((b) => store.get(b.key, { type: "json" }) as Promise<DeliveryLogEntry | null>),
-  )
+  // Concurrencia acotada: hay que traer TODAS las entradas para ordenar bien
+  // por fecha, pero sin disparar N fetch en paralelo de una — esto corre
+  // dentro del daily-gap-report, que tiene un presupuesto de tiempo ajustado.
+  const CONCURRENCY = 25
+  const entries: (DeliveryLogEntry | null)[] = []
+  for (let i = 0; i < blobs.length; i += CONCURRENCY) {
+    const chunk = blobs.slice(i, i + CONCURRENCY)
+    const got = await Promise.all(
+      chunk.map((b) => store.get(b.key, { type: "json" }) as Promise<DeliveryLogEntry | null>),
+    )
+    entries.push(...got)
+  }
   return entries
     .filter((e): e is DeliveryLogEntry => e !== null)
     .sort((a, b) => b.lastAttemptAt - a.lastAttemptAt)

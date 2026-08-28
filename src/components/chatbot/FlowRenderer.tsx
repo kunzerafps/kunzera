@@ -9,7 +9,7 @@ import FileUploader from "./FileUploader"
 import { normalizeWhatsapp, validateDiscord, validateName, validateWhatsapp } from "../../lib/validators"
 import { useTakenSlots } from "../../hooks/useTakenSlots"
 import { trackPixelEvent, trackServerBackedEvent } from "../../lib/pixel"
-import { packEventParams } from "../../lib/packs"
+import { packEventParams } from "../../lib/prices"
 
 type Props = {
   ctx: FlowContext

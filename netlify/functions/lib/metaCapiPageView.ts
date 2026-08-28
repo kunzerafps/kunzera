@@ -68,6 +68,11 @@ export async function sendMetaPageViewEvent(params: MetaCapiPageView): Promise<M
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // En el deploy de prueba va a "Eventos de prueba" de Meta, igual
+          // que el resto de los eventos server-side.
+          ...(process.env.META_CAPI_TEST_EVENT_CODE
+            ? { test_event_code: process.env.META_CAPI_TEST_EVENT_CODE }
+            : {}),
           data: [
             {
               event_name: "PageView",

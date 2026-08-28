@@ -57,6 +57,26 @@ describe("sendMetaCancelEvent", () => {
     expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
   })
 
+  it("agrega test_event_code al body cuando la env var está seteada", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    process.env.META_CAPI_TEST_EVENT_CODE = "TESTABC"
+
+    await sendMetaCancelEvent({ eventId: "e-test", value: 50000 })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.test_event_code).toBe("TESTABC")
+  })
+
+  it("sin META_CAPI_ACCESS_TOKEN devuelve no_access_token sin llamar a Meta", async () => {
+    delete process.env.META_CAPI_ACCESS_TOKEN
+    const fm = installFetchMock()
+
+    const r = await sendMetaCancelEvent({ eventId: "e-noauth", value: 50000 })
+    expect(r).toEqual({ ok: false, error: "no_access_token" })
+    expect(fm.calls.length).toBe(0)
+  })
+
   it("si Meta falla devuelve ok:false y NO marca como enviado (se puede reintentar)", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({ error: "caido" }, 500))

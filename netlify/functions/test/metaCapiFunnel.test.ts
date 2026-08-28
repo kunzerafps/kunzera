@@ -19,6 +19,18 @@ describe("sendMetaFunnelEvent", () => {
   beforeEach(() => {
     resetBlobsMock()
     process.env.META_CAPI_ACCESS_TOKEN = "test-token"
+    delete process.env.META_CAPI_TEST_EVENT_CODE
+  })
+
+  it("en el deploy de prueba (META_CAPI_TEST_EVENT_CODE) el evento va a Eventos de prueba", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    process.env.META_CAPI_TEST_EVENT_CODE = "TESTXYZ"
+
+    await sendMetaFunnelEvent({ eventId: "f-tc", eventName: "ViewContent", contentIds: ["platino"] })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.test_event_code).toBe("TESTXYZ")
   })
 
   it("manda el event_name recibido con action_source website + event_source_url", async () => {

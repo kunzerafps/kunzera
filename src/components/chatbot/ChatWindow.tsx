@@ -8,7 +8,7 @@ import FlowRenderer from "./FlowRenderer"
 import type { FlowContext } from "../../lib/chatFlow"
 import type { OrderDraft } from "../../types/order"
 import { trackServerBackedEvent } from "../../lib/pixel"
-import { packEventParams } from "../../lib/packs"
+import { packEventParams } from "../../lib/prices"
 
 type Props = {
   ctx: FlowContext

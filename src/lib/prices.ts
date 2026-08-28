@@ -29,3 +29,21 @@ export function getArs(pack: Pack): number {
 export function getUsd(pack: Pack): number {
   return current[pack].usd
 }
+
+// Parámetros estándar de producto para los eventos de Meta ligados a un pack
+// (AddToCart, Lead, InitiateCheckout). Un solo lugar para que el navegador y
+// el servidor manden EXACTAMENTE lo mismo: el precio ACTUAL del pack como
+// `value` (usa getArs, no el precio hardcodeado, para que coincida con
+// InitiateCheckout y Purchase si los precios se cambian desde el panel), el
+// slug como `content_ids` (identificador estable para agrupar) y el nombre
+// visible como `content_name`.
+export function packEventParams(pack: Pack | string | undefined): Record<string, unknown> {
+  if (pack !== "platino" && pack !== "diamante") return {}
+  return {
+    value: getArs(pack),
+    currency: "ARS",
+    content_name: PACKS[pack].name,
+    content_ids: [pack],
+    content_type: "product",
+  }
+}

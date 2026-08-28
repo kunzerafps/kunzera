@@ -49,8 +49,11 @@ export type ManualSale = {
   // pagó). Se deja el registro y se marca. Al cancelar se le manda a Meta un
   // evento "CompraCancelada" (ver metaCapiCancel.ts); `cancelMetaStatus`
   // guarda si ese aviso salió bien.
+  // "ok" = el aviso "CompraCancelada" salió · "error" = falló, se puede
+  // reintentar · "skipped" = la compra original nunca llegó a Meta, no había
+  // nada que anular.
   canceled?: boolean
-  cancelMetaStatus?: "ok" | "error"
+  cancelMetaStatus?: "ok" | "error" | "skipped"
   nota?: string
 }
 

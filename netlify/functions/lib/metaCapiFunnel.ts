@@ -107,7 +107,7 @@ export async function sendMetaFunnelEvent(params: MetaCapiFunnelEvent): Promise<
     customData.currency = params.currency || "ARS"
   }
   if (params.contentIds && params.contentIds.length > 0) {
-    // Modo nuevo: el cliente ya mandó todo resuelto (ver src/lib/packs.ts →
+    // Modo nuevo: el cliente ya mandó todo resuelto (ver src/lib/prices.ts →
     // packEventParams, y el ViewContent de la sección de precios que manda
     // los dos packs). Se usa tal cual.
     customData.content_ids = params.contentIds
@@ -132,6 +132,12 @@ export async function sendMetaFunnelEvent(params: MetaCapiFunnelEvent): Promise<
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // En el deploy de prueba (META_CAPI_TEST_EVENT_CODE seteado) estos
+          // eventos también van a "Eventos de prueba" de Meta, no a las
+          // campañas reales — igual que Purchase (metaCapi.ts).
+          ...(process.env.META_CAPI_TEST_EVENT_CODE
+            ? { test_event_code: process.env.META_CAPI_TEST_EVENT_CODE }
+            : {}),
           data: [
             {
               event_name: params.eventName,
