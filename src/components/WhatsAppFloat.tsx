@@ -1,6 +1,6 @@
 import { motion } from "framer-motion"
 import { SiWhatsapp } from "react-icons/si"
-import { waLink, WHATSAPP_MESSAGE_GENERAL } from "../lib/constants"
+import { waLink, WHATSAPP_FLOAT_MESSAGE } from "../lib/constants"
 import { trackPixelEvent } from "../lib/pixel"
 
 export default function WhatsAppFloat() {
@@ -9,7 +9,7 @@ export default function WhatsAppFloat() {
       initial={{ scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ delay: 1.5, type: "spring", stiffness: 200 }}
-      href={waLink(WHATSAPP_MESSAGE_GENERAL)}
+      href={waLink(WHATSAPP_FLOAT_MESSAGE)}
       target="_blank"
       rel="noreferrer"
       onClick={() => trackPixelEvent("Contact", { content_name: "whatsapp_float" })}
