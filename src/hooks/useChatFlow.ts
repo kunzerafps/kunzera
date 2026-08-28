@@ -18,6 +18,23 @@ import {
 import { trackServerBackedEvent } from "../lib/pixel"
 import { packEventParams } from "../lib/prices"
 
+// Demora simulada del "escribiendo…": corta, sólo para que se lea como "el
+// bot está respondiendo" y no como una página trabada. Antes eran 700ms al
+// saludar + 600ms en CADA paso del usuario — en un flujo de reserva eso se
+// siente lento sin necesidad (la velocidad vende). 0ms si el visitante pidió
+// reducir animaciones.
+const GREETING_DELAY_MS = 250
+const STEP_DELAY_MS = 200
+
+function typingDelay(ms: number): number {
+  try {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return 0
+  } catch {
+    // matchMedia no disponible — se usa el default
+  }
+  return ms
+}
+
 type FlowReturn = {
   ctx: FlowContext
   dispatch: (ev: FlowEvent) => void
@@ -60,7 +77,7 @@ export function useChatFlow(): FlowReturn {
       typingTimer.current = setTimeout(() => {
         rawDispatch(ev)
         setTyping(false)
-      }, 600)
+      }, typingDelay(STEP_DELAY_MS))
     } else {
       rawDispatch(ev)
     }
@@ -81,7 +98,7 @@ export function useChatFlow(): FlowReturn {
       const t = setTimeout(() => {
         rawDispatch({ type: "OPEN" })
         setTyping(false)
-      }, 700)
+      }, typingDelay(GREETING_DELAY_MS))
       return () => clearTimeout(t)
     }
   }, [open, ctx.state, resumable])
