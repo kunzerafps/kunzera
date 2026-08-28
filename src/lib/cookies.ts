@@ -8,6 +8,10 @@
 // cuando el link del anuncio trae `fbclid` y no hay cookie `_fbc`, la arma a
 // mano (`fb.1.<timestamp>.<fbclid>`), la guarda como cookie y además la deja
 // en `window.__kunzeraFbc`. `getFbc()` toma cualquiera de las dos fuentes.
+//
+// `_fbp` corre el mismo riesgo: si el píxel no carga, nunca se crea. El
+// script inline la genera con el formato que espera Meta y la deja en la
+// cookie + `window.__kunzeraFbp` — `getFbp()` toma cualquiera de las dos.
 
 export function getCookie(name: string): string | undefined {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
@@ -15,7 +19,11 @@ export function getCookie(name: string): string | undefined {
 }
 
 export function getFbp(): string | undefined {
-  return getCookie("_fbp")
+  return (
+    getCookie("_fbp") ||
+    (window as unknown as { __kunzeraFbp?: string }).__kunzeraFbp ||
+    undefined
+  )
 }
 
 export function getFbc(): string | undefined {

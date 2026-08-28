@@ -256,14 +256,17 @@ describe("capi-venta-manual (ventas offline por WhatsApp)", () => {
     const r1 = await ventaManualHandler(req(body), FAKE_CTX)
     const d1 = await r1.json()
     expect(d1.metaStatus).toBe("error")
-    expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
+    // metaCapi reintenta un 5xx dentro del mismo llamado (varias calls acá).
+    const callsTrasR1 = fm.callsTo("graph.facebook.com").length
+    expect(callsTrasR1).toBeGreaterThanOrEqual(1)
 
     const r2 = await ventaManualHandler(req(body), FAKE_CTX)
     const d2 = await r2.json()
     expect(d2.duplicate).toBe(true)
     expect(d2.metaStatus).toBe("error")
     expect(d2.id).toBe(d1.id)
-    expect(fm.callsTo("graph.facebook.com")).toHaveLength(1) // no re-intentó por acá
+    // La recarga NO vuelve a pegarle a Meta: se resuelve por el registro local.
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(callsTrasR1)
   })
 
   it("rechaza una venta fechada 7 días atrás cargada por la tarde (event_time > 168h aunque la fecha 'entre')", async () => {

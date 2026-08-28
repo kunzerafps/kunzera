@@ -6,11 +6,14 @@
 // sin reserva en el sitio).
 import { getStore } from "@netlify/blobs"
 import { recordDelivery, type DeliverySource } from "./deliveryLog"
+import { logMetaResponse } from "./metaResponseLog"
 import { PACKS } from "../../../src/lib/packs"
 import type { Pack } from "../../../src/types/order"
 import { META_PIXEL_ID } from "./metaPixelId"
 
 const ALREADY_SENT_STORE = "capi-events-sent"
+// Identifica la integración ante Meta (recomendado por su spec de CAPI).
+const PARTNER_AGENT = "kunzera-web"
 
 async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input)
@@ -219,84 +222,130 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
     if (params.clientIpAddress) rawUserData.client_ip_address = params.clientIpAddress
     if (params.clientUserAgent) rawUserData.client_user_agent = params.clientUserAgent
 
-    // Timeout explícito para no quedar colgados de una API externa (mismo
-    // criterio que postJson/getJson en appsScript.ts).
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 8000)
-    let res: Response
-    try {
-      res = await fetch(
-        `https://graph.facebook.com/v21.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(accessToken)}`,
+    const contentPrettyName = params.contentName
+      ? PACKS[params.contentName as Pack]?.name ?? params.contentName
+      : undefined
+    const payload = JSON.stringify({
+      // Si está seteado META_CAPI_TEST_EVENT_CODE, TODOS los eventos de
+      // este deploy caen en la pestaña "Eventos de prueba" de Meta: no
+      // se cuentan como conversión, no se atribuyen a ninguna campaña y
+      // no ensucian el aprendizaje. Se usa SOLO en el deploy de prueba
+      // (la variable está atada al contexto deploy-preview, nunca a
+      // producción), para poder cargar ventas de prueba de punta a
+      // punta contra el Meta real sin impacto.
+      ...(process.env.META_CAPI_TEST_EVENT_CODE
+        ? { test_event_code: process.env.META_CAPI_TEST_EVENT_CODE }
+        : {}),
+      data: [
         {
+          event_name: "Purchase",
+          event_time: params.eventTime ?? Math.floor(Date.now() / 1000),
+          action_source: params.actionSource,
+          ...(params.actionSource === "website" ? { event_source_url: EVENT_SOURCE_URL } : {}),
+          // Obligatorio para Meta cuando action_source es
+          // "business_messaging" (error real encontrado probando en
+          // vivo: "Falta el parámetro de canal de mensajes"; probado
+          // primero adentro de custom_data — Meta lo siguió pidiendo
+          // igual, va a nivel del evento). Todas las ventas manuales
+          // de este sitio se cierran por WhatsApp, nunca por
+          // Messenger/Instagram.
+          ...(params.actionSource === "business_messaging" ? { messaging_channel: "whatsapp" } : {}),
+          event_id: params.eventId,
+          partner_agent: PARTNER_AGENT,
+          user_data: { ...userData, ...rawUserData },
+          custom_data: {
+            currency: "ARS",
+            value: params.value,
+            // contentName llega de los callers como el slug interno
+            // ("platino"/"diamante") — content_name usa el nombre
+            // visible del pack para que el reporting de Meta sea
+            // legible; content_ids conserva el slug (identificador
+            // estable) para que Meta pueda agrupar conversiones por
+            // producto.
+            content_name: contentPrettyName,
+            content_ids: params.contentName ? [params.contentName] : undefined,
+            content_type: "product",
+            // Formato "rico" que Meta prefiere para el detalle del producto:
+            // el mismo slug/precio que content_ids/value, pero como array de
+            // items. Ayuda al reporting por producto y a la optimización por
+            // valor.
+            contents: params.contentName
+              ? [{ id: params.contentName, quantity: 1, item_price: params.value }]
+              : undefined,
+            order_id: params.eventId,
+            num_items: 1,
+          },
+        },
+      ],
+    })
+    const url = `https://graph.facebook.com/v21.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(accessToken)}`
+
+    // Reintento acotado. La Graph API tira 5xx transitorios y cortes de
+    // conexión cada tanto; antes un solo intento fallido dejaba la venta sin
+    // avisar a Meta para siempre (transferencia/binance no tienen reintento
+    // externo como el webhook de Mercado Pago, ni botón manual como las
+    // ventas de WhatsApp). Se reintenta SÓLO ante error de red o 5xx — un 4xx
+    // (token vencido, payload inválido, evento fuera de la ventana de 7 días)
+    // no se arregla reintentando. Presupuesto total ~7s para no pasarnos del
+    // límite de ejecución de la función: este es el último paso de
+    // mp-webhook.mts y capi-confirmar-pago.mts.
+    const RETRY_BUDGET_MS = 7000
+    const MAX_ATTEMPTS = 3
+    const startedAt = Date.now()
+    let res: Response | null = null
+    let lastError = "sin_respuesta"
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (attempt > 1) {
+        if (RETRY_BUDGET_MS - (Date.now() - startedAt) < 1200) break
+        await new Promise((r) => setTimeout(r, Math.min(250 * 2 ** (attempt - 2), 1000)))
+      }
+      const perAttempt = Math.min(6000, RETRY_BUDGET_MS - (Date.now() - startedAt))
+      if (perAttempt < 1000) break
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), perAttempt)
+      try {
+        const r = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            // Si está seteado META_CAPI_TEST_EVENT_CODE, TODOS los eventos de
-            // este deploy caen en la pestaña "Eventos de prueba" de Meta: no
-            // se cuentan como conversión, no se atribuyen a ninguna campaña y
-            // no ensucian el aprendizaje. Se usa SOLO en el deploy de prueba
-            // (la variable está atada al contexto deploy-preview, nunca a
-            // producción), para poder cargar ventas de prueba de punta a
-            // punta contra el Meta real sin impacto.
-            ...(process.env.META_CAPI_TEST_EVENT_CODE
-              ? { test_event_code: process.env.META_CAPI_TEST_EVENT_CODE }
-              : {}),
-            data: [
-              {
-                event_name: "Purchase",
-                event_time: params.eventTime ?? Math.floor(Date.now() / 1000),
-                action_source: params.actionSource,
-                ...(params.actionSource === "website" ? { event_source_url: EVENT_SOURCE_URL } : {}),
-                // Obligatorio para Meta cuando action_source es
-                // "business_messaging" (error real encontrado probando en
-                // vivo: "Falta el parámetro de canal de mensajes"; probado
-                // primero adentro de custom_data — Meta lo siguió pidiendo
-                // igual, va a nivel del evento). Todas las ventas manuales
-                // de este sitio se cierran por WhatsApp, nunca por
-                // Messenger/Instagram.
-                ...(params.actionSource === "business_messaging" ? { messaging_channel: "whatsapp" } : {}),
-                event_id: params.eventId,
-                user_data: { ...userData, ...rawUserData },
-                custom_data: {
-                  currency: "ARS",
-                  value: params.value,
-                  // contentName llega de los callers como el slug interno
-                  // ("platino"/"diamante") — content_name usa el nombre
-                  // visible del pack para que el reporting de Meta sea
-                  // legible; content_ids conserva el slug (identificador
-                  // estable) para que Meta pueda agrupar conversiones por
-                  // producto.
-                  content_name: params.contentName
-                    ? PACKS[params.contentName as Pack]?.name ?? params.contentName
-                    : undefined,
-                  content_ids: params.contentName ? [params.contentName] : undefined,
-                  content_type: "product",
-                  order_id: params.eventId,
-                  num_items: 1,
-                },
-              },
-            ],
-          }),
+          body: payload,
           signal: controller.signal,
-        },
-      )
-    } finally {
-      clearTimeout(timer)
+        })
+        if (r.ok) {
+          res = r
+          break
+        }
+        const errText = await r.text().catch(() => "")
+        lastError = `http_${r.status}: ${errText}`
+        if (r.status < 500) {
+          // 4xx: no se arregla reintentando — se corta acá con el error.
+          res = r
+          break
+        }
+        // 5xx: sigue el loop (si queda presupuesto).
+      } catch (err) {
+        // Error de red o abort por timeout: sigue el loop.
+        lastError = String(err)
+      } finally {
+        clearTimeout(timer)
+      }
     }
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "")
-      const error = `http_${res.status}: ${errText}`
+    if (!res || !res.ok) {
       await recordDelivery({
         eventId: params.eventId,
         source: params.source,
         ok: false,
-        error,
+        error: lastError,
         dedupedLocally: false,
         saleDate: params.saleDate,
       })
-      return { ok: false, error }
+      return { ok: false, error: lastError }
     }
+
+    // Respuesta 2xx: loguear advertencias del cuerpo (parámetros ignorados,
+    // events_received=0) que antes se tiraban.
+    await logMetaResponse(res, "metaCapi:Purchase")
 
     // Se marca DESPUÉS de la respuesta 2xx de Meta, nunca antes — si esto
     // fallara, preferimos arriesgar un reintento futuro (que Meta va a

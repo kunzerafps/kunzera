@@ -315,7 +315,7 @@ describe("sendMetaPurchaseEvent", () => {
     expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
   })
 
-  it("un fallo permanente no reintenta en loop dentro del mismo llamado (una sola llamada a Meta por invocación)", async () => {
+  it("un 4xx (token inválido, payload malo) NO se reintenta: una sola llamada", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({ error: { message: "Invalid token" } }, 401))
 
@@ -328,6 +328,76 @@ describe("sendMetaPurchaseEvent", () => {
 
     expect(result.ok).toBe(false)
     expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
+  })
+
+  it("un 5xx transitorio se reintenta dentro del mismo llamado y sale bien al segundo intento", async () => {
+    const fm = installFetchMock()
+    let n = 0
+    fm.on("graph.facebook.com", () => (n++ === 0 ? jsonResponse({ error: "temporal" }, 503) : jsonResponse({})))
+
+    const result = await sendMetaPurchaseEvent({
+      eventId: "evt-5xx-recovers",
+      source: "mercadopago",
+      actionSource: "website",
+      value: 70000,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(fm.callsTo("graph.facebook.com").length).toBeGreaterThanOrEqual(2)
+    // y quedó marcado como enviado (no se reintenta después)
+    expect(await fakeGetStore("capi-events-sent").get("evt-5xx-recovers")).not.toBeNull()
+  })
+
+  it("un corte de red se reintenta; si nunca responde, devuelve error sin marcar enviado", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => {
+      throw new Error("ECONNRESET")
+    })
+
+    const result = await sendMetaPurchaseEvent({
+      eventId: "evt-net-down",
+      source: "transferencia_binance",
+      actionSource: "website",
+      value: 50000,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(fm.callsTo("graph.facebook.com").length).toBeGreaterThanOrEqual(2)
+    expect(await fakeGetStore("capi-events-sent").get("evt-net-down")).toBeNull()
+  })
+
+  it("manda partner_agent y el detalle de producto en contents[]", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-contents-1",
+      source: "mercadopago",
+      actionSource: "website",
+      value: 70000,
+      contentName: "diamante",
+    })
+
+    const evt = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0]
+    expect(evt.partner_agent).toBe("kunzera-web")
+    expect(evt.custom_data.contents).toEqual([{ id: "diamante", quantity: 1, item_price: 70000 }])
+    expect(evt.custom_data.content_ids).toEqual(["diamante"])
+    expect(evt.custom_data.content_name).toBe("Diamante")
+  })
+
+  it("sin contentName no manda contents[] (queda undefined, no un array vacío)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "evt-no-contents",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+    })
+
+    const evt = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0]
+    expect(evt.custom_data.contents).toBeUndefined()
   })
 
   it("una segunda llamada con el mismo eventId no vuelve a pegarle a la API de Meta (idempotencia local)", async () => {

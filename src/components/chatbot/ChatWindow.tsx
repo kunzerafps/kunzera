@@ -9,6 +9,7 @@ import type { FlowContext } from "../../lib/chatFlow"
 import type { OrderDraft } from "../../types/order"
 import { trackServerBackedEvent } from "../../lib/pixel"
 import { packEventParams } from "../../lib/prices"
+import { firedOnceInSession, markFiredOnceInSession } from "../../lib/storage"
 
 type Props = {
   ctx: FlowContext
@@ -37,9 +38,14 @@ export default function ChatWindow({
 }: Props) {
   const handleChip = useCallback(
     (payload: string, label: string) => {
-      if (payload === "platino" || payload === "diamante") {
+      if (
+        (payload === "platino" || payload === "diamante") &&
+        !firedOnceInSession("addToCart")
+      ) {
         // También server-side y con el precio del pack como value, para que
-        // Meta pueda optimizar por plata desde este paso.
+        // Meta pueda optimizar por plata desde este paso. Una sola vez por
+        // sesión: elegir el pack de nuevo (o cambiarlo) no lo recuenta.
+        markFiredOnceInSession("addToCart")
         trackServerBackedEvent("AddToCart", undefined, packEventParams(payload))
       }
       dispatch({ type: "SELECT_CHIP", payload, label })

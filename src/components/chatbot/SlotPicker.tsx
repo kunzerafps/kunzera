@@ -90,14 +90,14 @@ export default function SlotPicker({ slots, loading, error, onPick, onRefresh }:
           <Clock className="w-3 h-3" />
           {formatDayLabel(selectedKey)} · {selectedSlots.length} hueco{selectedSlots.length !== 1 ? "s" : ""}
         </div>
-        <div className="flex flex-wrap gap-1.5 max-h-[35vh] overflow-y-auto pr-1">
+        <div className="flex flex-wrap gap-2 max-h-[35vh] overflow-y-auto pr-1">
           {selectedSlots.map((s) => (
             <motion.button
               key={s.iso}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => onPick(s.iso)}
-              className="px-3 py-1.5 text-xs font-mono rounded-full bg-brand-950/80 border border-brand-700/50 hover:border-brand-500 hover:bg-brand-900 text-brand-100 transition"
+              className="min-h-[44px] min-w-[44px] px-4 py-2.5 text-sm font-mono rounded-full bg-brand-950/80 border border-brand-700/50 hover:border-brand-500 hover:bg-brand-900 text-brand-100 transition"
             >
               {s.hour}
             </motion.button>
@@ -136,7 +136,7 @@ function DayPill({
     <motion.button
       whileTap={{ scale: 0.95 }}
       onClick={onClick}
-      className={`shrink-0 flex flex-col items-center justify-center w-14 py-2 rounded-xl border transition ${
+      className={`shrink-0 flex flex-col items-center justify-center w-14 min-h-[52px] py-2 rounded-xl border transition ${
         active
           ? "bg-brand-500 border-brand-400 text-white shadow-glow-red"
           : "bg-brand-950/80 border-brand-700/50 text-brand-200 hover:border-brand-500 hover:bg-brand-900"

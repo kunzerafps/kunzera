@@ -7,7 +7,14 @@ import {
   reduce,
 } from "../lib/chatFlow"
 import type { FlowEvent } from "../types/order"
-import { canResume, clearDraft, clearTurnoSelFired, loadDraft, saveDraft } from "../lib/storage"
+import {
+  canResume,
+  clearDraft,
+  clearFiredOnceInSession,
+  clearTurnoSelFired,
+  loadDraft,
+  saveDraft,
+} from "../lib/storage"
 import { trackServerBackedEvent } from "../lib/pixel"
 import { packEventParams } from "../lib/prices"
 
@@ -88,6 +95,7 @@ export function useChatFlow(): FlowReturn {
       clearDraft()
       setResumable(null)
       clearTurnoSelFired()
+      clearFiredOnceInSession()
       // "Schedule" = el turno quedó reservado de verdad (reserva confirmada,
       // comprobante subido / MP aprobado). Esta SÍ va cliente-side +
       // server-side (a diferencia de Purchase): no tiene el problema de la

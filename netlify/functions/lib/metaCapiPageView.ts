@@ -17,9 +17,12 @@
 import { getStore } from "@netlify/blobs"
 import { META_PIXEL_ID } from "./metaPixelId"
 import { sha256Hex } from "./metaUserData"
+import { logMetaResponse } from "./metaResponseLog"
 
 const ALREADY_SENT_STORE = "capi-pageview-events-sent"
 const EVENT_SOURCE_URL = "https://kunzera.com/"
+// Identifica la integración ante Meta (recomendado por su spec de CAPI).
+const PARTNER_AGENT = "kunzera-web"
 
 export type MetaCapiPageView = {
   eventId: string
@@ -80,6 +83,7 @@ export async function sendMetaPageViewEvent(params: MetaCapiPageView): Promise<M
               action_source: "website",
               event_source_url: EVENT_SOURCE_URL,
               event_id: params.eventId,
+              partner_agent: PARTNER_AGENT,
               user_data: userData,
             },
           ],
@@ -94,6 +98,8 @@ export async function sendMetaPageViewEvent(params: MetaCapiPageView): Promise<M
       console.error("[metaCapiPageView] Meta rechazó el evento:", error)
       return { ok: false, error }
     }
+
+    await logMetaResponse(res, "metaCapiPageView")
 
     try {
       await getStore(ALREADY_SENT_STORE).set(params.eventId, "1")

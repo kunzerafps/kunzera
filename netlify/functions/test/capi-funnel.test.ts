@@ -33,6 +33,41 @@ describe("capi-funnel", () => {
     expect(userData.ph[0]).toHaveLength(64)
   })
 
+  it("pasa la geo de ctx.geo a Meta (nombre de provincia, no código)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = {
+      ip: "200.1.2.3",
+      geo: {
+        city: "Rosario",
+        subdivision: { code: "S", name: "Santa Fe" },
+        postalCode: "2000",
+        country: { code: "AR" },
+      },
+    } as any
+
+    await funnelHandler(req({ eventId: "cf-geo-1", event: "Lead" }), ctx)
+
+    const userData = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].user_data
+    // van hasheados (64 hex) — acá sólo verificamos que se mandan los 4 campos
+    expect(userData.ct[0]).toHaveLength(64)
+    expect(userData.st[0]).toHaveLength(64)
+    expect(userData.zp[0]).toHaveLength(64)
+    expect(userData.country[0]).toHaveLength(64)
+  })
+
+  it("sin ctx.geo no rompe ni manda ct/st/zp/country", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "1.2.3.4" } as any
+
+    await funnelHandler(req({ eventId: "cf-nogeo", event: "Lead" }), ctx)
+
+    const userData = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].user_data
+    expect(userData.ct).toBeUndefined()
+    expect(userData.country).toBeUndefined()
+  })
+
   it("acepta InitiateCheckout", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))

@@ -21,11 +21,14 @@
 import { getStore } from "@netlify/blobs"
 import { sha256Hex, stripAccents, normalizePhoneForHash } from "./metaUserData"
 import { META_PIXEL_ID } from "./metaPixelId"
+import { logMetaResponse } from "./metaResponseLog"
 import { PACKS } from "../../../src/lib/packs"
 import type { Pack } from "../../../src/types/order"
 
 const ALREADY_SENT_STORE = "capi-funnel-events-sent"
 const EVENT_SOURCE_URL = "https://kunzera.com/"
+// Identifica la integración ante Meta (recomendado por su spec de CAPI).
+const PARTNER_AGENT = "kunzera-web"
 
 // Sólo estos. Cualquier otro nombre que llegue al endpoint se ignora (no
 // queremos que un cliente manipulado mande "Purchase" por acá y ensucie el
@@ -56,6 +59,14 @@ export type MetaCapiFunnelEvent = {
   fbc?: string
   clientIpAddress?: string
   clientUserAgent?: string
+  // Geolocalización aproximada que Netlify ya resuelve gratis desde la IP
+  // del request (ver capi-funnel.mts → ctx.geo). Meta SÍ los espera
+  // hasheados como ct/st/zp/country, igual que teléfono/nombre — mismo
+  // criterio y misma normalización que el evento de Compra (metaCapi.ts).
+  city?: string
+  region?: string
+  postalCode?: string
+  countryCode?: string
   // custom_data
   value?: number
   currency?: string
@@ -100,6 +111,20 @@ export async function sendMetaFunnelEvent(params: MetaCapiFunnelEvent): Promise<
   }
   if (params.externalId) {
     userData.external_id = [await sha256Hex(params.externalId.trim().toLowerCase())]
+  }
+  // Geo hasheada — misma normalización exacta que metaCapi.ts (sin acentos,
+  // minúsculas, sin espacios). zp/country no llevan stripAccents (son ASCII).
+  if (params.city) {
+    userData.ct = [await sha256Hex(stripAccents(params.city.trim().toLowerCase().replace(/\s+/g, "")))]
+  }
+  if (params.region) {
+    userData.st = [await sha256Hex(stripAccents(params.region.trim().toLowerCase().replace(/\s+/g, "")))]
+  }
+  if (params.postalCode) {
+    userData.zp = [await sha256Hex(params.postalCode.trim().toLowerCase().replace(/\s+/g, ""))]
+  }
+  if (params.countryCode) {
+    userData.country = [await sha256Hex(params.countryCode.trim().toLowerCase())]
   }
 
   const rawUserData: Record<string, string> = {}
@@ -152,6 +177,7 @@ export async function sendMetaFunnelEvent(params: MetaCapiFunnelEvent): Promise<
               action_source: "website",
               event_source_url: EVENT_SOURCE_URL,
               event_id: params.eventId,
+              partner_agent: PARTNER_AGENT,
               user_data: { ...userData, ...rawUserData },
               ...(Object.keys(customData).length > 0 ? { custom_data: customData } : {}),
             },
@@ -167,6 +193,10 @@ export async function sendMetaFunnelEvent(params: MetaCapiFunnelEvent): Promise<
       console.error(`[metaCapiFunnel] Meta rechazó ${params.eventName}:`, error)
       return { ok: false, error }
     }
+
+    // Respuesta 2xx: Meta igual puede devolver advertencias (parámetros
+    // ignorados, PII mal formada) en el cuerpo. Se loguean — antes se tiraban.
+    await logMetaResponse(res, `metaCapiFunnel:${params.eventName}`)
 
     try {
       await getStore(ALREADY_SENT_STORE).set(params.eventId, "1")

@@ -10,7 +10,12 @@ import { normalizeWhatsapp, validateDiscord, validateName, validateWhatsapp } fr
 import { useTakenSlots } from "../../hooks/useTakenSlots"
 import { trackServerBackedEvent } from "../../lib/pixel"
 import { packEventParams } from "../../lib/prices"
-import { markTurnoSelFired, turnoSelAlreadyFired } from "../../lib/storage"
+import {
+  firedOnceInSession,
+  markFiredOnceInSession,
+  markTurnoSelFired,
+  turnoSelAlreadyFired,
+} from "../../lib/storage"
 
 type Props = {
   ctx: FlowContext
@@ -64,11 +69,16 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
             // hasheados, que ya tenemos acá) — ver trackServerBackedEvent.
             // Lleva el precio del pack como `value` para que Meta pueda
             // optimizar por plata en este paso, no solo por "dejó los datos".
-            trackServerBackedEvent(
-              "Lead",
-              { whatsapp, nombre: ctx.draft.nombre },
-              packEventParams(ctx.draft.pack),
-            )
+            // Una sola vez por sesión: si vuelve atrás y reescribe el
+            // teléfono no se cuenta de nuevo.
+            if (!firedOnceInSession("lead")) {
+              markFiredOnceInSession("lead")
+              trackServerBackedEvent(
+                "Lead",
+                { whatsapp, nombre: ctx.draft.nombre },
+                packEventParams(ctx.draft.pack),
+              )
+            }
             dispatch({ type: "SET_WHATSAPP", value: whatsapp })
             return null
           }}

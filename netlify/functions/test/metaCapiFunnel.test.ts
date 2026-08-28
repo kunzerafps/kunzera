@@ -68,6 +68,36 @@ describe("sendMetaFunnelEvent", () => {
     expect(serialized).not.toContain("Juan")
   })
 
+  it("hashea la geo (ct/st/zp/country) igual que el evento de Compra", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaFunnelEvent({
+      eventId: "f-geo",
+      eventName: "Lead",
+      city: "La Plata",
+      region: "Buenos Aires",
+      postalCode: "1900",
+      countryCode: "AR",
+    })
+
+    const userData = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].user_data
+    expect(userData.ct[0]).toBe(await sha256HexRef("laplata"))
+    expect(userData.st[0]).toBe(await sha256HexRef("buenosaires"))
+    expect(userData.zp[0]).toBe(await sha256HexRef("1900"))
+    expect(userData.country[0]).toBe(await sha256HexRef("ar"))
+  })
+
+  it("agrega partner_agent a nivel de evento", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaFunnelEvent({ eventId: "f-pa", eventName: "Lead" })
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.data[0].partner_agent).toBe("kunzera-web")
+  })
+
   it("manda fbp/fbc/ip/user-agent sin hashear", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))

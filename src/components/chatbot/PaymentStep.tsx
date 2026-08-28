@@ -2,7 +2,7 @@ import { motion } from "framer-motion"
 import { ArrowLeft, Check, Copy, CreditCard, Landmark, Wallet } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { OrderDraft } from "../../types/order"
-import { BINANCE_EMAIL, MP_ALIAS } from "../../lib/constants"
+import { BINANCE_EMAIL, MP_ALIAS, MP_ALIAS_TITULAR } from "../../lib/constants"
 import { formatARS } from "../../lib/formatters"
 import { useSiteConfig } from "../../hooks/useWaMessages"
 import { randomId } from "../../lib/crypto"
@@ -35,11 +35,12 @@ const METHODS: {
 
 const ALIAS_METHODS: Record<
   "transferencia" | "binance",
-  { fieldLabel: string; value: string; helper: string }
+  { fieldLabel: string; value: string; helper: string; titular?: string }
 > = {
   transferencia: {
     fieldLabel: "Alias Mercado Pago",
     value: MP_ALIAS,
+    titular: MP_ALIAS_TITULAR,
     helper:
       "Transferí desde la app de Mercado Pago o tu banco al alias. Luego subí el comprobante para confirmar la reserva.",
   },
@@ -349,6 +350,11 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
               <div className="font-mono text-white text-base truncate">
                 {active!.value}
               </div>
+              {active!.titular && (
+                <div className="text-[11px] text-white/50 truncate">
+                  Titular: {active!.titular}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-1.5 text-xs text-brand-300 group-hover:text-brand-200 font-mono uppercase shrink-0">
               {copied ? (

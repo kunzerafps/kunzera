@@ -78,6 +78,13 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       fbc: str(body.fbc),
       clientIpAddress: ctx.ip || undefined,
       clientUserAgent: req.headers.get("user-agent") || undefined,
+      // Geo que Netlify ya resolvió en el edge desde la IP — gratis, no se le
+      // pide nada al cliente. `subdivision.name` (no `.code`), igual criterio
+      // que capture-attribution.mts para el evento de Compra.
+      city: ctx.geo?.city || undefined,
+      region: ctx.geo?.subdivision?.name || undefined,
+      postalCode: ctx.geo?.postalCode || undefined,
+      countryCode: ctx.geo?.country?.code || undefined,
       value: typeof body.value === "number" && Number.isFinite(body.value) ? body.value : undefined,
       currency: str(body.currency),
       contentName: str(body.contentName),

@@ -21,6 +21,9 @@ export const APPS_SCRIPT_URL =
 
 // Alias de Mercado Pago donde el cliente transfiere
 export const MP_ALIAS = "juanmarquez2026.mp"
+// Titular de la cuenta — se muestra junto al alias en el paso de pago para
+// dar confianza (una compra de $50–70 mil a un alias "pelado" frena).
+export const MP_ALIAS_TITULAR = "Juan Enrique Marquez"
 
 // Email asociado a Binance Pay para cobrar en USDT
 export const BINANCE_EMAIL = "ezepalmero@gmail.com"

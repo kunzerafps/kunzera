@@ -130,6 +130,44 @@ export function clearTurnoSelFired(): void {
   }
 }
 
+// Mismo guard "una vez por sesión de navegador" para Lead y AddToCart: si el
+// cliente vuelve atrás y avanza de nuevo (cambió el pack, corrigió el
+// teléfono), el evento se disparaba otra vez e inflaba la cuenta / ensuciaba
+// el aprendizaje de Meta. Se limpian al confirmar una reserva, igual que
+// turno_seleccionado.
+const FIRED_ONCE_KEYS = {
+  lead: "kz_lead_fired",
+  addToCart: "kz_addtocart_fired",
+} as const
+
+type FiredOnceEvent = keyof typeof FIRED_ONCE_KEYS
+
+export function firedOnceInSession(ev: FiredOnceEvent): boolean {
+  try {
+    return sessionStorage.getItem(FIRED_ONCE_KEYS[ev]) === "1"
+  } catch {
+    return false
+  }
+}
+
+export function markFiredOnceInSession(ev: FiredOnceEvent): void {
+  try {
+    sessionStorage.setItem(FIRED_ONCE_KEYS[ev], "1")
+  } catch {
+    // modo privado — en el peor caso se manda alguna vez de más
+  }
+}
+
+export function clearFiredOnceInSession(): void {
+  try {
+    for (const key of Object.values(FIRED_ONCE_KEYS)) {
+      sessionStorage.removeItem(key)
+    }
+  } catch {
+    // noop
+  }
+}
+
 const SUBMIT_COOLDOWN_KEY = "kz_last_submit"
 const SUBMIT_COOLDOWN_MS = 30 * 1000
 

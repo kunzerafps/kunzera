@@ -24,7 +24,10 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Orbitron:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Sólo los grosores que el sitio realmente usa: Inter sin el 300 (no
+         hay font-light en ningún lado), Orbitron 400/700/900 (los otros no
+         se usan). Menos archivos de fuente = menos bloqueo de render. -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <!-- Meta Pixel Code -->
     <script>
     !function(f,b,e,v,n,t,s)
@@ -68,6 +71,23 @@
           } else {
             window.__kunzeraFbc = existing;
           }
+        }
+      } catch (e) { /* noop */ }
+      try {
+        // _fbp: si el pixel está bloqueado (Safari ITP, bloqueador de
+        // anuncios) nunca crea esta cookie y todos los eventos server-side
+        // se quedan sin ella — es de las señales que más pesan en el match.
+        // La creamos nosotros con el formato que espera Meta
+        // (fb.1.<timestamp>.<random de 16 dígitos>) ANTES de fbq('init'):
+        // si el pixel sí carga, la toma como propia y navegador + servidor
+        // quedan consistentes; si no carga, el servidor igual la manda.
+        var existingFbp = (document.cookie.match(/_fbp=([^;]*)/) || [])[1];
+        if (!existingFbp) {
+          var fbp = 'fb.1.' + Date.now() + '.' + (Math.floor(Math.random() * 9e15) + 1e15);
+          document.cookie = '_fbp=' + fbp + ';path=/;max-age=7776000;samesite=lax';
+          window.__kunzeraFbp = fbp;
+        } else {
+          window.__kunzeraFbp = existingFbp;
         }
       } catch (e) { /* noop */ }
     })();

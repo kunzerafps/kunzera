@@ -74,7 +74,10 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       // un dato que se le pida al cliente. Mejora el match quality de Meta
       // sin sumar fricción al checkout.
       city: ctx.geo?.city || undefined,
-      region: ctx.geo?.subdivision?.code || undefined,
+      // Nombre de la provincia ("Buenos Aires"), no el código ("B"): Meta
+      // matchea `st` contra el nombre que el usuario tiene en su perfil, el
+      // código de subdivisión no le sirve para nada.
+      region: ctx.geo?.subdivision?.name || undefined,
       postalCode: ctx.geo?.postalCode || undefined,
       countryCode: ctx.geo?.country?.code || undefined,
       capturedAt: Date.now(),
