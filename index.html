@@ -77,7 +77,11 @@
     // fallback). Este archivo es HTML estático — no lee esa env var — así que
     // si alguna vez se migra el Pixel a otro dataset, hay que actualizar ACÁ
     // también a mano y mantenerlo igual.
-    fbq('init', '761377043609509');
+    // Se pasa el id propio del navegador como external_id (advanced
+    // matching): así hasta los eventos anónimos (PageView, ViewContent) le
+    // dan a Meta una clave para reconocer a la persona, y se reconcilian con
+    // la copia server-side, que ya manda este mismo id.
+    fbq('init', '761377043609509', window.__kunzeraVid ? { external_id: window.__kunzeraVid } : {});
     // eventID compartido con el envío server-side (ver useServerPageView.ts)
     // para que Meta deduplique el PageView del navegador y el del servidor
     // como un solo evento, en vez de contar la visita dos veces.

@@ -5,7 +5,7 @@ import { PACKS } from "../lib/packs"
 import { openChat } from "../lib/chatBus"
 import type { Pack } from "../types/order"
 import { useSiteConfig } from "../hooks/useWaMessages"
-import { trackPixelEvent } from "../lib/pixel"
+import { trackServerBackedEvent } from "../lib/pixel"
 
 const PLATINO_FEATURES = [
   "Limpio tu PC de archivos y basura que la hacen más lenta",
@@ -93,7 +93,15 @@ export default function Pricing() {
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
           onViewportEnter={() =>
-            trackPixelEvent("ViewContent", { content_name: "pricing_section", content_type: "product_group" })
+            // Se manda también desde el servidor (resiste bloqueadores/iOS) y
+            // con los dos packs como content_ids, para poder armar públicos
+            // de "vio los precios". El viewport once:true de este mismo
+            // motion.div hace que se dispare una sola vez por visita.
+            trackServerBackedEvent("ViewContent", undefined, {
+              content_name: "pricing_section",
+              content_type: "product_group",
+              content_ids: ["platino", "diamante"],
+            })
           }
           className="text-center max-w-2xl mx-auto mb-16"
         >

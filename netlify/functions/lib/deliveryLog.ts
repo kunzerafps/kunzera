@@ -51,17 +51,26 @@ export async function recordDelivery(entry: {
   }
 }
 
-// Usa list() de Netlify Blobs en vez de mantener un índice manual aparte —
-// menos superficie de bugs, y esta store no va a crecer a un tamaño donde
-// listar todo sea un problema real para "primera versión".
+// Usa list() de Netlify Blobs en vez de mantener un índice manual aparte.
+//
+// OJO con el orden: las claves de esta store son event_id (hashes), NO están
+// ordenadas por fecha. La versión anterior ordenaba por `key` y recortaba a
+// `limit` ANTES de traer los datos, así que una vez que la store pasaba de
+// `limit` filas devolvía un subconjunto lexicográfico que podía dejar
+// afuera TODAS las entregas recientes — y el chequeo diario
+// (daily-gap-report.mts) empezaba a comparar contra datos incompletos, en
+// silencio. Ahora se traen todas, se ordena por lastAttemptAt real y recién
+// después se recorta.
+// (TODO si esto crece a decenas de miles: índice por fecha, o list() con
+// prefijo de timestamp en la clave.)
 export async function listRecentDeliveries(limit: number): Promise<DeliveryLogEntry[]> {
   const store = getStore(STORE_NAME)
   const { blobs } = await store.list()
-  const sorted = [...blobs].sort((a, b) => (a.key < b.key ? 1 : -1)).slice(0, limit)
   const entries = await Promise.all(
-    sorted.map((b) => store.get(b.key, { type: "json" }) as Promise<DeliveryLogEntry | null>),
+    blobs.map((b) => store.get(b.key, { type: "json" }) as Promise<DeliveryLogEntry | null>),
   )
   return entries
     .filter((e): e is DeliveryLogEntry => e !== null)
     .sort((a, b) => b.lastAttemptAt - a.lastAttemptAt)
+    .slice(0, limit)
 }

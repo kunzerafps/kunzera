@@ -45,6 +45,48 @@ describe("capi-funnel", () => {
     expect(body.data[0].custom_data.value).toBe(50000)
   })
 
+  it("acepta ViewContent y AddToCart (nuevos eventos server-side)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "1.2.3.4" } as any
+
+    await funnelHandler(
+      req({
+        eventId: "cf-vc-1",
+        event: "ViewContent",
+        contentIds: ["platino", "diamante"],
+        contentType: "product_group",
+        contentName: "pricing_section",
+      }),
+      ctx,
+    )
+    await funnelHandler(
+      req({ eventId: "cf-atc-1", event: "AddToCart", value: 70000, contentIds: ["diamante"] }),
+      ctx,
+    )
+
+    const bodies = fm.callsTo("graph.facebook.com").map((c) => JSON.parse(String(c.init?.body)))
+    expect(bodies[0].data[0].event_name).toBe("ViewContent")
+    // contentIds llega tal cual, sin pasar por la conversión de slug
+    expect(bodies[0].data[0].custom_data.content_ids).toEqual(["platino", "diamante"])
+    expect(bodies[0].data[0].custom_data.content_type).toBe("product_group")
+    expect(bodies[1].data[0].event_name).toBe("AddToCart")
+    expect(bodies[1].data[0].custom_data.value).toBe(70000)
+    expect(bodies[1].data[0].custom_data.content_ids).toEqual(["diamante"])
+  })
+
+  it("un array gigante de contentIds se recorta a 5", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "1.2.3.4" } as any
+    const many = Array.from({ length: 50 }, (_, i) => `x${i}`)
+
+    await funnelHandler(req({ eventId: "cf-many", event: "AddToCart", contentIds: many }), ctx)
+
+    const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(body.data[0].custom_data.content_ids).toHaveLength(5)
+  })
+
   it("un event_name no permitido (ej. Purchase) no manda nada a Meta", async () => {
     const fm = installFetchMock()
     const ctx = { ip: "1.2.3.4" } as any

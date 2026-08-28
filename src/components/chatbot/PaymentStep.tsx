@@ -9,6 +9,7 @@ import { randomId } from "../../lib/crypto"
 import { saveDraft } from "../../lib/storage"
 import { mpTotal } from "../../lib/pricing"
 import { trackServerBackedEvent } from "../../lib/pixel"
+import { packEventParams } from "../../lib/packs"
 import { getStoredUtm } from "../../lib/utm"
 import { getFbp, getFbc } from "../../lib/cookies"
 import { getVisitorId } from "../../lib/visitorId"
@@ -91,14 +92,16 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     // recién se manda cuando el pago está confirmado de verdad, ver
     // useChatFlow.ts). Cliente-side está bien acá — a diferencia de
     // Purchase, no hace falta que sea a prueba de bloqueadores de anuncios.
+    const packParams = packEventParams(draft.pack)
+    const packBasePrice = typeof packParams.value === "number" ? packParams.value : undefined
     trackServerBackedEvent(
       "InitiateCheckout",
       { whatsapp: draft.whatsapp, nombre: draft.nombre },
       {
-        value: draft.monto ?? 0,
+        ...packParams,
+        // El monto real que va a pagar manda sobre el precio base del pack.
+        value: draft.monto ?? packBasePrice ?? 0,
         currency: "ARS",
-        content_name: draft.pack,
-        content_type: "product",
       },
     )
 

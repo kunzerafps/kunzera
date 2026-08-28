@@ -46,9 +46,11 @@ export type ManualSale = {
   // reintentar y para diagnosticar.
   metaError?: string
   // La venta se cayó después de cargada (el cliente se arrepintió, no
-  // pagó). Se deja el registro y se marca; a Meta ya se le avisó y no hay
-  // un "deshacer" simple, es ruido mínimo.
+  // pagó). Se deja el registro y se marca. Al cancelar se le manda a Meta un
+  // evento "CompraCancelada" (ver metaCapiCancel.ts); `cancelMetaStatus`
+  // guarda si ese aviso salió bien.
   canceled?: boolean
+  cancelMetaStatus?: "ok" | "error"
   nota?: string
 }
 

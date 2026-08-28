@@ -1,11 +1,13 @@
 import type { Config, Context } from "@netlify/functions"
 import { verifySessionToken } from "./lib/adminSession"
 import { sendMetaPurchaseEvent, MAX_EVENT_AGE_DAYS } from "./lib/metaCapi"
+import { sendMetaCancelEvent } from "./lib/metaCapiCancel"
 import { isRateLimited } from "./lib/rateLimit"
 import { getManualSaleByEvent, updateManualSaleByEvent } from "./lib/manualSalesStore"
 
 // Acciones sobre una venta ya registrada (ver lib/manualSalesStore.ts):
-//   - "cancel"      -> marca la venta como caída (el cliente se arrepintió).
+//   - "cancel"      -> marca la venta como caída (el cliente se arrepintió)
+//                      y le avisa a Meta con un evento "CompraCancelada".
 //   - "reactivate"  -> deshace lo anterior.
 //   - "retry-meta"  -> reintenta el aviso a Meta de una venta que quedó en
 //                      estado "error". Reconstruye el evento desde el
@@ -61,8 +63,26 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   }
 
   if (body.action === "cancel") {
-    const updated = await updateManualSaleByEvent(eventId, { canceled: true })
-    return Response.json({ ok: true, venta: updated })
+    // Aviso a Meta (best-effort): si falla, la venta se cancela igual y
+    // queda `cancelMetaStatus: "error"` para verlo / reintentarlo.
+    let cancelMetaStatus: "ok" | "error" = "error"
+    if (venta.metaStatus === "ok") {
+      // Solo tiene sentido "cancelar" en Meta una venta que Meta llegó a
+      // recibir. Si la compra original nunca se envió, no hay nada que anular.
+      const r = await sendMetaCancelEvent({
+        eventId: venta.metaEventId,
+        value: venta.monto,
+        whatsapp: venta.whatsapp,
+        nombre: venta.nombre,
+        email: venta.email,
+        countryCode: "ar",
+      })
+      cancelMetaStatus = r.ok ? "ok" : "error"
+    } else {
+      cancelMetaStatus = "ok" // no había compra en Meta que anular
+    }
+    const updated = await updateManualSaleByEvent(eventId, { canceled: true, cancelMetaStatus })
+    return Response.json({ ok: true, venta: updated, cancelMetaStatus })
   }
 
   if (body.action === "reactivate") {

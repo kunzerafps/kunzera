@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { Check, Copy, Loader2, RefreshCw, RotateCw, Search, Undo2, XCircle } from "lucide-react"
+import { Check, Copy, Download, Loader2, RefreshCw, RotateCw, Search, Undo2, XCircle } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { formatARS } from "../../lib/formatters"
 import { getAdminToken } from "../../lib/storage"
@@ -20,10 +20,76 @@ type ManualSale = {
   metaStatus: "ok" | "error"
   metaError?: string
   canceled?: boolean
+  cancelMetaStatus?: "ok" | "error"
   nota?: string
 }
 
 type StatusFilter = "todas" | "enviadas" | "pendientes" | "canceladas"
+
+// Última palabra = apellido, el resto = nombre (mismo criterio que el envío a
+// Meta del lado del servidor).
+function splitNombre(nombre: string): { fn: string; ln: string } {
+  const words = nombre.trim().split(/\s+/)
+  if (words.length <= 1) return { fn: words[0] || "", ln: "" }
+  return { fn: words.slice(0, -1).join(" "), ln: words[words.length - 1] }
+}
+
+function csvCell(v: string | number): string {
+  const s = String(v)
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+// Genera un CSV con el formato que Meta pide para subir "conversiones
+// offline" (email/phone/fn/ln/value/currency/event_name/event_time/order_id),
+// más campaña y estado para que quien maneja las campañas concilie.
+function ventasToCsv(rows: ManualSale[]): string {
+  const header = [
+    "email",
+    "phone",
+    "fn",
+    "ln",
+    "value",
+    "currency",
+    "event_name",
+    "event_time",
+    "order_id",
+    "campania",
+    "estado",
+  ]
+  const lines = rows.map((v) => {
+    const { fn, ln } = splitNombre(v.nombre)
+    const estado = v.canceled ? "cancelada" : v.metaStatus === "ok" ? "enviada" : "pendiente"
+    return [
+      v.email,
+      v.whatsapp,
+      fn,
+      ln,
+      v.monto,
+      "ARS",
+      "Purchase",
+      `${v.saleDate}T12:00:00-03:00`,
+      v.metaEventId,
+      v.campania || "",
+      estado,
+    ]
+      .map(csvCell)
+      .join(",")
+  })
+  return [header.join(","), ...lines].join("\n")
+}
+
+function downloadCsv(filename: string, content: string): void {
+  // BOM (﻿) para que Excel abra el CSV en UTF-8 y no rompa los acentos.
+  const blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 
 // "2026-08-27" -> "27/08" sin pasar por Date (evita el corrimiento de día
 // por zona horaria que tendría un new Date("YYYY-MM-DD")).
@@ -88,11 +154,14 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
         venta?: ManualSale
         error?: string
         metaError?: string
+        cancelMetaStatus?: "ok" | "error"
       }
       if (data.venta) {
         setVentas((prev) => prev.map((v) => (v.metaEventId === venta.metaEventId ? (data.venta as ManualSale) : v)))
       }
-      if (!data.ok) {
+      if (data.ok && action === "cancel" && data.cancelMetaStatus === "error") {
+        setError("La venta quedó cancelada, pero no se pudo avisarle a Meta. Volvé a intentarlo en un rato.")
+      } else if (!data.ok) {
         const msg: Record<string, string> = {
           unauthorized: "Sesión vencida, volvé a entrar",
           rate_limited: "Demasiadas acciones seguidas, esperá un momento",
@@ -144,6 +213,29 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
 
   const pendientes = ventas.filter((v) => v.metaStatus === "error" && !v.canceled).length
 
+  const resumen = useMemo(() => {
+    let enviadasN = 0
+    let enviadasMonto = 0
+    let canceladasN = 0
+    let canceladasMonto = 0
+    for (const v of ventas) {
+      if (v.canceled) {
+        canceladasN++
+        canceladasMonto += v.monto
+      } else if (v.metaStatus === "ok") {
+        enviadasN++
+        enviadasMonto += v.monto
+      }
+    }
+    return { enviadasN, enviadasMonto, canceladasN, canceladasMonto }
+  }, [ventas])
+
+  const exportar = () => {
+    if (filtered.length === 0) return
+    const hoy = new Date().toISOString().slice(0, 10)
+    downloadCsv(`ventas-whatsapp-${hoy}.csv`, ventasToCsv(filtered))
+  }
+
   return (
     <div className="glass-card rounded-2xl p-4 md:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
@@ -172,6 +264,14 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
           ))}
         </div>
         <button
+          onClick={exportar}
+          disabled={filtered.length === 0}
+          className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-xs transition disabled:opacity-40 shrink-0"
+          title="Descargar un CSV con las ventas que estás viendo, para subir a Meta como conversiones offline"
+        >
+          <Download className="w-4 h-4" /> <span className="hidden sm:inline">Exportar</span>
+        </button>
+        <button
           onClick={load}
           disabled={loading}
           className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center transition disabled:opacity-50 shrink-0"
@@ -180,6 +280,26 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
           <RefreshCw className={`w-4 h-4 text-white ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
+
+      {!loading && ventas.length > 0 && (
+        <div className="flex flex-wrap gap-x-5 gap-y-1 mb-4 text-[11px] font-mono text-white/50">
+          <span>
+            <span className="text-emerald-300">{resumen.enviadasN}</span> enviadas ·{" "}
+            {formatARS(resumen.enviadasMonto)}
+          </span>
+          {pendientes > 0 && (
+            <span>
+              <span className="text-amber-300">{pendientes}</span> pendientes
+            </span>
+          )}
+          {resumen.canceladasN > 0 && (
+            <span>
+              <span className="text-white/70">{resumen.canceladasN}</span> canceladas ·{" "}
+              −{formatARS(resumen.canceladasMonto)}
+            </span>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
 
@@ -302,8 +422,10 @@ export default function ManualSalesList({ refreshKey = 0 }: { refreshKey?: numbe
       )}
 
       <p className="mt-4 text-[11px] text-white/30 leading-relaxed">
-        Solo ventas cerradas por WhatsApp que no pasaron por el sitio. “Cancelar” deja el registro pero
-        marca que la venta se cayó — a Meta ya se le avisó y no se puede deshacer del lado de ellos.
+        Solo ventas cerradas por WhatsApp que no pasaron por el sitio. “Cancelar” deja el registro,
+        marca que la venta se cayó y le manda a Meta un aviso de “compra cancelada” (Meta no resta la
+        venta solo, pero queda registrada para la métrica de ingresos netos). “Exportar” baja lo que
+        estás viendo en un CSV para subir a Meta como conversiones offline.
       </p>
     </div>
   )

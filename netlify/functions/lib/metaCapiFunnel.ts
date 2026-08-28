@@ -27,10 +27,11 @@ import type { Pack } from "../../../src/types/order"
 const ALREADY_SENT_STORE = "capi-funnel-events-sent"
 const EVENT_SOURCE_URL = "https://kunzera.com/"
 
-// Sólo estos dos. Cualquier otro nombre que llegue al endpoint se ignora
-// (no queremos que un cliente manipulado mande "Purchase" por acá y
-// ensucie el reporting de ventas, que es 100% server-side y auditado).
-export const FUNNEL_EVENTS = ["Lead", "InitiateCheckout"] as const
+// Sólo estos. Cualquier otro nombre que llegue al endpoint se ignora (no
+// queremos que un cliente manipulado mande "Purchase" por acá y ensucie el
+// reporting de ventas, que es 100% server-side y auditado). Purchase NUNCA
+// va en esta lista.
+export const FUNNEL_EVENTS = ["Lead", "InitiateCheckout", "ViewContent", "AddToCart"] as const
 export type FunnelEventName = (typeof FUNNEL_EVENTS)[number]
 
 export type MetaCapiFunnelEvent = {
@@ -51,7 +52,13 @@ export type MetaCapiFunnelEvent = {
   // custom_data
   value?: number
   currency?: string
+  // Si viene `contentIds`, se usa tal cual junto con `contentName` (texto
+  // libre) y `contentType`. Si NO viene, se cae al modo viejo: `contentName`
+  // se interpreta como slug de pack y de ahí se arma content_ids + el nombre
+  // visible.
   contentName?: string
+  contentIds?: string[]
+  contentType?: string
 }
 
 export type MetaCapiResult = { ok: true } | { ok: false; error: string }
@@ -99,14 +106,21 @@ export async function sendMetaFunnelEvent(params: MetaCapiFunnelEvent): Promise<
     customData.value = params.value
     customData.currency = params.currency || "ARS"
   }
-  if (params.contentName) {
-    // El cliente manda el slug interno ("platino"/"diamante"); se muestra
-    // el nombre visible del pack para que el reporting de Meta sea legible,
-    // pero se conserva el slug como content_ids (identificador estable) —
-    // igual que hace metaCapi.ts para Purchase.
+  if (params.contentIds && params.contentIds.length > 0) {
+    // Modo nuevo: el cliente ya mandó todo resuelto (ver src/lib/packs.ts →
+    // packEventParams, y el ViewContent de la sección de precios que manda
+    // los dos packs). Se usa tal cual.
+    customData.content_ids = params.contentIds
+    customData.content_type = params.contentType || "product"
+    if (params.contentName) customData.content_name = params.contentName
+  } else if (params.contentName) {
+    // Modo viejo (compat): el cliente manda el slug interno
+    // ("platino"/"diamante"); se muestra el nombre visible del pack para que
+    // el reporting de Meta sea legible, pero se conserva el slug como
+    // content_ids (identificador estable) — igual que hace metaCapi.ts.
     customData.content_name = PACKS[params.contentName as Pack]?.name ?? params.contentName
     customData.content_ids = [params.contentName]
-    customData.content_type = "product"
+    customData.content_type = params.contentType || "product"
   }
 
   const controller = new AbortController()

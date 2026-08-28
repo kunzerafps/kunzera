@@ -9,6 +9,7 @@ import FileUploader from "./FileUploader"
 import { normalizeWhatsapp, validateDiscord, validateName, validateWhatsapp } from "../../lib/validators"
 import { useTakenSlots } from "../../hooks/useTakenSlots"
 import { trackPixelEvent, trackServerBackedEvent } from "../../lib/pixel"
+import { packEventParams } from "../../lib/packs"
 
 type Props = {
   ctx: FlowContext
@@ -60,10 +61,12 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
             // Lead: la señal más fuerte de "interés real" del embudo. Se
             // manda por el píxel Y por el servidor (con teléfono/nombre
             // hasheados, que ya tenemos acá) — ver trackServerBackedEvent.
+            // Lleva el precio del pack como `value` para que Meta pueda
+            // optimizar por plata en este paso, no solo por "dejó los datos".
             trackServerBackedEvent(
               "Lead",
               { whatsapp, nombre: ctx.draft.nombre },
-              { content_name: ctx.draft.pack || "unknown" },
+              packEventParams(ctx.draft.pack),
             )
             dispatch({ type: "SET_WHATSAPP", value: whatsapp })
             return null

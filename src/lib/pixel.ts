@@ -28,17 +28,25 @@ type Identity = {
   nombre?: string
 }
 
-// Dispara un evento de mitad de embudo (Lead, InitiateCheckout) por DOS
-// vías con el mismo eventID:
+// Eventos de mitad de embudo que también se mandan desde el servidor. Todo
+// nombre que no esté acá es ignorado por /api/capi-funnel (no queremos que
+// un cliente manipulado mande "Purchase" por esa vía, que es 100%
+// server-side y auditada).
+const SERVER_BACKED_EVENTS = ["Lead", "InitiateCheckout", "ViewContent", "AddToCart"] as const
+export type ServerBackedEventName = (typeof SERVER_BACKED_EVENTS)[number]
+
+// Dispara un evento de mitad de embudo por DOS vías con el mismo eventID:
 //   1. el píxel del navegador (rápido, con la cookie _fbp)
 //   2. una copia server-side (POST a /api/capi-funnel) que agrega el
-//      teléfono y el nombre hasheados + IP/user-agent reales — resiste
-//      bloqueadores de anuncios y Safari/iOS, donde el píxel solo no llega.
+//      teléfono/nombre hasheados (si los hay), el id de navegador y la
+//      IP/user-agent reales — resiste bloqueadores de anuncios y Safari/iOS,
+//      donde el píxel solo no llega.
 // Meta une las dos por el eventID. Best-effort: si el POST falla, queda el
-// evento del navegador igual que antes.
+// evento del navegador igual que antes. `identity` es opcional: ViewContent
+// y AddToCart se disparan antes de que la persona deje sus datos.
 export function trackServerBackedEvent(
-  eventName: "Lead" | "InitiateCheckout",
-  identity: Identity,
+  eventName: ServerBackedEventName,
+  identity: Identity = {},
   params?: Record<string, unknown>,
 ): void {
   const eventId = randomId()
@@ -46,6 +54,9 @@ export function trackServerBackedEvent(
 
   const value =
     typeof params?.value === "number" && Number.isFinite(params.value) ? params.value : undefined
+  const contentIds = Array.isArray(params?.content_ids)
+    ? (params!.content_ids as unknown[]).filter((x): x is string => typeof x === "string")
+    : undefined
 
   void fetch("/api/capi-funnel", {
     method: "POST",
@@ -61,6 +72,8 @@ export function trackServerBackedEvent(
       value,
       currency: typeof params?.currency === "string" ? params.currency : undefined,
       contentName: typeof params?.content_name === "string" ? params.content_name : undefined,
+      contentIds: contentIds && contentIds.length > 0 ? contentIds : undefined,
+      contentType: typeof params?.content_type === "string" ? params.content_type : undefined,
     }),
   }).catch(() => {})
 }

@@ -18,10 +18,20 @@ type Body = {
   value?: number
   currency?: string
   contentName?: string
+  contentIds?: unknown
+  contentType?: string
 }
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v ? v.slice(0, MAX_STR) : undefined
+}
+
+// Hasta 5 ids de contenido, string, cada uno acotado — evita que un cliente
+// manipulado mande un array gigante.
+function strArray(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out = v.filter((x): x is string => typeof x === "string" && !!x).slice(0, 5).map((x) => x.slice(0, MAX_STR))
+  return out.length > 0 ? out : undefined
 }
 
 // Respaldo server-side de los eventos Lead / InitiateCheckout del navegador
@@ -67,6 +77,8 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       value: typeof body.value === "number" && Number.isFinite(body.value) ? body.value : undefined,
       currency: str(body.currency),
       contentName: str(body.contentName),
+      contentIds: strArray(body.contentIds),
+      contentType: str(body.contentType),
     })
   } catch (err) {
     console.error("[capi-funnel] error inesperado:", err)

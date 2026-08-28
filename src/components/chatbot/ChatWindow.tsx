@@ -7,8 +7,8 @@ import TypingBubble from "./TypingBubble"
 import FlowRenderer from "./FlowRenderer"
 import type { FlowContext } from "../../lib/chatFlow"
 import type { OrderDraft } from "../../types/order"
-import { trackPixelEvent } from "../../lib/pixel"
-import { PACKS } from "../../lib/packs"
+import { trackServerBackedEvent } from "../../lib/pixel"
+import { packEventParams } from "../../lib/packs"
 
 type Props = {
   ctx: FlowContext
@@ -38,10 +38,9 @@ export default function ChatWindow({
   const handleChip = useCallback(
     (payload: string, label: string) => {
       if (payload === "platino" || payload === "diamante") {
-        trackPixelEvent("AddToCart", {
-          content_name: PACKS[payload].name,
-          content_type: "product",
-        })
+        // También server-side y con el precio del pack como value, para que
+        // Meta pueda optimizar por plata desde este paso.
+        trackServerBackedEvent("AddToCart", undefined, packEventParams(payload))
       }
       dispatch({ type: "SELECT_CHIP", payload, label })
     },

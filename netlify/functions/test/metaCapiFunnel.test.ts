@@ -96,6 +96,43 @@ describe("sendMetaFunnelEvent", () => {
     expect(customData.content_type).toBe("product")
   })
 
+  it("modo nuevo: si viene contentIds se usa tal cual, sin conversión de slug", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaFunnelEvent({
+      eventId: "f-4b",
+      eventName: "ViewContent",
+      contentName: "pricing_section",
+      contentIds: ["platino", "diamante"],
+      contentType: "product_group",
+    })
+
+    const customData = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+    expect(customData.content_ids).toEqual(["platino", "diamante"])
+    expect(customData.content_type).toBe("product_group")
+    expect(customData.content_name).toBe("pricing_section") // texto libre, no se toca
+  })
+
+  it("Lead ahora puede llevar value (precio del pack) para optimización por plata", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaFunnelEvent({
+      eventId: "f-lead-val",
+      eventName: "Lead",
+      value: 50000,
+      currency: "ARS",
+      contentName: "Platino",
+      contentIds: ["platino"],
+      contentType: "product",
+    })
+
+    const customData = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+    expect(customData.value).toBe(50000)
+    expect(customData.content_ids).toEqual(["platino"])
+  })
+
   it("no manda custom_data cuando no hay value ni contentName (ej. Lead pelado)", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
