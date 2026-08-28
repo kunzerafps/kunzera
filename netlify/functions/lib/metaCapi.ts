@@ -286,21 +286,27 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
     // externo como el webhook de Mercado Pago, ni botón manual como las
     // ventas de WhatsApp). Se reintenta SÓLO ante error de red o 5xx — un 4xx
     // (token vencido, payload inválido, evento fuera de la ventana de 7 días)
-    // no se arregla reintentando. Presupuesto total ~7s para no pasarnos del
-    // límite de ejecución de la función: este es el último paso de
-    // mp-webhook.mts y capi-confirmar-pago.mts.
-    const RETRY_BUDGET_MS = 7000
-    const MAX_ATTEMPTS = 3
+    // no se arregla reintentando.
+    //
+    // Sólo UN reintento (2 intentos en total): este es el último paso de
+    // mp-webhook.mts y capi-venta-manual.mts, que corren con ~10s de límite y
+    // ya gastaron tiempo en Apps Script antes. El primer intento conserva los
+    // 8s de timeout de siempre (no romper un caso que hoy funciona); el
+    // presupuesto total (9s) sólo deja arrancar el segundo intento si el
+    // primero falló rápido (un 5xx, no un cuelgue).
+    const RETRY_BUDGET_MS = 9000
+    const MAX_ATTEMPTS = 2
+    const ATTEMPT_TIMEOUT_MS = 8000
     const startedAt = Date.now()
     let res: Response | null = null
     let lastError = "sin_respuesta"
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       if (attempt > 1) {
-        if (RETRY_BUDGET_MS - (Date.now() - startedAt) < 1200) break
-        await new Promise((r) => setTimeout(r, Math.min(250 * 2 ** (attempt - 2), 1000)))
+        if (RETRY_BUDGET_MS - (Date.now() - startedAt) < 1500) break
+        await new Promise((r) => setTimeout(r, 400))
       }
-      const perAttempt = Math.min(6000, RETRY_BUDGET_MS - (Date.now() - startedAt))
+      const perAttempt = Math.min(ATTEMPT_TIMEOUT_MS, RETRY_BUDGET_MS - (Date.now() - startedAt))
       if (perAttempt < 1000) break
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), perAttempt)
@@ -312,6 +318,10 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
           signal: controller.signal,
         })
         if (r.ok) {
+          // El cuerpo se lee ACÁ, con el timer del intento todavía armado:
+          // si Meta responde 200 pero el stream del cuerpo se cuelga, el
+          // abort lo corta en vez de dejar la función colgada para siempre.
+          await logMetaResponse(r, "metaCapi:Purchase")
           res = r
           break
         }
@@ -342,10 +352,6 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
       })
       return { ok: false, error: lastError }
     }
-
-    // Respuesta 2xx: loguear advertencias del cuerpo (parámetros ignorados,
-    // events_received=0) que antes se tiraban.
-    await logMetaResponse(res, "metaCapi:Purchase")
 
     // Se marca DESPUÉS de la respuesta 2xx de Meta, nunca antes — si esto
     // fallara, preferimos arriesgar un reintento futuro (que Meta va a

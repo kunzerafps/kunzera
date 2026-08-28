@@ -136,7 +136,7 @@ function DayPill({
     <motion.button
       whileTap={{ scale: 0.95 }}
       onClick={onClick}
-      className={`shrink-0 flex flex-col items-center justify-center w-14 min-h-[52px] py-2 rounded-xl border transition ${
+      className={`shrink-0 flex flex-col items-center justify-center w-14 py-2 rounded-xl border transition ${
         active
           ? "bg-brand-500 border-brand-400 text-white shadow-glow-red"
           : "bg-brand-950/80 border-brand-700/50 text-brand-200 hover:border-brand-500 hover:bg-brand-900"

@@ -343,7 +343,7 @@ describe("sendMetaPurchaseEvent", () => {
     })
 
     expect(result.ok).toBe(true)
-    expect(fm.callsTo("graph.facebook.com").length).toBeGreaterThanOrEqual(2)
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(2) // 1 fallo + 1 reintento OK
     // y quedó marcado como enviado (no se reintenta después)
     expect(await fakeGetStore("capi-events-sent").get("evt-5xx-recovers")).not.toBeNull()
   })
@@ -362,7 +362,7 @@ describe("sendMetaPurchaseEvent", () => {
     })
 
     expect(result.ok).toBe(false)
-    expect(fm.callsTo("graph.facebook.com").length).toBeGreaterThanOrEqual(2)
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(2) // reintentó una vez y se rindió
     expect(await fakeGetStore("capi-events-sent").get("evt-net-down")).toBeNull()
   })
 
