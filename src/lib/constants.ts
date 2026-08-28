@@ -10,14 +10,19 @@ export const WHATSAPP_MESSAGE_GENERAL =
 // Mensaje que queda pre-escrito al tocar el botón flotante de WhatsApp de la
 // web (WhatsAppFloat.tsx). Antes abría el chat vacío y la persona no recibía
 // ninguna info. Trae todo lo clave + empuja a auto-reservar en el sitio.
-// OJO: WhatsApp NO autoenvía — la persona tiene que tocar "enviar".
+//
+// SIN EMOJIS a propósito: los emojis "grandes" (astral plane) que viajan en
+// un link wa.me se rompen en WhatsApp de escritorio/web (se ven como
+// cuadraditos). Los símbolos de acá (» → ·) sí sobreviven en todas las
+// plataformas. Los *asteriscos* son negrita de WhatsApp: no se ven, la app
+// los convierte. OJO: WhatsApp NO autoenvía — la persona toca "enviar".
 export const WHATSAPP_FLOAT_MESSAGE = [
-  "📅 No hace falta que te responda para reservar: en kunzera.com elegí día y hora.",
-  "👉 Turnos de 13 a 21h. Minutos antes te escribo y arrancamos.",
-  "⚡ PLATINO $50.000 → Windows",
-  "💎 DIAMANTE $70.000 → Windows + BIOS · máximo salto de FPS",
-  "📡 Remoto por AnyDesk, ~20 min",
-  "ℹ️ Todo está en kunzera.com",
+  "» No hace falta que te responda para reservar: en kunzera.com elegí *día y hora*.",
+  "» Turnos de *13 a 21h*. Minutos antes te escribo y arrancamos.",
+  "» *PLATINO $50.000* → Windows",
+  "» *DIAMANTE $70.000* → Windows + BIOS · máximo salto de FPS",
+  "» Remoto por AnyDesk, ~20 min",
+  "» Todo está en kunzera.com",
 ].join("\n")
 
 export const waLink = (message: string) =>
