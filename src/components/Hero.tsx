@@ -2,10 +2,12 @@ import { motion } from "framer-motion"
 import { ArrowRight, Check } from "lucide-react"
 import { useEffect, useState } from "react"
 import { openChat } from "../lib/chatBus"
+import { useSiteConfig } from "../hooks/useWaMessages"
 
 const BENEFIT_TAGS = ["Menos tirones", "Menos input lag", "Balas que pegan", "Conocé la PC que compraste"]
 
 export default function Hero() {
+  const { prices } = useSiteConfig()
   return (
     <section id="hero" className="relative pt-32 pb-20 md:pt-40 md:pb-28 section-padding overflow-hidden">
       {/* Animated scanline */}
@@ -92,6 +94,21 @@ export default function Hero() {
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
                 </button>
               </div>
+              {/* Precio a la vista en la portada — antes recién aparecía al
+                  llegar a la sección de planes. Precios en vivo (useSiteConfig),
+                  los mismos que muestra la sección. */}
+              <p className="text-sm text-white/60 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                <span className="text-brand-300 font-semibold">Platino</span>
+                <span className="font-mono font-bold text-white">
+                  ${prices.platino.ars.toLocaleString("es-AR")}
+                </span>
+                <span className="text-white/30">·</span>
+                <span className="text-brand-300 font-semibold">Diamante</span>
+                <span className="font-mono font-bold text-white">
+                  ${prices.diamante.ars.toLocaleString("es-AR")}
+                </span>
+                <span className="text-white/40 text-xs">— pago único, sin mensualidades</span>
+              </p>
               <span className="text-xs font-mono text-white/40 flex items-center gap-1.5">
                 ★ Sin letra chica, te lo explico yo mismo · Punto de restauración incluido
               </span>

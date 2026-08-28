@@ -13,6 +13,7 @@ import CTA from './components/CTA'
 import Footer from './components/Footer'
 import ChatBot from './components/ChatBot'
 import WhatsAppFloat from './components/WhatsAppFloat'
+import StickyPlansBar from './components/StickyPlansBar'
 import AdminGate from './components/admin/AdminGate'
 import { useServerPageView } from './hooks/useServerPageView'
 
@@ -29,6 +30,11 @@ function App() {
       <div className="relative z-10">
         <Navbar />
         <Hero />
+        {/* Los planes van 2º a propósito: es lo que la persona que llega de
+            un anuncio quiere ver primero (precio + qué incluye). La prueba
+            social (About/Results/Testimonios/IG) queda debajo para cerrar
+            a quien necesita más. */}
+        <Pricing />
         <TrustStrip />
         <GamesStrip />
         <About />
@@ -36,7 +42,6 @@ function App() {
         <HowItWorks />
         <Testimonials />
         <InstagramComments />
-        <Pricing />
         <FAQ />
         <CTA />
         <Footer />
@@ -44,6 +49,7 @@ function App() {
 
       <ChatBot />
       <WhatsAppFloat />
+      <StickyPlansBar />
       <AdminGate />
     </div>
   )

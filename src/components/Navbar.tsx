@@ -93,6 +93,15 @@ export default function Navbar() {
           </nav>
 
           <div className="flex items-center gap-2">
+            {/* "Planes" visible en celular sin abrir el menú hamburguesa — es
+                lo que más busca quien llega de un anuncio. En escritorio ya
+                está en la nav de arriba. */}
+            <a
+              href="#pricing"
+              className="md:hidden inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-brand-900/60 text-brand-300 hover:text-brand-200 hover:border-brand-600 transition"
+            >
+              Planes
+            </a>
             <button
               onClick={() => openChat({ startReservation: true })}
               className="inline-flex items-center gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg bg-gradient-to-r from-brand-600 to-brand-800 hover:from-brand-500 hover:to-brand-700 transition shadow-lg shadow-brand-900/50"

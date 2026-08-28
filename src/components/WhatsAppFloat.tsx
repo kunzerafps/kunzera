@@ -16,7 +16,9 @@ export default function WhatsAppFloat() {
       // bottom-left, no bottom-right: el lanzador del chat y el panel de chat
       // compacto ya ocupan esa esquina (bottom-24/bottom-6 right-6) — poner
       // este botón ahí lo taparía cuando el chat está abierto.
-      className="fixed bottom-6 left-6 z-40 group"
+      // En celular sube un poco (bottom-20) para no chocar con la barra fija
+      // de planes (StickyPlansBar); en escritorio vuelve a bottom-6.
+      className="fixed bottom-20 left-6 z-40 group md:bottom-6"
       aria-label="Contactar por WhatsApp"
     >
       <motion.div

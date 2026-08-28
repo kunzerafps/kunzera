@@ -107,7 +107,7 @@ export default function ChatBot() {
         transition={{ delay: 1.3, type: "spring", stiffness: 200 }}
         onClick={() => flow.setOpen(!flow.open)}
         aria-label={flow.open ? "Cerrar chat" : "Abrir chat"}
-        className={`fixed bottom-6 right-6 z-[60] group ${
+        className={`fixed bottom-20 right-6 z-[60] group md:bottom-6 ${
           flow.open ? "hidden sm:block" : "block"
         }`}
       >
