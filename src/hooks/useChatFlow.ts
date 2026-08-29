@@ -16,13 +16,10 @@ import {
   saveDraft,
 } from "../lib/storage"
 
-// Demora simulada del "escribiendo…": corta, sólo para que se lea como "el
-// bot está respondiendo" y no como una página trabada. Antes eran 700ms al
-// saludar + 600ms en CADA paso del usuario — en un flujo de reserva eso se
-// siente lento sin necesidad (la velocidad vende). 0ms si el visitante pidió
-// reducir animaciones.
+// Demora simulada del "escribiendo…" AL SALUDAR (no en cada paso del
+// usuario). Corta, sólo para que la apertura no se lea como una página
+// trabada. 0ms si el visitante pidió reducir animaciones.
 const GREETING_DELAY_MS = 250
-const STEP_DELAY_MS = 200
 
 function typingDelay(ms: number): number {
   try {
@@ -53,31 +50,16 @@ export function useChatFlow(): FlowReturn {
   const [open, setOpen] = useState(false)
   const [forceExpanded, setForceExpanded] = useState(false)
   const [resumable, setResumable] = useState(() => loadDraft())
-  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const greeted = useRef(false)
 
   const dispatch = useCallback((ev: FlowEvent) => {
-    const isUserMove =
-      ev.type === "SELECT_CHIP" ||
-      ev.type === "FREE_TEXT" ||
-      ev.type === "PICK_PACK" ||
-      ev.type === "SET_NAME" ||
-      ev.type === "SET_WHATSAPP" ||
-      ev.type === "SET_DISCORD" ||
-      ev.type === "PICK_SLOT" ||
-      ev.type === "CONFIRM_REVIEW" ||
-      ev.type === "CONFIRM_PAYMENT"
-
-    if (isUserMove) {
-      if (typingTimer.current) clearTimeout(typingTimer.current)
-      setTyping(true)
-      typingTimer.current = setTimeout(() => {
-        rawDispatch(ev)
-        setTyping(false)
-      }, typingDelay(STEP_DELAY_MS))
-    } else {
-      rawDispatch(ev)
-    }
+    // Se procesa AL INSTANTE. Antes los "movimientos del usuario" se diferían
+    // ~200ms para simular que el bot "escribía", pero si la persona tocaba un
+    // segundo botón dentro de esa ventana, ese clearTimeout CANCELABA (perdía)
+    // el primero — se sentía como "toco y no pasa nada". El reducer inserta
+    // juntos el mensaje del usuario y la respuesta del bot, así que no hay
+    // ningún hueco que rellenar con un "escribiendo…".
+    rawDispatch(ev)
   }, [])
 
   // Greet on first open — pero NO si hay un pedido sin terminar para

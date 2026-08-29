@@ -92,6 +92,14 @@ export default function ChatBot() {
     flow.setForceExpanded(false)
   }
 
+  // "Descartar" un pedido = arrancar limpio: también se olvida cualquier
+  // intención de deep-link/anuncio pendiente, para no auto-seleccionar un pack
+  // justo después de que la persona pidió empezar de cero.
+  const handleDiscard = () => {
+    pendingIntent.current = null
+    flow.discardDraft()
+  }
+
   // Tecla ESC cierra el chat cuando está abierto
   useEffect(() => {
     if (!flow.open) return
@@ -172,7 +180,7 @@ export default function ChatBot() {
           onSubmit={submit}
           resumable={flow.resumable}
           onResume={flow.resumeDraft}
-          onDiscard={flow.discardDraft}
+          onDiscard={handleDiscard}
         />
       </ChatContainer>
     </>

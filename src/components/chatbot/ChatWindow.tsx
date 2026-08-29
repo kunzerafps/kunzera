@@ -61,10 +61,19 @@ export default function ChatWindow({
   )
 
   const showTextInput =
-    ctx.state === "idle" ||
     ctx.state === "greeting" ||
     ctx.state === "exploring" ||
-    ctx.state === "planPicked"
+    ctx.state === "planPicked" ||
+    // En "idle" solo mostramos el input si NO hay un banner de "Retomar"
+    // ocupando la pantalla — si lo hay, un input suelto solo confunde (lo que
+    // se tipee ahí no lo procesa nadie hasta salir de "idle").
+    (ctx.state === "idle" && !resumable)
+
+  // Estados terminales (reserva confirmada, o error / pago pendiente de MP):
+  // el FlowRenderer no dibuja nada y los mensajes no traen chips, así que sin
+  // esto la única salida es cerrar el chat. "Empezar de nuevo" reinicia al
+  // saludo (dispatch RESET vía discardDraft).
+  const isTerminal = ctx.state === "confirmed" || ctx.state === "error"
 
   return (
     <>
@@ -86,9 +95,18 @@ export default function ChatWindow({
         <ChatInput onSend={handleFreeText} />
       ) : (
         <div className="p-3 border-t border-brand-900/60 bg-black/40 flex-shrink-0 flex items-center justify-between gap-3">
-          <span className="text-[11px] text-white/40 font-mono">
-            Seguí el flujo arriba ↑
-          </span>
+          {isTerminal ? (
+            <button
+              onClick={onDiscard}
+              className="px-3 py-1.5 rounded-lg bg-brand-500/15 hover:bg-brand-500/30 border border-brand-500/40 hover:border-brand-500/70 text-brand-200 hover:text-white text-xs font-semibold transition"
+            >
+              Empezar de nuevo
+            </button>
+          ) : (
+            <span className="text-[11px] text-white/40 font-mono">
+              Seguí el flujo arriba ↑
+            </span>
+          )}
           <button
             onClick={onClose}
             className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/40 text-white/70 hover:text-white text-xs font-semibold transition flex items-center gap-1.5"

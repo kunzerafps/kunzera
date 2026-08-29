@@ -222,6 +222,36 @@ const slotTakenMessage: ChatMessage = bot(
   "Ese turno se acaba de ocupar 😕 Elegí otro por favor.",
 )
 
+// Mensaje(s) del bot que corresponden a cada estado retomable, para
+// reconstruirlos al hidratar un pedido sin terminar (ver HYDRATE en el
+// reducer). Los estados que no aparacen acá no necesitan mensaje porque el
+// FlowRenderer ya dibuja su propio control.
+function resumeMessages(state: FlowState, draft: OrderDraft): ChatMessage[] {
+  // draft.pack puede ser un string basura si el localStorage quedó corrupto o
+  // es de otra versión — se chequea que sea un pack REAL (no sólo truthy)
+  // antes de armar cualquier mensaje que acceda a PACKS[...], para no tirar un
+  // TypeError adentro del reducer y crashear el chat.
+  const validPack = draft.pack && PACKS[draft.pack] ? draft.pack : undefined
+  switch (state) {
+    case "planPicked":
+      return validPack ? planPickedMessages(validPack) : []
+    case "askName":
+      return askNameMessages()
+    case "askWhatsapp":
+      return askWhatsappMessages()
+    case "pickSlot":
+      return pickSlotMessages()
+    case "review":
+      return validPack && draft.turno ? reviewMessages(draft) : []
+    case "payment":
+      return paymentMessages(draft)
+    case "uploadProof":
+      return uploadProofMessages()
+    default:
+      return []
+  }
+}
+
 // ─────────────────────────────── DETECT FREE TEXT ─────────────────────────────
 
 export function detectPayload(text: string): string {
@@ -275,17 +305,29 @@ function back(ctx: FlowContext, prevState: FlowState): FlowContext {
 export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
   // Eventos globales
   if (ev.type === "RESET") {
-    const fresh = initialContext()
-    return pushMessages(fresh, GREETING)
+    // OJO: el estado tiene que quedar en "greeting", NO en "idle". En "idle"
+    // el reducer ignora TODOS los clics de chip y el texto libre — el único
+    // evento que saca de "idle" es OPEN, que lo dispara un efecto de
+    // useChatFlow que queda deshabilitado (greeted.current = true) justo
+    // después de un RESET. Si RESET dejaba "idle", el chat quedaba visible
+    // pero muerto hasta recargar la página. Bug real: tocar "Descartar" en el
+    // banner de "pedido sin terminar", o "Empezar de nuevo" tras un error.
+    return transition(pushMessages(initialContext(), GREETING), "greeting")
   }
 
   if (ev.type === "HYDRATE") {
-    return {
+    const base: FlowContext = {
       ...initialContext(),
       draft: ev.draft,
       state: ev.state,
       mode: isExpanded(ev.state) ? "expanded" : "compact",
     }
+    // HYDRATE arranca sin mensajes. Para estados con formulario propio
+    // (askName, pickSlot, pago…) el FlowRenderer igual dibuja el control, pero
+    // "planPicked" NO tiene control y sus botones ("Sí, reservar" / "Ver el
+    // otro pack") vivían en un mensaje que se perdió → ventana en blanco sin
+    // salida. Regeneramos el mensaje que corresponde al estado retomado.
+    return pushMessages(base, resumeMessages(ev.state, ev.draft))
   }
 
   if (ev.type === "MP_RETURN") {
@@ -390,6 +432,10 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
         }
       }
       if (ev.type === "START_RESERVATION") return startReservation(ctx)
+      // El input de texto queda visible en "planPicked" — si la persona
+      // escribe ("sí dale", "cuánto sale") NO puede quedar en silencio. Se
+      // pasa a "exploring" (conserva draft.pack) que sí interpreta texto libre.
+      if (ev.type === "FREE_TEXT") return reduce(transition(ctx, "exploring"), ev)
       break
 
     case "askName":
@@ -502,8 +548,8 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
           }
         }
         if (ev.payload === "reset") {
-          const fresh = initialContext()
-          return pushMessages(fresh, GREETING)
+          // Mismo criterio que el RESET global: dejar "greeting", no "idle".
+          return transition(pushMessages(initialContext(), GREETING), "greeting")
         }
       }
       break

@@ -9,11 +9,15 @@ type StoredDraft = {
   savedAt: number
 }
 
+// Estados desde los que tiene sentido ofrecer "Retomar" un pedido sin
+// terminar. Tiene que estar sincronizado con los `case` del reducer
+// (chatFlow.ts) y con FlowRenderer: si un draft viejo quedó en un estado que
+// ya no existe / no se puede retomar (ej. un paso "askDiscord" de una versión
+// anterior), loadDraft() lo descarta en vez de ofrecer un "Retomar" muerto.
 const RESUMABLE_STATES: FlowState[] = [
   "planPicked",
   "askName",
   "askWhatsapp",
-  "askDiscord",
   "pickSlot",
   "review",
   "payment",
@@ -49,6 +53,12 @@ export function loadDraft(): StoredDraft | null {
     const parsed = JSON.parse(raw) as StoredDraft
     if (!parsed || !parsed.savedAt) return null
     if (Date.now() - parsed.savedAt > DRAFT_TTL_MS) {
+      clearDraft()
+      return null
+    }
+    if (!canResume(parsed.state)) {
+      // Draft de una versión anterior en un estado que ya no se puede retomar
+      // → descartarlo, para no mostrar un banner "Retomar" que no lleva a nada.
       clearDraft()
       return null
     }
