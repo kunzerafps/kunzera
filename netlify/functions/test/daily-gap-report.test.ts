@@ -4,18 +4,22 @@ import { installFetchMock, jsonResponse } from "./helpers/fetchMock"
 
 vi.mock("@netlify/blobs", () => ({ getStore: (name: string) => fakeGetStore(name) }))
 
-const { default: gapReportHandler } = await import("../daily-gap-report.mts")
+const { default: reconcileHandler } = await import("../daily-gap-report.mts")
+const { listManualSales } = await import("../lib/manualSalesStore")
 
 const FAKE_CTX = {} as any
 
-// 15:00 UTC del 6 de agosto = 12:00 en Argentina (UTC-3) → "ayer" da 2026-08-05
-// sin ambigüedad de huso horario.
+// 15:00 UTC del 6 ago = 12:00 Argentina. Ventana del robot: de hace 9 a hace 2
+// días → [2026-07-28 .. 2026-08-04]. "Ayer" (08-05) y "hoy" (08-06) NO se
+// tocan (demasiado frescos).
 const NOW = new Date("2026-08-06T15:00:00Z")
-const YESTERDAY = "2026-08-05"
+const IN_WINDOW = "2026-08-03" // dentro de la ventana
+const TOO_FRESH = "2026-08-05" // ayer — no se toca
+const TOO_OLD = "2026-07-20" // fuera de la ventana por atrás
 
-function order(overrides: Partial<Record<string, unknown>>) {
+function order(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    timestamp: `${YESTERDAY}T18:00:00.000Z`,
+    timestamp: `${IN_WINDOW}T18:00:00.000Z`,
     nombre: "Cliente",
     whatsapp: "5493382677871",
     discord: "",
@@ -23,311 +27,239 @@ function order(overrides: Partial<Record<string, unknown>>) {
     monto: 50000,
     turno: "",
     comprobante: "",
-    estado: "confirmado",
+    estado: "atendido",
     idempotencykey: "key-1",
     ...overrides,
   }
 }
 
-function manualDeliveryEntry(overrides: Partial<Record<string, unknown>>) {
+function deliveryEntry(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    eventId: "manual-1",
-    source: "venta_manual",
+    eventId: "key-1",
+    source: "transferencia_binance",
     attempts: 1,
-    lastAttemptAt: new Date(`${YESTERDAY}T20:00:00.000Z`).getTime(),
+    lastAttemptAt: new Date(`${IN_WINDOW}T20:00:00.000Z`).getTime(),
     ok: true,
     dedupedLocally: false,
     ...overrides,
   }
 }
 
-function mockAppsScript(fm: ReturnType<typeof installFetchMock>, orders: unknown[]) {
+function manualSale(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "KZM-260803-ABCD",
+    createdAt: NOW.getTime(),
+    saleDate: IN_WINDOW,
+    nombre: "Wsp Cliente",
+    whatsapp: "1122334455",
+    email: "cli@mail.com",
+    monto: 70000,
+    pack: "diamante",
+    metaEventId: "manual-evt-1",
+    metaStatus: "error",
+    ...overrides,
+  }
+}
+
+function mockSheet(fm: ReturnType<typeof installFetchMock>, orders: unknown[]) {
   fm.on("script.google.com", () => jsonResponse({ ok: true, orders }))
 }
-
-function mockMetaInsights(fm: ReturnType<typeof installFetchMock>, actions: { action_type: string; value: string }[] | null) {
-  fm.on("graph.facebook.com", () =>
-    jsonResponse({ data: actions === null ? [] : [{ spend: "1000", actions }] }),
-  )
+function mockMeta(fm: ReturnType<typeof installFetchMock>, status = 200) {
+  fm.on("graph.facebook.com", () => jsonResponse(status === 200 ? {} : { error: { message: "bad" } }, status))
 }
-
-function mockMetaInsightsCount(fm: ReturnType<typeof installFetchMock>, purchaseCount: number | null) {
-  mockMetaInsights(fm, purchaseCount === null ? null : [{ action_type: "purchase", value: String(purchaseCount) }])
-}
-
 function mockDiscord(fm: ReturnType<typeof installFetchMock>) {
   fm.on("discord.com/api/webhooks/test", () => new Response(null, { status: 204 }))
 }
+function discordBodies(fm: ReturnType<typeof installFetchMock>): string[] {
+  return fm.callsTo("discord.com").map((c) => JSON.parse(String(c.init?.body)).content)
+}
 
-describe("daily-gap-report (compara ventas reales vs. Purchase que Meta contó)", () => {
+describe("daily-gap-report — reconcilia y REENVÍA las ventas que no llegaron a Meta", () => {
   beforeEach(() => {
     resetBlobsMock()
-    // shouldAdvanceTime: true — el reintento de fetchOrders espera con
-    // setTimeout real entre intentos; sin esto, esas esperas nunca se
-    // resuelven bajo fake timers y los tests de reintento cuelgan.
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(NOW)
-    process.env.META_MARKETING_ACCESS_TOKEN = "test-marketing-token"
+    process.env.META_CAPI_ACCESS_TOKEN = "test-token"
     process.env.MP_DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/test"
   })
+  afterEach(() => vi.useRealTimers())
 
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it("todo coincide (3 del Sheet + 1 manual = 4, Meta cuenta 4): no manda nada a Discord", async () => {
+  it("todo ya llegó a Meta: no reenvía nada y no toca Discord", async () => {
     const fm = installFetchMock()
-    mockAppsScript(fm, [
-      order({ idempotencykey: "a", estado: "confirmado" }),
-      order({ idempotencykey: "b", estado: "atendido" }),
-      order({ idempotencykey: "c", estado: "confirmado" }),
-    ])
-    mockMetaInsightsCount(fm, 4)
+    mockSheet(fm, [order({ idempotencykey: "key-1" })])
+    mockMeta(fm)
     mockDiscord(fm)
+    await fakeGetStore("capi-delivery-log").set("key-1", deliveryEntry({ eventId: "key-1" }))
 
-    await fakeGetStore("capi-delivery-log").set(
-      "manual-1",
-      manualDeliveryEntry({ saleDate: YESTERDAY }),
-    )
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
+    const res = await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
     const data = await res.json()
 
-    expect(data.ok).toBe(true)
-    expect(data.sheetCount).toBe(3)
-    expect(data.manualCount).toBe(1)
-    expect(data.realSales).toBe(4)
-    expect(data.metaCount).toBe(4)
-    expect(data.matched).toBe(true)
-    expect(fm.callsTo("discord.com")).toHaveLength(0)
+    expect(data.resent).toBe(0)
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(0) // no reenvió
+    expect(fm.callsTo("discord.com")).toHaveLength(0) // silencio
   })
 
-  it("hay diferencia (4 reales vs 3 en Meta): avisa por Discord una sola vez, sin pedirle una acción técnica a Eze", async () => {
+  it("una venta del sitio que NO llegó a Meta: la reenvía", async () => {
     const fm = installFetchMock()
-    mockAppsScript(fm, [
-      order({ idempotencykey: "a" }),
-      order({ idempotencykey: "b" }),
-      order({ idempotencykey: "c" }),
-      order({ idempotencykey: "d" }),
-    ])
-    mockMetaInsightsCount(fm, 3)
+    mockSheet(fm, [order({ idempotencykey: "faltante-1", nombre: "Juan" })])
+    mockMeta(fm) // 200 → envío OK
     mockDiscord(fm)
+    // delivery-log vacío para esa key → falta
 
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
+    const res = await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
     const data = await res.json()
 
-    expect(data.matched).toBe(false)
-    expect(fm.callsTo("discord.com")).toHaveLength(1)
-    const alertBody = JSON.parse(String(fm.callsTo("discord.com")[0].init?.body))
-    expect(alertBody.content).toContain("4 ventas reales")
-    expect(alertBody.content).toContain("3 que Meta contó")
-    expect(alertBody.content).toContain("No hace falta que hagas nada")
-    expect(alertBody.content).not.toContain("Events Manager")
+    expect(data.resent).toBe(1)
+    expect(data.failed).toBe(0)
+    const sent = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(sent.data[0].event_name).toBe("Purchase")
+    expect(sent.data[0].event_id).toBe("faltante-1")
+    expect(sent.data[0].custom_data.value).toBe(50000)
+    // aviso corto de "ya lo arreglé"
+    expect(discordBodies(fm).join("")).toContain("Reenvié 1")
+    expect(discordBodies(fm).join("")).toContain("Juan")
   })
 
-  it("ignora reservas 'pendiente' y reservas de otro día", async () => {
+  it("una venta manual con metaStatus 'error': la reenvía y marca el registro como ok", async () => {
     const fm = installFetchMock()
-    mockAppsScript(fm, [
-      order({ idempotencykey: "a", estado: "confirmado" }),
-      order({ idempotencykey: "b", estado: "pendiente" }),
-      order({ idempotencykey: "c", estado: "confirmado", timestamp: "2026-08-04T18:00:00.000Z" }),
-    ])
-    mockMetaInsightsCount(fm, 1)
+    mockSheet(fm, [order()]) // una del sitio ya OK, para que el Sheet no dé 0
+    mockMeta(fm)
     mockDiscord(fm)
+    await fakeGetStore("capi-delivery-log").set("key-1", deliveryEntry())
+    await fakeGetStore("ventas-manuales").set("manual-evt-1", manualSale())
 
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
+    const res = await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
     const data = await res.json()
 
-    expect(data.sheetCount).toBe(1)
-    expect(data.matched).toBe(true)
+    expect(data.resent).toBe(1)
+    const sent = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
+    expect(sent.data[0].event_id).toBe("manual-evt-1")
+    expect(sent.data[0].action_source).toBe("business_messaging")
+    // el panel ahora ve la venta como enviada
+    const [refreshed] = await listManualSales()
+    expect(refreshed.metaStatus).toBe("ok")
   })
 
-  it("una reserva a las 23:30 hora Argentina (02:30 UTC del día siguiente) cuenta para el día correcto en Argentina, no el de UTC", async () => {
+  it("si el reenvío a Meta FALLA, avisa por Discord cuál venta no pudo mandar", async () => {
     const fm = installFetchMock()
-    // 2026-08-06T02:30:00.000Z es 2026-08-05 23:30 en Argentina → debe
-    // contar como YESTERDAY (2026-08-05), no como 2026-08-06.
-    mockAppsScript(fm, [order({ idempotencykey: "a", timestamp: "2026-08-06T02:30:00.000Z" })])
-    mockMetaInsightsCount(fm, 1)
+    mockSheet(fm, [order({ idempotencykey: "rota-1", nombre: "Pedro" })])
+    mockMeta(fm, 400) // Meta rechaza
     mockDiscord(fm)
 
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
+    const res = await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
     const data = await res.json()
 
-    expect(data.sheetCount).toBe(1)
-  })
-
-  it("una reserva a las 03:00:00.000Z (00:00 en Argentina) ya cuenta para el día siguiente, no para YESTERDAY", async () => {
-    const fm = installFetchMock()
-    mockAppsScript(fm, [order({ idempotencykey: "a", timestamp: "2026-08-06T03:00:00.000Z" })])
-    mockMetaInsightsCount(fm, 0)
-    mockDiscord(fm)
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
-    const data = await res.json()
-
-    expect(data.sheetCount).toBe(0)
-  })
-
-  it("ignora ventas manuales dedupedLocally, no-ok, o de otra fuente", async () => {
-    const fm = installFetchMock()
-    mockAppsScript(fm, [order({ idempotencykey: "z" })]) // 1 venta del Sheet, para que orders.length no sea 0
-    mockMetaInsightsCount(fm, 1)
-    mockDiscord(fm)
-
-    await fakeGetStore("capi-delivery-log").set(
-      "dup",
-      manualDeliveryEntry({ eventId: "dup", dedupedLocally: true }),
-    )
-    await fakeGetStore("capi-delivery-log").set(
-      "mp",
-      manualDeliveryEntry({ eventId: "mp", source: "mercadopago" }),
-    )
-    await fakeGetStore("capi-delivery-log").set(
-      "failed",
-      manualDeliveryEntry({ eventId: "failed", ok: false }),
-    )
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
-    const data = await res.json()
-
-    expect(data.manualCount).toBe(0)
-  })
-
-  it("usa saleDate (fecha real de la venta) en vez de lastAttemptAt cuando está disponible", async () => {
-    const fm = installFetchMock()
-    mockAppsScript(fm, [order({ idempotencykey: "z" })])
-    mockMetaInsightsCount(fm, 2)
-    mockDiscord(fm)
-
-    // Cargada en el panel HOY (lastAttemptAt = hoy) pero la venta real fue
-    // AYER (saleDate) — debe contar para ayer, no para hoy, ni quedar
-    // afuera de ambos días.
-    await fakeGetStore("capi-delivery-log").set(
-      "manual-backdated",
-      manualDeliveryEntry({
-        eventId: "manual-backdated",
-        saleDate: YESTERDAY,
-        lastAttemptAt: NOW.getTime(),
-      }),
-    )
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
-    const data = await res.json()
-
-    expect(data.manualCount).toBe(1)
-    expect(data.matched).toBe(true) // 1 (sheet) + 1 (manual, por saleDate) = 2 = metaCount
-  })
-
-  it("entradas viejas sin saleDate caen a lastAttemptAt como aproximación (compatibilidad hacia atrás)", async () => {
-    const fm = installFetchMock()
-    mockAppsScript(fm, [order({ idempotencykey: "z" })])
-    mockMetaInsightsCount(fm, 2)
-    mockDiscord(fm)
-
-    await fakeGetStore("capi-delivery-log").set(
-      "manual-old",
-      manualDeliveryEntry({ eventId: "manual-old", saleDate: undefined }), // sin saleDate
-    )
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
-    const data = await res.json()
-
-    expect(data.manualCount).toBe(1) // lastAttemptAt del helper ya es de YESTERDAY
-  })
-
-  it("con múltiples action_types para la misma compra, cuenta el máximo (no suma todos los alias)", async () => {
-    const fm = installFetchMock()
-    mockAppsScript(fm, [order({ idempotencykey: "a" })])
-    mockMetaInsights(fm, [
-      { action_type: "web_in_store_purchase", value: "4" },
-      { action_type: "omni_purchase", value: "4" },
-      { action_type: "offsite_conversion.fb_pixel_purchase", value: "4" },
-      { action_type: "purchase", value: "1" }, // valor distinto a propósito
-      { action_type: "onsite_web_app_purchase", value: "4" },
-      { action_type: "link_click", value: "999" }, // no es de compra, debe ignorarse
-    ])
-    mockDiscord(fm)
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
-    const data = await res.json()
-
-    expect(data.metaCount).toBe(4) // el máximo entre los alias de compra, no 1 (solo "purchase") ni 999 ni la suma
-  })
-
-  it("si Meta no incluye el alias exacto 'purchase' ese día, igual cuenta por otro alias de compra", async () => {
-    const fm = installFetchMock()
-    mockAppsScript(fm, [order({ idempotencykey: "a" })])
-    mockMetaInsights(fm, [{ action_type: "omni_purchase", value: "1" }]) // sin "purchase" exacto
-    mockDiscord(fm)
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
-    const data = await res.json()
-
-    expect(data.metaCount).toBe(1)
-    expect(data.matched).toBe(true)
-  })
-
-  it("si Meta no tiene datos ese día (sin data[]), cuenta 0 en vez de romper", async () => {
-    const fm = installFetchMock()
-    mockAppsScript(fm, [order({ idempotencykey: "a", estado: "pendiente" })]) // 0 ventas reales, 1 registro total (no dispara el chequeo de "0 en total")
-    mockMetaInsightsCount(fm, null)
-    mockDiscord(fm)
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
-    const data = await res.json()
-
-    expect(data.ok).toBe(true)
-    expect(data.metaCount).toBe(0)
-  })
-
-  it("si el Sheet devuelve 0 reservas en TOTAL (no solo ayer), lo trata como error, no como 'día sin ventas'", async () => {
-    const fm = installFetchMock()
-    mockAppsScript(fm, []) // orders: [] — todo el historial vacío, sospechoso
-    mockMetaInsightsCount(fm, 2)
-    mockDiscord(fm)
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
-    const data = await res.json()
-
-    expect(res.status).toBe(500)
+    expect(data.resent).toBe(0)
+    expect(data.failed).toBe(1)
     expect(data.ok).toBe(false)
-    expect(fm.callsTo("discord.com")).toHaveLength(1)
-    const alertBody = JSON.parse(String(fm.callsTo("discord.com")[0].init?.body))
-    expect(alertBody.content).not.toContain("META_MARKETING_ACCESS_TOKEN") // no filtra secretos/detalle crudo
+    const body = discordBodies(fm).join("")
+    expect(body).toContain("No se pudieron reenviar")
+    expect(body).toContain("Pedro")
   })
 
-  it("si falla la lectura del Sheet tras agotar los 3 reintentos, avisa el error por Discord y no rompe silenciosamente", async () => {
+  it("una venta con monto 0/ inválido no se reenvía y se avisa para revisar la planilla", async () => {
+    const fm = installFetchMock()
+    mockSheet(fm, [order({ idempotencykey: "cero-1", nombre: "Ana", monto: 0 })])
+    mockMeta(fm)
+    mockDiscord(fm)
+
+    const res = await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
+    const data = await res.json()
+
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(0)
+    expect(data.skipped).toBe(1)
+    expect(discordBodies(fm).join("")).toContain("monto inválido")
+  })
+
+  it("NO toca ventas de ayer (demasiado frescas) ni de hace más de 9 días", async () => {
+    const fm = installFetchMock()
+    mockSheet(fm, [
+      order({ idempotencykey: "fresca", timestamp: `${TOO_FRESH}T18:00:00.000Z` }),
+      order({ idempotencykey: "vieja", timestamp: `${TOO_OLD}T18:00:00.000Z` }),
+      order({ idempotencykey: "ok-1" }), // esta sí está en ventana pero ya llegó
+    ])
+    mockMeta(fm)
+    mockDiscord(fm)
+    await fakeGetStore("capi-delivery-log").set("ok-1", deliveryEntry({ eventId: "ok-1" }))
+
+    const res = await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
+    const data = await res.json()
+
+    expect(data.resent).toBe(0)
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(0)
+  })
+
+  it("una venta con entrega marcada dedupedLocally (Meta ya la tenía) tampoco se reenvía", async () => {
+    const fm = installFetchMock()
+    mockSheet(fm, [order({ idempotencykey: "dedup-1" })])
+    mockMeta(fm)
+    mockDiscord(fm)
+    await fakeGetStore("capi-delivery-log").set(
+      "dedup-1",
+      deliveryEntry({ eventId: "dedup-1", ok: false, dedupedLocally: true }),
+    )
+
+    const res = await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
+    const data = await res.json()
+
+    expect(data.resent).toBe(0)
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(0)
+  })
+
+  it("si faltan MUCHAS de golpe (>10), NO reenvía en masa: avisa que revisen", async () => {
+    const fm = installFetchMock()
+    const many = Array.from({ length: 12 }, (_, i) =>
+      order({ idempotencykey: `m-${i}` }),
+    )
+    mockSheet(fm, many)
+    mockMeta(fm)
+    mockDiscord(fm)
+
+    const res = await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
+    const data = await res.json()
+
+    expect(data.tooMany).toBe(12)
+    expect(fm.callsTo("graph.facebook.com")).toHaveLength(0) // no bombardea a Meta
+    expect(discordBodies(fm).join("")).toContain("demasiado")
+  })
+
+  it("si no se puede leer el Sheet, igual reconcilia las ventas manuales y avisa lo del Sheet", async () => {
     const fm = installFetchMock()
     fm.on("script.google.com", () => jsonResponse({ ok: false, error: "network" }))
-    mockMetaInsightsCount(fm, 4)
+    mockMeta(fm)
     mockDiscord(fm)
+    await fakeGetStore("ventas-manuales").set("manual-evt-1", manualSale())
 
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
-
-    expect(res.status).toBe(500)
-    expect(fm.callsTo("script.google.com")).toHaveLength(3) // los 3 reintentos configurados, ni más ni menos
-    expect(fm.callsTo("discord.com")).toHaveLength(1)
-    const alertBody = JSON.parse(String(fm.callsTo("discord.com")[0].init?.body))
-    expect(alertBody.content).toContain("No hace falta que hagas nada")
-  }, 15000)
-
-  it("si el Sheet falla los primeros 2 intentos pero responde bien al 3ro, se recupera solo (reintento real, no solo teórico)", async () => {
-    const fm = installFetchMock()
-    let calls = 0
-    fm.on("script.google.com", () => {
-      calls++
-      if (calls < 3) return jsonResponse({ ok: false, error: "network" })
-      return jsonResponse({ ok: true, orders: [order({ idempotencykey: "a" })] })
-    })
-    mockMetaInsightsCount(fm, 1)
-    mockDiscord(fm)
-
-    const res = await gapReportHandler(new Request("https://kunzera.com"), FAKE_CTX)
+    const res = await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
     const data = await res.json()
 
-    expect(data.ok).toBe(true)
-    expect(data.sheetCount).toBe(1)
-    expect(data.matched).toBe(true)
-    expect(fm.callsTo("discord.com")).toHaveLength(0)
+    expect(data.sheetOk).toBe(false)
+    expect(data.resent).toBe(1) // la manual se reenvió igual
+    expect(discordBodies(fm).join("")).toContain("Sheet")
   }, 15000)
+
+  it("venta dentro de los 7 días: se manda con la fecha real; más vieja: se manda con 'ahora'", async () => {
+    const fm = installFetchMock()
+    // 5 días atrás → dentro de la ventana de 7 días de Meta
+    const fiveDaysAgo = "2026-08-01"
+    // 9 días atrás → fuera de los 7 días
+    const nineDaysAgo = "2026-07-28"
+    mockSheet(fm, [
+      order({ idempotencykey: "reciente", timestamp: `${fiveDaysAgo}T15:00:00.000Z` }),
+      order({ idempotencykey: "antigua", timestamp: `${nineDaysAgo}T15:00:00.000Z` }),
+    ])
+    mockMeta(fm)
+    mockDiscord(fm)
+
+    await reconcileHandler(new Request("https://kunzera.com"), FAKE_CTX)
+
+    const events = fm
+      .callsTo("graph.facebook.com")
+      .map((c) => JSON.parse(String(c.init?.body)).data[0])
+    const reciente = events.find((e) => e.event_id === "reciente")
+    const antigua = events.find((e) => e.event_id === "antigua")
+    const nowSec = Math.floor(NOW.getTime() / 1000)
+    expect(reciente.event_time).toBe(Math.floor(new Date(`${fiveDaysAgo}T15:00:00.000Z`).getTime() / 1000))
+    expect(antigua.event_time).toBeGreaterThanOrEqual(nowSec - 5) // "ahora"
+  })
 })

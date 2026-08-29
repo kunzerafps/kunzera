@@ -1,177 +1,246 @@
 import type { Config, Context } from "@netlify/functions"
 import type { Order } from "../../src/types/order"
 import { dateOnlyInArgentina, daysAgoInArgentina } from "./lib/argentinaTime"
-import { listRecentDeliveries, type DeliveryLogEntry } from "./lib/deliveryLog"
+import { listRecentDeliveries } from "./lib/deliveryLog"
 import { getSheetOrders } from "./lib/sheetOrders"
+import { listManualSales, updateManualSaleByEvent } from "./lib/manualSalesStore"
+import { getAttribution } from "./lib/attribution"
+import { getPaymentMethod } from "./lib/facturacion"
+import { sendMetaPurchaseEvent, MAX_EVENT_AGE_DAYS } from "./lib/metaCapi"
 import { notifyDiscord } from "./lib/discordAlert"
 
-// Cuenta cuántas ventas reales hubo "ayer" (hora Argentina) según dos
-// fuentes independientes de lo que se le mandó a Meta, y lo compara contra
-// lo que Meta dice haber contado — el objetivo es detectar en silencio
-// (Discord solo avisa si hay diferencia) si algo se rompió en la cadena de
-// envío sin que nadie lo note por semanas.
-const META_AD_ACCOUNT_ID = process.env.META_AD_ACCOUNT_ID || "215090675"
-
-// Las Scheduled Functions de Netlify tienen un límite duro de ejecución de
-// 30 segundos (a diferencia de las funciones normales, que corren bajo un
-// límite más corto pero pueden llegar a Background Functions si hiciera
-// falta más tiempo). Todo el presupuesto de reintentos de acá abajo está
-// pensado para nunca superar ese techo ni siquiera en el peor caso —
-// incluye el fetch de Meta DENTRO del mismo Promise.all que Apps Script
-// (ver más abajo) para que corran en paralelo, no en serie.
-// Peor caso del fetch del Sheet (ver lib/sheetOrders.ts): 3 × 7s + 2 × 0.4s
-// ≈ 21.8s, corriendo en paralelo con el fetch de Meta (10s) — bien por
-// debajo de los 30s límite, con margen para el resto del handler.
-const META_FETCH_TIMEOUT_MS = 10000
-
-// Alias que Meta usa para reportar la MISMA compra bajo distintos recortes
-// de atribución (confirmado con una llamada real a act_215090675/insights:
-// todos aparecieron juntos con el mismo valor para la misma venta). No hay
-// garantía documentada de que el alias plano "purchase" esté siempre
-// presente — tomar el máximo entre estos alias (nunca la suma) evita tanto
-// subcontar si "purchase" falta un día, como sobrecontar si aparecen varios
-// a la vez (son la misma conversión vista de distintas formas, no eventos
-// separados).
-const PURCHASE_ACTION_TYPES = new Set([
-  "purchase",
-  "omni_purchase",
-  "offsite_conversion.fb_pixel_purchase",
-  "onsite_web_purchase",
-  "onsite_web_app_purchase",
-  "web_in_store_purchase",
-  "web_app_in_store_purchase",
-])
-
-// Ventas confirmadas en el Sheet (Mercado Pago + transferencia/binance ya
-// revisadas por el admin) — no cuenta "pendiente", que todavía no generó
-// ningún evento de Compra en Meta.
+// Corre todos los días (09:00 Argentina) y REENVÍA a Meta cualquier venta real
+// que no le haya llegado como evento de Compra. No es un "reporte" que hay que
+// leer: repara solo. Discord solo se toca si algo NO se pudo reenviar (eso sí
+// es un problema real) o si no se pudo leer el Sheet.
 //
-// Límite conocido y aceptado (no tiene arreglo limpio sin agregar un campo
-// nuevo al Sheet): si una transferencia/binance tarda más de
-// MAX_EVENT_AGE_DAYS (7 días, ver metaCapi.ts) en confirmarse,
-// capi-confirmar-pago.mts manda el Purchase a Meta con event_time = "ahora"
-// (el momento de la confirmación), no con la fecha de creación de la
-// reserva — pero acá abajo se sigue filtrando por `o.timestamp` (fecha de
-// CREACIÓN), porque el Sheet no guarda por separado "cuándo se confirmó".
-// Esa venta puntual queda invisible para sheetCount en cualquier día
-// posible, y el día que Meta la cuenta ("ahora") va a generar una brecha
-// real que no es un bug de tracking sino este caso conocido. Pasa solo
-// cuando el admin tarda más de una semana en confirmar un comprobante —
-// poco frecuente, pero si el aviso de Discord no tiene otra explicación
-// más obvia, revisar primero si hay una confirmación tardía de ese estilo.
-function countSheetSales(orders: Order[], dateStr: string): number {
-  return orders.filter((o) => {
-    const estado = String(o.estado || "").toLowerCase()
-    const esVenta = estado === "confirmado" || estado === "atendido"
-    return esVenta && dateOnlyInArgentina(o.timestamp) === dateStr
-  }).length
+// Por qué "reenviar todo lo que falta" en vez de comparar contra lo que Meta
+// dice haber contado: Meta solo cuenta como "compra de anuncio" las ventas que
+// pudo atribuir a un clic reciente. Una venta orgánica, o una por WhatsApp, o
+// una de alguien que clickeó el anuncio hace más de una semana, es una venta
+// real que NO aparece en ese número — comparar contra él daba una "brecha"
+// falsa casi todos los días. Lo que importa es si el EVENTO le llegó a Meta,
+// y eso se sabe con el log de entregas (deliveryLog) + la dedup de metaCapi.
+//
+// Ventana: de hace 9 días a hace 2 días. Se deja 1 día de gracia porque para
+// transferencia/binance el evento se manda recién cuando el admin marca
+// "atendido" (puede ser 24-48hs después de la reserva). No se toca "hoy" ni
+// "ayer" para no reenviar algo que todavía está en curso.
+const WINDOW_FROM_DAYS = 9
+const WINDOW_TO_DAYS = 2
+
+// Tope de seguridad: si de golpe faltan MÁS de esto, casi seguro se rompió
+// algo sistémico (el store de dedup se borró, el Sheet devuelve basura) — NO
+// se bombardea a Meta con decenas de eventos viejos, se avisa y listo.
+const MAX_RESEND_PER_RUN = 10
+
+const VENTA_ESTADOS = new Set(["confirmado", "atendido"])
+
+function inWindow(dateStr: string, from: string, to: string): boolean {
+  return dateStr >= from && dateStr <= to
 }
 
-// Ventas manuales (cerradas por WhatsApp, sin reserva en el Sheet) que sí se
-// mandaron a Meta ese día — quedan solo en el log de entregas, ver
-// deliveryLog.ts. Usa `saleDate` (la fecha real de la venta, ver
-// capi-venta-manual.mts) cuando está disponible; para entradas viejas que
-// se generaron antes de que ese campo existiera, cae a `lastAttemptAt`
-// (cuándo el admin la cargó en el panel) como aproximación.
-function countManualSales(entries: DeliveryLogEntry[], dateStr: string): number {
-  return entries.filter((e) => {
-    if (e.source !== "venta_manual" || !e.ok || e.dedupedLocally) return false
-    const day = e.saleDate || dateOnlyInArgentina(e.lastAttemptAt)
-    return day === dateStr
-  }).length
+// Unix seconds para el evento: la fecha real de la venta si está dentro de la
+// ventana de 7 días que acepta Meta; si es más vieja, `undefined` → metaCapi
+// usa "ahora" (evento mal fechado, pero mejor que perderlo).
+function eventTimeWithinWindow(ms: number): number | undefined {
+  const ageDays = (Date.now() - ms) / (24 * 60 * 60 * 1000)
+  if (ageDays < 0 || ageDays > MAX_EVENT_AGE_DAYS) return undefined
+  return Math.floor(ms / 1000)
 }
 
-async function fetchMetaPurchaseCount(dateStr: string): Promise<number> {
-  const token = process.env.META_MARKETING_ACCESS_TOKEN
-  if (!token) throw new Error("META_MARKETING_ACCESS_TOKEN no está configurado")
-
-  const timeRange = encodeURIComponent(JSON.stringify({ since: dateStr, until: dateStr }))
-  const url = `https://graph.facebook.com/v21.0/act_${META_AD_ACCOUNT_ID}/insights?fields=actions&time_range=${timeRange}&access_token=${encodeURIComponent(token)}`
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), META_FETCH_TIMEOUT_MS)
-  try {
-    const res = await fetch(url, { signal: controller.signal })
-    const data = (await res.json()) as {
-      data?: { actions?: { action_type: string; value: string }[] }[]
-      error?: { message: string }
-    }
-    if (!res.ok || data.error) {
-      throw new Error(data.error?.message || `http_${res.status}`)
-    }
-    const actions = data.data?.[0]?.actions || []
-    let max = 0
-    for (const a of actions) {
-      if (!PURCHASE_ACTION_TYPES.has(a.action_type)) continue
-      const v = Number(a.value) || 0
-      if (v > max) max = v
-    }
-    return max
-  } finally {
-    clearTimeout(timer)
-  }
-}
+type Missing = { label: string; kind: "sitio" | "manual" }
 
 export default async (_req: Request, _ctx: Context): Promise<Response> => {
-  const dateStr = daysAgoInArgentina(1)
+  const from = daysAgoInArgentina(WINDOW_FROM_DAYS)
+  const to = daysAgoInArgentina(WINDOW_TO_DAYS)
 
-  let sheetCount: number
-  let manualCount: number
-  let metaCount: number
-  try {
-    // Los tres fetches corren en paralelo a propósito — sumarlos en serie
-    // (Apps Script primero, Meta después) puede superar el límite de 30s de
-    // las Scheduled Functions de Netlify en el peor caso de reintentos.
-    const [orders, deliveries, meta] = await Promise.all([
-      getSheetOrders(),
-      listRecentDeliveries(500),
-      fetchMetaPurchaseCount(dateStr),
-    ])
-    // 0 reservas en TODO el historial del Sheet (no solo ayer) es casi con
-    // certeza un bug silencioso de Apps Script (nombre de hoja mal,
-    // problema transitorio de la API de Sheets), no que el negocio nunca
-    // tuvo ventas — tratarlo como error en vez de como "sheetCount=0"
-    // evita mandar una alerta de "brecha de tracking" el día que el
-    // problema real es mucho más grave (no se está leyendo el Sheet).
-    if (orders.length === 0) {
-      throw new Error("Apps Script devolvió 0 reservas en total (posible falla silenciosa, no un día sin ventas)")
-    }
-    sheetCount = countSheetSales(orders, dateStr)
-    manualCount = countManualSales(deliveries, dateStr)
-    metaCount = meta
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.error("[daily-gap-report] no se pudo completar la comparación:", msg)
-    // No se manda `msg` crudo a Discord: en teoría podría filtrar un token
-    // si el error viniera de un fetch con URL malformada (no alcanzable con
-    // el código actual, pero barato de evitar). El detalle completo queda
-    // en los logs de la función, que ya son server-side.
-    await notifyDiscord(
-      `gap-report-error-${dateStr}`,
-      `⚠️ El reporte de brecha del ${dateStr} no se pudo calcular (problema técnico leyendo el Sheet o Meta). No hace falta que hagas nada — quedó registrado en los logs para revisar.`,
-    )
-    return Response.json({ ok: false, error: msg }, { status: 500 })
-  }
+  // Sheet: se tolera que falle (Apps Script es intermitente) — igual se
+  // reconcilian las ventas manuales, y se avisa aparte que no se pudo leer.
+  const [ordersRes, manualSales, deliveries] = await Promise.all([
+    getSheetOrders({ attempts: 2, timeoutMs: 6000 }).then(
+      (o) => ({ ok: true as const, orders: o }),
+      (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
+    ),
+    listManualSales(500).catch(() => [] as Awaited<ReturnType<typeof listManualSales>>),
+    listRecentDeliveries(1000).catch(() => []),
+  ])
 
-  const realSales = sheetCount + manualCount
-  const matched = realSales === metaCount
+  const sheetOk = ordersRes.ok && ordersRes.orders.length > 0
+  const orders: Order[] = ordersRes.ok ? ordersRes.orders : []
 
-  console.log(
-    `[daily-gap-report] ${dateStr}: reales=${realSales} (sheet=${sheetCount}, manual=${manualCount}) meta=${metaCount} match=${matched}`,
+  // event_id de toda venta que YA le llegó a Meta (o que Meta ya tenía y
+  // dedup local descartó). Contra esto se decide qué reenviar.
+  const deliveredOk = new Set(
+    deliveries.filter((d) => d.ok || d.dedupedLocally).map((d) => d.eventId),
   )
 
-  if (!matched) {
+  // ── Ventas del sitio (Sheet) que faltan ──
+  const missingSite = orders.filter((o) => {
+    if (!VENTA_ESTADOS.has(String(o.estado || "").toLowerCase())) return false
+    if (!o.idempotencykey) return false
+    if (!inWindow(dateOnlyInArgentina(o.timestamp), from, to)) return false
+    return !deliveredOk.has(o.idempotencykey)
+  })
+
+  // ── Ventas manuales (WhatsApp) que faltan ──
+  const missingManual = manualSales.filter((m) => {
+    if (m.canceled) return false
+    if (!inWindow(m.saleDate, from, to)) return false
+    return !deliveredOk.has(m.metaEventId)
+  })
+
+  const totalMissing = missingSite.length + missingManual.length
+
+  // Nada que hacer → silencio total (salvo que el Sheet no se haya podido leer).
+  if (totalMissing === 0) {
+    if (!ordersRes.ok || !sheetOk) {
+      await notifyDiscord(
+        `gap-sheet-unreadable-${to}`,
+        `⚠️ No se pudieron leer las reservas del Sheet para revisar que las ventas hayan llegado a Meta. Las ventas por WhatsApp sí se revisaron. Revisar Apps Script.`,
+      )
+    }
+    console.log(`[reconcile] ${from}..${to}: sin faltantes (sheetOk=${sheetOk})`)
+    return Response.json({ ok: true, from, to, resent: 0, failed: 0, sheetOk })
+  }
+
+  // Demasiadas faltantes de golpe → no reenviar en masa, avisar.
+  if (totalMissing > MAX_RESEND_PER_RUN) {
     await notifyDiscord(
-      `gap-report-${dateStr}`,
-      `🟡 Reporte de brecha ${dateStr}: ${realSales} ventas reales (${sheetCount} del Sheet + ${manualCount} manuales) vs ${metaCount} que Meta contó. Esto afecta cómo Meta optimiza tus anuncios, no tus reservas ni tus cobros reales. No hace falta que hagas nada — es un aviso interno para revisar el envío de eventos a Meta.`,
+      `gap-too-many-${to}`,
+      `⚠️ Figuran ${totalMissing} ventas sin llegar a Meta entre ${from} y ${to} (${missingSite.length} del sitio, ${missingManual.length} manuales). Es demasiado — probablemente se rompió algo (el registro de envíos, o la lectura del Sheet). NO se reenviaron para no duplicar. Revisar antes de forzar.`,
+    )
+    console.error(`[reconcile] ${totalMissing} faltantes — sobre el tope, no se reenvía`)
+    return Response.json({ ok: false, from, to, tooMany: totalMissing }, { status: 200 })
+  }
+
+  const resent: Missing[] = []
+  const failed: Missing[] = []
+  const skipped: Missing[] = []
+
+  // ── Reenviar ventas del sitio ──
+  for (const o of missingSite) {
+    const key = o.idempotencykey!
+    const label = `${o.nombre || "-"} (${dateOnlyInArgentina(o.timestamp)}, $${o.monto})`
+    const value = Number(o.monto) || 0
+    if (value <= 0) {
+      skipped.push({ label: `${label} — monto inválido`, kind: "sitio" })
+      continue
+    }
+    try {
+      const [metodo, attribution] = await Promise.all([
+        getPaymentMethod(key),
+        getAttribution(key),
+      ])
+      const result = await sendMetaPurchaseEvent({
+        eventId: key,
+        source: metodo === "mercadopago" ? "mercadopago" : "transferencia_binance",
+        actionSource: "website",
+        value,
+        contentName: o.plan,
+        whatsapp: o.whatsapp,
+        nombre: o.nombre,
+        fbp: attribution?.fbp,
+        fbc: attribution?.fbc,
+        clientIpAddress: attribution?.ip,
+        clientUserAgent: attribution?.userAgent,
+        city: attribution?.city,
+        region: attribution?.region,
+        postalCode: attribution?.postalCode,
+        countryCode: attribution?.countryCode,
+        externalId: attribution?.visitorId,
+        eventTime: eventTimeWithinWindow(new Date(o.timestamp).getTime()),
+      })
+      ;(result.ok ? resent : failed).push({ label, kind: "sitio" })
+    } catch (err) {
+      console.error("[reconcile] error reenviando venta del sitio", key, err)
+      failed.push({ label, kind: "sitio" })
+    }
+  }
+
+  // ── Reenviar ventas manuales ──
+  for (const m of missingManual) {
+    const label = `${m.nombre} (${m.id}, ${m.saleDate}, $${m.monto})`
+    const value = Number(m.monto) || 0
+    if (value <= 0) {
+      skipped.push({ label: `${label} — monto inválido`, kind: "manual" })
+      continue
+    }
+    try {
+      const middayMs = new Date(`${m.saleDate}T15:00:00Z`).getTime()
+      const result = await sendMetaPurchaseEvent({
+        eventId: m.metaEventId,
+        source: "venta_manual",
+        actionSource: "business_messaging",
+        value,
+        contentName: m.pack,
+        whatsapp: m.whatsapp,
+        nombre: m.nombre,
+        email: m.email || undefined,
+        countryCode: "ar",
+        eventTime: eventTimeWithinWindow(middayMs),
+        saleDate: m.saleDate,
+      })
+      if (result.ok) {
+        resent.push({ label, kind: "manual" })
+        // Reflejar en el panel que ya está OK.
+        await updateManualSaleByEvent(m.metaEventId, { metaStatus: "ok", metaError: undefined }).catch(
+          () => {},
+        )
+      } else {
+        failed.push({ label, kind: "manual" })
+      }
+    } catch (err) {
+      console.error("[reconcile] error reenviando venta manual", m.metaEventId, err)
+      failed.push({ label, kind: "manual" })
+    }
+  }
+
+  console.log(
+    `[reconcile] ${from}..${to}: reenviadas=${resent.length} fallaron=${failed.length} saltadas=${skipped.length}`,
+  )
+
+  // Discord: SOLO si hay algo que el robot no pudo arreglar solo.
+  const problemas: string[] = []
+  if (failed.length > 0) {
+    problemas.push(
+      `❌ No se pudieron reenviar ${failed.length} venta(s) a Meta:\n` +
+        failed.map((f) => `• ${f.label} [${f.kind}]`).join("\n"),
+    )
+  }
+  if (skipped.length > 0) {
+    problemas.push(
+      `⚠️ ${skipped.length} venta(s) con monto inválido — revisar en la planilla:\n` +
+        skipped.map((s) => `• ${s.label}`).join("\n"),
+    )
+  }
+  if (!ordersRes.ok || !sheetOk) {
+    problemas.push("⚠️ No se pudieron leer las reservas del Sheet (Apps Script) — solo se revisaron las manuales.")
+  }
+
+  if (problemas.length > 0) {
+    await notifyDiscord(`gap-problems-${to}`, problemas.join("\n\n"))
+  } else if (resent.length > 0) {
+    // Aviso corto de "ya lo arreglé" — no requiere que hagas nada.
+    await notifyDiscord(
+      `gap-fixed-${to}`,
+      `✅ Reenvié ${resent.length} venta(s) que no habían llegado a Meta (ya está resuelto, no hace falta que hagas nada):\n` +
+        resent.map((r) => `• ${r.label} [${r.kind}]`).join("\n"),
     )
   }
 
-  return Response.json({ ok: true, date: dateStr, sheetCount, manualCount, realSales, metaCount, matched })
+  return Response.json({
+    ok: failed.length === 0,
+    from,
+    to,
+    resent: resent.length,
+    failed: failed.length,
+    skipped: skipped.length,
+    sheetOk,
+  })
 }
 
 export const config: Config = {
-  // 12:00 UTC = 09:00 Argentina — deja margen para que el día anterior esté
-  // cerrado del todo y para que las métricas de Meta ya hayan asentado.
+  // 12:00 UTC = 09:00 Argentina.
   schedule: "0 12 * * *",
 }
