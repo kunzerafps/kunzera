@@ -16,6 +16,11 @@ export default function ChatBot() {
   const [unread, setUnread] = useState(1)
   const pendingIntent = useRef<OpenChatDetail | null>(null)
   const contactFired = useRef(false)
+  // El chat se abrió solo por un deep-link de anuncio (/reservar, ?pack=…),
+  // no por un clic de la persona. En ese caso NO se manda el pixel "Contact":
+  // contarlo sin interacción real infla el evento en todo el tráfico pago y
+  // Meta deja de poder distinguir quién se enganchó de verdad.
+  const autoOpened = useRef(false)
 
   useEffect(() => {
     if (flow.open) setUnread(0)
@@ -27,7 +32,7 @@ export default function ChatBot() {
   // inflar el conteo si abre/cierra el chat varias veces mientras completa
   // el flujo.
   useEffect(() => {
-    if (flow.open && !contactFired.current) {
+    if (flow.open && !contactFired.current && !autoOpened.current) {
       contactFired.current = true
       const pack = pendingIntent.current?.pack
       trackPixelEvent("Contact", {
@@ -36,10 +41,12 @@ export default function ChatBot() {
     }
   }, [flow.open])
 
-  // Escucha eventos externos ("Reservar" desde Navbar/Hero/Pricing/CTA)
+  // Escucha eventos externos ("Reservar" desde Navbar/Hero/Pricing/CTA, y los
+  // deep-links de anuncios vía deeplink.ts)
   useEffect(() => {
     const off = listenOpenChat((detail) => {
       pendingIntent.current = detail
+      if (detail.auto) autoOpened.current = true
       flow.setOpen(true)
     })
     return off

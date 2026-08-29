@@ -85,7 +85,7 @@ export default function Pricing() {
   )
 
   return (
-    <section id="pricing" className="relative py-24 md:py-32 section-padding">
+    <section id="pricing" className="relative py-24 md:py-32 section-padding scroll-mt-24">
       <div className="max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

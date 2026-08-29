@@ -16,9 +16,18 @@ import WhatsAppFloat from './components/WhatsAppFloat'
 import StickyPlansBar from './components/StickyPlansBar'
 import AdminGate from './components/admin/AdminGate'
 import { useServerPageView } from './hooks/useServerPageView'
+import { useEffect } from 'react'
+import { handleDeepLink } from './lib/deeplink'
 
 function App() {
   useServerPageView()
+
+  // Deep-links de los anuncios: /packs baja a los planes, /reservar abre el
+  // chat en el flujo de reserva. Corre una vez al montar; el listener del
+  // chat (ChatBot, hijo de App) ya esta armado para cuando se dispara.
+  useEffect(() => {
+    handleDeepLink()
+  }, [])
 
   return (
     <div className="relative min-h-screen bg-[#08090a] text-white overflow-hidden">

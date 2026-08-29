@@ -1,15 +1,31 @@
+import { useMemo } from "react"
 import { motion } from "framer-motion"
 import { SiWhatsapp } from "react-icons/si"
 import { waLink, WHATSAPP_FLOAT_MESSAGE } from "../lib/constants"
+import { buildAdReturnLink } from "../lib/deeplink"
 import { trackPixelEvent } from "../lib/pixel"
 
 export default function WhatsAppFloat() {
+  // Si la visita vino de un anuncio (fbclid/utm), se le suma al final del
+  // mensaje pre-escrito un link de regreso que vuelve a llevar esos
+  // parametros: cuando la persona lo abre desde el chat de WhatsApp —tipico:
+  // en otro navegador, sin la cookie `_fbc`— index.html la reconstruye y la
+  // compra sigue atribuyendose al anuncio. Sin anuncio de origen,
+  // buildAdReturnLink() devuelve null y el mensaje queda igual que siempre.
+  const href = useMemo(() => {
+    const back = buildAdReturnLink()
+    const message = back
+      ? `${WHATSAPP_FLOAT_MESSAGE}\n\n» Si querés reservar directo, entrá acá: ${back}`
+      : WHATSAPP_FLOAT_MESSAGE
+    return waLink(message)
+  }, [])
+
   return (
     <motion.a
       initial={{ scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ delay: 1.5, type: "spring", stiffness: 200 }}
-      href={waLink(WHATSAPP_FLOAT_MESSAGE)}
+      href={href}
       target="_blank"
       rel="noreferrer"
       onClick={() => trackPixelEvent("Contact", { content_name: "whatsapp_float" })}
