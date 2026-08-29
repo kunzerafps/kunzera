@@ -6,7 +6,7 @@ import ChatWindow from "./chatbot/ChatWindow"
 import { useChatFlow } from "../hooks/useChatFlow"
 import { useOrderSubmit } from "../hooks/useOrderSubmit"
 import { isExpanded } from "../lib/chatFlow"
-import { listenOpenChat, type OpenChatDetail } from "../lib/chatBus"
+import { emitChatProgress, listenOpenChat, type OpenChatDetail } from "../lib/chatBus"
 import { PACKS } from "../lib/packs"
 import { trackServerBackedEvent } from "../lib/pixel"
 
@@ -25,6 +25,14 @@ export default function ChatBot() {
   useEffect(() => {
     if (flow.open) setUnread(0)
   }, [flow.open])
+
+  // Avisa al botón flotante de WhatsApp que se esconda cuando la persona ya se
+  // comprometió con una reserva (eligió un pack o entró al formulario) — no
+  // queremos desviar a alguien que está por comprar. En "greeting"/"exploring"
+  // sigue visible: ahí todavía puede tener una duda que lo frene.
+  useEffect(() => {
+    emitChatProgress(flow.open && (flow.ctx.state === "planPicked" || isExpanded(flow.ctx.state)))
+  }, [flow.open, flow.ctx.state])
 
   // Contact: señal de "abrió el chat de reserva", sin importar si entró por
   // el botón "Reservar" (Navbar/Hero/Pricing/CTA, vía chatBus) o tocando

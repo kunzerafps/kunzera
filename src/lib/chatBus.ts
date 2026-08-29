@@ -25,3 +25,22 @@ export function listenOpenChat(handler: (d: OpenChatDetail) => void): () => void
   window.addEventListener(CHAT_OPEN_EVENT, listener)
   return () => window.removeEventListener(CHAT_OPEN_EVENT, listener)
 }
+
+// ── Señal "la persona ya se comprometió con una reserva" ──
+// true = eligió un pack o entró al formulario de reserva. El botón flotante
+// de WhatsApp la escucha para esconderse en ese momento y no desviar a
+// alguien que está por comprar (ver WhatsAppFloat.tsx). ChatBot la emite en
+// cada cambio de estado del chat.
+export const CHAT_PROGRESS_EVENT = "kunzera:chat-progress"
+
+export function emitChatProgress(inFunnel: boolean) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(CHAT_PROGRESS_EVENT, { detail: { inFunnel } }))
+  }
+}
+
+export function listenChatProgress(handler: (inFunnel: boolean) => void): () => void {
+  const listener = (e: Event) => handler(!!(e as CustomEvent<{ inFunnel?: boolean }>).detail?.inFunnel)
+  window.addEventListener(CHAT_PROGRESS_EVENT, listener)
+  return () => window.removeEventListener(CHAT_PROGRESS_EVENT, listener)
+}
