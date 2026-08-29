@@ -1,9 +1,16 @@
+import { useMemo } from "react"
 import { Zap } from "lucide-react"
 import { SiWhatsapp, SiDiscord, SiInstagram, SiTiktok } from "react-icons/si"
 import { waLink, WHATSAPP_MESSAGE_GENERAL } from "../lib/constants"
+import { withAdReturnLink } from "../lib/deeplink"
 import { trackPixelEvent } from "../lib/pixel"
 
 export default function Footer() {
+  // Mismo criterio que el boton flotante: si la visita vino de un anuncio,
+  // el mensaje pre-escrito de WhatsApp arrastra el link de regreso con
+  // fbclid+utm para no perder la atribucion de la compra.
+  const waHref = useMemo(() => waLink(withAdReturnLink(WHATSAPP_MESSAGE_GENERAL)), [])
+
   return (
     <footer className="relative border-t border-brand-900/40 bg-black/80">
       <div className="max-w-7xl mx-auto section-padding py-12">
@@ -58,7 +65,7 @@ export default function Footer() {
             </h4>
             <div className="flex gap-3 mb-4">
               <a
-                href={waLink(WHATSAPP_MESSAGE_GENERAL)}
+                href={waHref}
                 target="_blank"
                 rel="noreferrer"
                 onClick={() => trackPixelEvent("Contact", { content_name: "footer_whatsapp" })}

@@ -176,3 +176,14 @@ export function buildAdReturnLink(): string | null {
 
   return `${DEEP_LINKS.reservar}?${q.toString()}`
 }
+
+// Le suma a un mensaje de WhatsApp pre-escrito el link de regreso con
+// fbclid+utm, SOLO si la visita vino de un anuncio. Si no, devuelve el
+// mensaje igual. Un unico lugar para no repetir el mismo ternario en el
+// boton flotante, el footer y los botones "Ir a WhatsApp" del chat.
+export function withAdReturnLink(message: string): string {
+  const back = buildAdReturnLink()
+  return back
+    ? `${message}\n\n» Si querés reservar directo, entrá acá: ${back}`
+    : message
+}

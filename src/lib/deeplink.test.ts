@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { CHAT_OPEN_EVENT, type OpenChatDetail } from "./chatBus"
-import { DEEP_LINKS, handleDeepLink } from "./deeplink"
+import { DEEP_LINKS, handleDeepLink, withAdReturnLink } from "./deeplink"
 
 // vitest.config.ts corre estos tests en entorno "node" (sin DOM), así que
 // armamos un window/document/history mínimos a mano. deeplink.ts sólo lee
@@ -13,6 +13,7 @@ type Harness = {
   replaceStateArgs: string[]
   scrolledIds: string[]
   location: { pathname: string; search: string; hash: string; href: string }
+  sessionStore: Map<string, string>
 }
 
 const ORIGIN = "https://kunzera.com"
@@ -47,6 +48,8 @@ function setup(url: string): Harness {
 
   vi.stubGlobal("window", win)
   vi.stubGlobal("document", {
+    // cookie "" -> getCookie() de cookies.ts no explota en entorno node
+    cookie: "",
     getElementById: (id: string) =>
       id === "pricing" ? { scrollIntoView: () => scrolledIds.push(id) } : null,
   })
@@ -55,12 +58,24 @@ function setup(url: string): Harness {
     cb()
     return 0
   })
+  // sessionStorage en memoria -> getStoredUtm() (utm.ts) puede leer el utm
+  // que se guardó al cargar la página aunque la URL actual ya no lo traiga.
+  const sessionStore = new Map<string, string>()
+  vi.stubGlobal("sessionStorage", {
+    getItem: (k: string) => (sessionStore.has(k) ? sessionStore.get(k)! : null),
+    setItem: (k: string, v: string) => {
+      sessionStore.set(k, String(v))
+    },
+    removeItem: (k: string) => {
+      sessionStore.delete(k)
+    },
+  })
 
   win.addEventListener(CHAT_OPEN_EVENT, (e: Event) => {
     events.push((e as CustomEvent<OpenChatDetail>).detail || {})
   })
 
-  return { events, replaceStateArgs, scrolledIds, location }
+  return { events, replaceStateArgs, scrolledIds, location, sessionStore }
 }
 
 afterEach(() => {
@@ -204,6 +219,72 @@ describe("handleDeepLink — no-op / edge cases", () => {
     vi.unstubAllGlobals()
     expect(typeof window).toBe("undefined")
     expect(() => handleDeepLink()).not.toThrow()
+  })
+})
+
+describe("withAdReturnLink — link de regreso en mensajes de WhatsApp", () => {
+  it("visita orgánica (sin fbclid ni utm): devuelve el mensaje intacto", () => {
+    setup("/")
+    expect(withAdReturnLink("Hola, quiero info")).toBe("Hola, quiero info")
+  })
+
+  it("visita con fbclid: suma la línea con el link a /reservar", () => {
+    setup("/?fbclid=ABC.123")
+    const out = withAdReturnLink("Hola, quiero info")
+    expect(out.startsWith("Hola, quiero info\n\n» Si querés reservar directo, entrá acá: ")).toBe(true)
+    expect(out).toContain("https://kunzera.com/reservar?fbclid=ABC.123")
+  })
+
+  it("visita con utm_source pero sin fbclid: también suma el link", () => {
+    setup("/?utm_source=ig&utm_campaign=reel")
+    const out = withAdReturnLink("Hola")
+    expect(out).toContain("https://kunzera.com/reservar?utm_source=ig&utm_campaign=reel")
+  })
+
+  // Guard de regresión: el separador exacto lo comparten 3 call sites (botón
+  // flotante, footer y el botón "Ir a WhatsApp" del chat). Si cambia acá,
+  // rompe la equivalencia con el texto que antes estaba inline.
+  it("fbclid: salida byte-exacta (separador + link, sin nada de más)", () => {
+    setup("/?fbclid=ABC.123")
+    expect(withAdReturnLink("Hola, quiero info")).toBe(
+      "Hola, quiero info\n\n» Si querés reservar directo, entrá acá: " +
+        "https://kunzera.com/reservar?fbclid=ABC.123",
+    )
+  })
+
+  it("fbclid + utm juntos: arrastra ambos, fbclid primero", () => {
+    setup("/?fbclid=XYZ&utm_source=fb&utm_medium=cpc&utm_campaign=promo")
+    const out = withAdReturnLink("Hola")
+    expect(out).toContain(
+      "https://kunzera.com/reservar?fbclid=XYZ&utm_source=fb&utm_medium=cpc&utm_campaign=promo",
+    )
+  })
+
+  it("visita con solo utm_medium/utm_campaign (sin utm_source ni fbclid): no toca el mensaje", () => {
+    setup("/?utm_medium=cpc&utm_campaign=promo")
+    expect(withAdReturnLink("Hola")).toBe("Hola")
+  })
+
+  // Caso "el link se arma mucho después, ya sin params en la URL": el utm
+  // quedó en sessionStorage al cargar la página (captureUtm en main.tsx).
+  it("utm en sessionStorage y URL ya limpia: igual arrastra el link", () => {
+    const h = setup("/")
+    h.sessionStore.set(
+      "kz_utm_v1",
+      JSON.stringify({ utm_source: "ig", utm_campaign: "reel" }),
+    )
+    const out = withAdReturnLink("Hola")
+    expect(out).toContain(
+      "https://kunzera.com/reservar?utm_source=ig&utm_campaign=reel",
+    )
+  })
+
+  it("el param de la URL le gana al de sessionStorage", () => {
+    const h = setup("/?utm_source=fb")
+    h.sessionStore.set("kz_utm_v1", JSON.stringify({ utm_source: "ig" }))
+    expect(withAdReturnLink("Hola")).toContain(
+      "https://kunzera.com/reservar?utm_source=fb",
+    )
   })
 })
 

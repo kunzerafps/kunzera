@@ -9,6 +9,7 @@ import { PACKS } from "./packs"
 import { formatARS, formatSlotLabel } from "./formatters"
 import { randomId } from "./crypto"
 import { MP_ALIAS, waLink, WHATSAPP_MESSAGE_GENERAL } from "./constants"
+import { withAdReturnLink } from "./deeplink"
 import { getArs } from "./prices"
 
 export type FlowContext = {
@@ -183,6 +184,10 @@ function pendingMessages(draft: OrderDraft): ChatMessage[] {
   const waMsg =
     `Hola! Pagué el pack ${PACKS[draft.pack!]?.name || ""} con Mercado Pago y quedó "pendiente". ` +
     `Turno: ${draft.turno ? formatSlotLabel(draft.turno) : ""}. Nombre: ${draft.nombre || "-"}.`
+  // A propósito NO se le suma acá el link de regreso de anuncio
+  // (withAdReturnLink): la persona YA pagó, mandarle un "reservá directo"
+  // invita a un doble pago. La atribución del pago pendiente se resuelve
+  // igual server-side cuando el webhook de MP lo acredita.
   return [
     bot(
       "Tu pago quedó *pendiente de confirmación* en Mercado Pago (puede pasar con algunos medios de pago). Todavía no está reservado el turno — en cuanto se acredite te confirmamos automáticamente. Si pasan más de unas horas y no tenés novedades, escribinos.",
@@ -195,6 +200,10 @@ function errorMessages(_error: string, draft: OrderDraft): ChatMessage[] {
   const fallbackMsg =
     `Hola! Quiero reservar el pack ${PACKS[draft.pack!]?.name || ""} — turno ${draft.turno ? formatSlotLabel(draft.turno) : ""}. ` +
     `Nombre: ${draft.nombre || "-"}.`
+  // La reserva NO se guardó, así que acá sí tiene sentido arrastrar el link
+  // de regreso de anuncio: si la persona vino de una pauta y sigue por
+  // WhatsApp, la compra que se cierre después (manual o web) mantiene la
+  // atribución. Sin anuncio de origen, withAdReturnLink() no cambia nada.
   return [
     bot(
       "Ups, hubo un problema al guardar tu reserva. Podés reintentar o continuar por WhatsApp con tus datos ya cargados.",
@@ -203,7 +212,7 @@ function errorMessages(_error: string, draft: OrderDraft): ChatMessage[] {
           { label: "Reintentar", payload: "retry" },
           { label: "Empezar de nuevo", payload: "reset" },
         ],
-        link: { label: "Ir a WhatsApp", href: waLink(fallbackMsg) },
+        link: { label: "Ir a WhatsApp", href: waLink(withAdReturnLink(fallbackMsg)) },
       },
     ),
   ]
