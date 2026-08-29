@@ -22,6 +22,20 @@ function req(body: Record<string, unknown>) {
   })
 }
 
+// Desde G2 este endpoint manda DOS eventos por confirmación: Purchase y
+// Schedule (reserva confirmada). Helpers para assertar sobre cada uno.
+function metaEvent(fm: ReturnType<typeof installFetchMock>, name: string) {
+  const call = fm
+    .callsTo("graph.facebook.com")
+    .find((c) => JSON.parse(String(c.init?.body)).data[0].event_name === name)
+  return call ? JSON.parse(String(call.init?.body)).data[0] : undefined
+}
+function metaEventCount(fm: ReturnType<typeof installFetchMock>, name: string): number {
+  return fm
+    .callsTo("graph.facebook.com")
+    .filter((c) => JSON.parse(String(c.init?.body)).data[0].event_name === name).length
+}
+
 describe("capi-confirmar-pago (transferencia/binance)", () => {
   let token: string
 
@@ -50,7 +64,10 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
     )
     const data = await res.json()
     expect(data.ok).toBe(true)
-    expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
+    expect(metaEventCount(fm, "Purchase")).toBe(1)
+    // Schedule (reserva confirmada) sale junto con la Compra, con su propio
+    // event_id "<key>-schedule".
+    expect(metaEvent(fm, "Schedule")?.event_id).toBe("transf-key-1-schedule")
   })
 
   it("binance confirmado genera un solo Purchase (mismo endpoint, sin distinción de método)", async () => {
@@ -70,7 +87,8 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
     )
     const data = await res.json()
     expect(data.ok).toBe(true)
-    expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
+    expect(metaEventCount(fm, "Purchase")).toBe(1)
+    expect(metaEventCount(fm, "Schedule")).toBe(1)
   })
 
   it("dos confirmaciones con el mismo idempotencyKey (doble-click) no duplican el Purchase", async () => {
@@ -88,7 +106,10 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
     await confirmarPagoHandler(req(body), FAKE_CTX)
     await confirmarPagoHandler(req(body), FAKE_CTX) // segundo click, mismo idempotencyKey
 
-    expect(fm.callsTo("graph.facebook.com")).toHaveLength(1)
+    // Ni el Purchase ni el Schedule se duplican: los dos deduplican por su
+    // propio event_id contra su store local.
+    expect(metaEventCount(fm, "Purchase")).toBe(1)
+    expect(metaEventCount(fm, "Schedule")).toBe(1)
   })
 
   it("usa el idempotencyKey recibido tal cual como event_id — no lo regenera", async () => {
@@ -107,9 +128,9 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
       FAKE_CTX,
     )
 
-    const call = fm.callsTo("graph.facebook.com")[0]
-    const sentBody = JSON.parse(String(call.init?.body))
-    expect(sentBody.data[0].event_id).toBe("id-estable-xyz")
+    // Purchase usa el idempotencyKey tal cual; Schedule le agrega "-schedule".
+    expect(metaEvent(fm, "Purchase").event_id).toBe("id-estable-xyz")
+    expect(metaEvent(fm, "Schedule").event_id).toBe("id-estable-xyz-schedule")
   })
 
   it("manda la IP/user-agent del COMPRADOR (capturados al reservar), nunca la del admin que confirma", async () => {
@@ -130,10 +151,13 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
       FAKE_CTX, // ip del ADMIN, no debería aparecer en el payload
     )
 
-    const sentBody = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
-    expect(sentBody.data[0].user_data.client_ip_address).toBe("190.10.20.30")
-    expect(sentBody.data[0].user_data.client_ip_address).not.toBe(FAKE_CTX.ip)
-    expect(sentBody.data[0].user_data.client_user_agent).toContain("ComprdorReal")
+    const purchase = metaEvent(fm, "Purchase")
+    expect(purchase.user_data.client_ip_address).toBe("190.10.20.30")
+    expect(purchase.user_data.client_user_agent).toContain("ComprdorReal")
+    // ninguno de los dos eventos filtra la IP del admin
+    for (const c of fm.callsTo("graph.facebook.com")) {
+      expect(String(c.init?.body)).not.toContain(FAKE_CTX.ip)
+    }
   })
 
   it("por default (sin etiqueta de método de pago) registra la entrega como transferencia_binance", async () => {
@@ -201,9 +225,11 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
       FAKE_CTX,
     )
 
-    const sentBody = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
     const expectedEventTime = Math.floor(new Date(reservaTimestamp).getTime() / 1000)
-    expect(sentBody.data[0].event_time).toBe(expectedEventTime)
+    // Purchase Y Schedule de la misma venta comparten el event_time real de la
+    // reserva → caen en la misma ventana de atribución de Meta (G2).
+    expect(metaEvent(fm, "Purchase").event_time).toBe(expectedEventTime)
+    expect(metaEvent(fm, "Schedule").event_time).toBe(expectedEventTime)
   })
 
   it("event_time cae a 'ahora' si el timestamp de la reserva supera los 7 días (evita que Meta rechace el evento)", async () => {
@@ -218,8 +244,10 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
     )
     const after = Math.floor(Date.now() / 1000)
 
-    const sentBody = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
-    expect(sentBody.data[0].event_time).toBeGreaterThanOrEqual(before)
-    expect(sentBody.data[0].event_time).toBeLessThanOrEqual(after)
+    for (const name of ["Purchase", "Schedule"]) {
+      const ev = metaEvent(fm, name)
+      expect(ev.event_time).toBeGreaterThanOrEqual(before)
+      expect(ev.event_time).toBeLessThanOrEqual(after)
+    }
   })
 })

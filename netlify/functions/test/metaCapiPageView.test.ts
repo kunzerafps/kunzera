@@ -61,6 +61,29 @@ describe("sendMetaPageViewEvent", () => {
     expect(body.data[0].user_data.external_id).toBe(await ref("abc-vid-123"))
   })
 
+  it("hashea la geo (ciudad/provincia/postal/país) como ct/st/zp/country con la misma normalización que Purchase", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPageViewEvent({
+      eventId: "pv-geo",
+      city: "San Nicolás",
+      region: "Buenos Aires",
+      postalCode: "B2900",
+      countryCode: "AR",
+    })
+
+    async function ref(input: string) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input))
+      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("")
+    }
+    const userData = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].user_data
+    expect(userData.ct).toBe(await ref("sannicolas")) // sin acento, minúscula, sin espacios
+    expect(userData.st).toBe(await ref("buenosaires"))
+    expect(userData.zp).toBe(await ref("b2900"))
+    expect(userData.country).toBe(await ref("ar"))
+  })
+
   it("no manda user_data vacío de más cuando no hay fbp/fbc", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))

@@ -3,7 +3,7 @@ import { motion } from "framer-motion"
 import { SiWhatsapp } from "react-icons/si"
 import { waLink, WHATSAPP_FLOAT_MESSAGE } from "../lib/constants"
 import { withAdReturnLink } from "../lib/deeplink"
-import { trackPixelEvent } from "../lib/pixel"
+import { trackServerBackedEvent } from "../lib/pixel"
 
 export default function WhatsAppFloat() {
   // Si la visita vino de un anuncio (fbclid/utm), withAdReturnLink() le suma
@@ -22,7 +22,7 @@ export default function WhatsAppFloat() {
       href={href}
       target="_blank"
       rel="noreferrer"
-      onClick={() => trackPixelEvent("Contact", { content_name: "whatsapp_float" })}
+      onClick={() => trackServerBackedEvent("Contact", {}, { content_name: "whatsapp_float" })}
       // bottom-left, no bottom-right: el lanzador del chat y el panel de chat
       // compacto ya ocupan esa esquina (bottom-24/bottom-6 right-6) — poner
       // este botón ahí lo taparía cuando el chat está abierto.

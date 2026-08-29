@@ -3,7 +3,10 @@ import { sendMetaPageViewEvent } from "./lib/metaCapiPageView"
 import { isRateLimited } from "./lib/rateLimit"
 
 const KEY_RE = /^[a-zA-Z0-9-]{6,80}$/
-const RATE_LIMIT_MAX = 20
+// Antes 20. Igual que capi-funnel.mts: en redes de celular compartidas
+// (CGNAT) 20/hora por IP quedaba corto y descartaba en silencio el PageView
+// server-side de visitantes reales detrás de esa misma IP.
+const RATE_LIMIT_MAX = 150
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 
 type Body = {
@@ -48,6 +51,13 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
           : undefined,
       clientIpAddress: ctx.ip || undefined,
       clientUserAgent: req.headers.get("user-agent") || undefined,
+      // Geo que Netlify ya resolvió en el edge desde la IP — gratis, no se le
+      // pide nada al visitante. `subdivision.name` (no `.code`), igual criterio
+      // que capi-funnel.mts / capture-attribution.mts.
+      city: ctx.geo?.city || undefined,
+      region: ctx.geo?.subdivision?.name || undefined,
+      postalCode: ctx.geo?.postalCode || undefined,
+      countryCode: ctx.geo?.country?.code || undefined,
     })
   } catch (err) {
     console.error("[capi-pageview] error inesperado:", err)

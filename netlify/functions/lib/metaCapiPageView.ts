@@ -16,7 +16,7 @@
 // completamente separado del de Purchase.
 import { getStore } from "@netlify/blobs"
 import { META_PIXEL_ID } from "./metaPixelId"
-import { sha256Hex } from "./metaUserData"
+import { sha256Hex, stripAccents } from "./metaUserData"
 import { logMetaResponse } from "./metaResponseLog"
 
 const ALREADY_SENT_STORE = "capi-pageview-events-sent"
@@ -28,12 +28,21 @@ export type MetaCapiPageView = {
   eventId: string
   fbp?: string
   fbc?: string
-  // ID propio y estable del navegador (ver src/lib/visitorId.ts). Es lo
-  // único de este evento que Meta espera hasheado — deja unir la visita
-  // anónima con una compra posterior aunque se pierda la cookie del píxel.
+  // ID propio y estable del navegador (ver src/lib/visitorId.ts). Meta lo
+  // espera hasheado — deja unir la visita anónima con una compra posterior
+  // aunque se pierda la cookie del píxel.
   externalId?: string
   clientIpAddress?: string
   clientUserAgent?: string
+  // Geolocalización aproximada que Netlify ya resuelve gratis desde la IP del
+  // request (ver capi-pageview.mts → ctx.geo) — no se le pide nada al
+  // visitante. Meta la espera hasheada como ct/st/zp/country, con la misma
+  // normalización que usa el evento de Compra (metaCapi.ts) y el de mitad de
+  // embudo (metaCapiFunnel.ts).
+  city?: string
+  region?: string
+  postalCode?: string
+  countryCode?: string
 }
 
 export type MetaCapiResult = { ok: true } | { ok: false; error: string }
@@ -53,6 +62,12 @@ export async function sendMetaPageViewEvent(params: MetaCapiPageView): Promise<M
     // duplicado y lo deduplica él mismo por event_id.
   }
 
+  // OJO: este módulo manda los campos hasheados como STRING pelado, no como
+  // array de un elemento (a diferencia de metaCapi.ts / metaCapiFunnel.ts).
+  // Meta acepta las dos formas para ct/st/zp/country/external_id; se deja así
+  // porque external_id ya viene shippeando escalar desde este endpoint y
+  // cambiarlo no aporta nada. La NORMALIZACIÓN del valor sí es idéntica a los
+  // otros dos módulos.
   const userData: Record<string, string> = {}
   if (params.fbp) userData.fbp = params.fbp
   if (params.fbc) userData.fbc = params.fbc
@@ -61,6 +76,20 @@ export async function sendMetaPageViewEvent(params: MetaCapiPageView): Promise<M
   }
   if (params.clientIpAddress) userData.client_ip_address = params.clientIpAddress
   if (params.clientUserAgent) userData.client_user_agent = params.clientUserAgent
+  // Geo hasheada — misma normalización exacta que metaCapi.ts / metaCapiFunnel.ts
+  // (sin acentos, minúsculas, sin espacios). zp/country son ASCII, sin stripAccents.
+  if (params.city) {
+    userData.ct = await sha256Hex(stripAccents(params.city.trim().toLowerCase().replace(/\s+/g, "")))
+  }
+  if (params.region) {
+    userData.st = await sha256Hex(stripAccents(params.region.trim().toLowerCase().replace(/\s+/g, "")))
+  }
+  if (params.postalCode) {
+    userData.zp = await sha256Hex(params.postalCode.trim().toLowerCase().replace(/\s+/g, ""))
+  }
+  if (params.countryCode) {
+    userData.country = await sha256Hex(params.countryCode.trim().toLowerCase())
+  }
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 8000)

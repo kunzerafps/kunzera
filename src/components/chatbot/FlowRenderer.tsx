@@ -111,9 +111,16 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
             // Señal temprana de intención (tocó un horario), NO es "reservó"
             // — ese es el evento Schedule que se manda al confirmar la
             // reserva (ver useChatFlow.ts). Una vez por sesión de navegador.
+            // Para llegar acá ya pasó por askName + askWhatsapp, así que la
+            // copia server-side lleva teléfono/nombre hasheados (igual que
+            // Lead y Schedule) — antes iba anónima.
             if (!turnoSelAlreadyFired()) {
               markTurnoSelFired()
-              trackServerBackedEvent("turno_seleccionado", {}, packEventParams(ctx.draft.pack))
+              trackServerBackedEvent(
+                "turno_seleccionado",
+                { whatsapp: ctx.draft.whatsapp, nombre: ctx.draft.nombre },
+                packEventParams(ctx.draft.pack),
+              )
             }
             dispatch({ type: "PICK_SLOT", slotIso: iso })
           }}

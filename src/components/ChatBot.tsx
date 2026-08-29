@@ -8,7 +8,7 @@ import { useOrderSubmit } from "../hooks/useOrderSubmit"
 import { isExpanded } from "../lib/chatFlow"
 import { listenOpenChat, type OpenChatDetail } from "../lib/chatBus"
 import { PACKS } from "../lib/packs"
-import { trackPixelEvent } from "../lib/pixel"
+import { trackServerBackedEvent } from "../lib/pixel"
 
 export default function ChatBot() {
   const flow = useChatFlow()
@@ -35,7 +35,7 @@ export default function ChatBot() {
     if (flow.open && !contactFired.current && !autoOpened.current) {
       contactFired.current = true
       const pack = pendingIntent.current?.pack
-      trackPixelEvent("Contact", {
+      trackServerBackedEvent("Contact", {}, {
         content_name: pack ? PACKS[pack].name : "chat_bot",
       })
     }

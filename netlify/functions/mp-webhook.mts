@@ -4,6 +4,7 @@ import { getStore } from "@netlify/blobs"
 import { submitOrder, updateOrderStatus } from "../../src/lib/appsScript"
 import type { Pack } from "../../src/types/order"
 import { sendMetaPurchaseEvent } from "./lib/metaCapi"
+import { sendConfirmedBookingScheduleEvent } from "./lib/metaCapiFunnel"
 import { notifyDiscord } from "./lib/discordAlert"
 import { getAttribution } from "./lib/attribution"
 
@@ -88,6 +89,15 @@ type MpPayment = {
     plan?: string
     turno?: string
     monto?: number | string
+  }
+  // Datos de la cuenta que pagó, que la API de Mercado Pago ya devuelve en la
+  // respuesta de /v1/payments/{id} — no se le piden al cliente. El email viene
+  // casi siempre y hoy es señal que no le llega a Meta por este camino. El
+  // teléfono (area_code + number) se va a usar como 2º valor de `ph` cuando se
+  // agregue soporte multi-valor.
+  payer?: {
+    email?: string
+    phone?: { area_code?: string; number?: string }
   }
 }
 
@@ -196,6 +206,7 @@ async function notifyOrderFailed(
 async function sendMercadoPagoCapiEvent(
   idempotencyKey: string,
   meta: NonNullable<MpPayment["metadata"]>,
+  payer?: MpPayment["payer"],
 ): Promise<void> {
   // Política de valor (decisión explícita, no accidente de implementación):
   // se manda el precio BASE del pack ($50.000/$70.000), no lo que el
@@ -213,6 +224,48 @@ async function sendMercadoPagoCapiEvent(
   // aprueba (no hay demora humana de por medio, a diferencia de
   // transferencia/binance).
   const attribution = await getAttribution(idempotencyKey)
+
+  // Mail de la cuenta que pagó, que la propia respuesta del pago de Mercado
+  // Pago ya trae — no se le pide nada al cliente. Es la señal más valiosa que
+  // hoy no le llega a Meta por este camino: el flujo del sitio todavía no
+  // pide mail, así que sin esto la Compra viaja sin `em`. Ojo: puede haber
+  // pagado un familiar/amigo y ser otro mail — no rompe nada (Meta usa
+  // cualquier identificador que coincida), pero por eso no se toca el nombre
+  // ni el teléfono del pagador acá. El teléfono como 2º valor de `ph` queda
+  // para cuando se agregue soporte multi-valor (ver punto "Sin multi-valor").
+  const payerEmail =
+    typeof payer?.email === "string" && payer.email.includes("@") ? payer.email : undefined
+
+  // "Schedule" (reserva confirmada) — misma atribución que la Compra. Antes se
+  // disparaba desde el navegador al volver de Mercado Pago, ANTES de que este
+  // webhook confirmara el pago (contaba reservas que después fallaban e
+  // inflaba la campaña optimizada a Schedule). Se dispara EN PARALELO al
+  // Purchase (no en serie después) para no sumarle wall-clock a esta función,
+  // que ya corre cerca del límite tras Apps Script. event_id + store de dedup
+  // propios: un fallo acá lo recupera un reintento de MP sin duplicar. Sin
+  // alerta de Discord: es señal blanda; la Compra, que sí importa, alerta.
+  // event_time por default ("ahora"): el webhook corre en el momento real del
+  // pago, sin demora humana.
+  const schedulePromise = sendConfirmedBookingScheduleEvent({
+    idempotencyKey,
+    value: Number(meta.monto) || 0,
+    contentName: meta.plan,
+    whatsapp: meta.whatsapp,
+    nombre: meta.nombre,
+    fbp: attribution?.fbp,
+    fbc: attribution?.fbc,
+    clientIpAddress: attribution?.ip,
+    clientUserAgent: attribution?.userAgent,
+    city: attribution?.city,
+    region: attribution?.region,
+    postalCode: attribution?.postalCode,
+    countryCode: attribution?.countryCode,
+    externalId: attribution?.visitorId,
+  }).catch((err) => {
+    console.error("[mp-webhook] error mandando Schedule a Meta:", err)
+    return { ok: false as const, error: String(err) }
+  })
+
   const result = await sendMetaPurchaseEvent({
     eventId: idempotencyKey,
     source: "mercadopago",
@@ -221,6 +274,7 @@ async function sendMercadoPagoCapiEvent(
     contentName: meta.plan,
     whatsapp: meta.whatsapp,
     nombre: meta.nombre,
+    email: payerEmail,
     fbp: attribution?.fbp,
     fbc: attribution?.fbc,
     clientIpAddress: attribution?.ip,
@@ -241,6 +295,10 @@ async function sendMercadoPagoCapiEvent(
       `⚠️ **No se pudo mandar el evento de Compra a Meta** (reserva ${idempotencyKey.slice(0, 8)}…)\nLa reserva está bien creada — esto solo afecta el tracking de anuncios. Revisar si el token de la API de Conversiones sigue vigente.\n${result.error}`,
     )
   }
+
+  // Ya arrancó en paralelo arriba; se espera acá para no dejar trabajo async
+  // colgando cuando la función termina (en Lambda eso se congela).
+  await schedulePromise
 }
 
 // Aviso de respaldo para cuando ni siquiera pudimos averiguar el estado del
@@ -332,12 +390,19 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
           // otra oportunidad que perder la etiqueta para siempre.
           const tagged = await tagAsMercadoPago(paymentId, idempotencyKey)
           if (!tagged) return new Response(null, { status: 200 })
+          // Antes acá se SALTEABA el aviso a Meta, asumiendo que esta entrega
+          // es siempre el duplicado de una primera que ya lo mandó. No es
+          // siempre cierto: si la primera entrega alcanzó a crear la fila y
+          // se cortó por tiempo (Apps Script lento) ANTES de llegar a
+          // sendMercadoPagoCapiEvent, el Purchase nunca salió y sin esto se
+          // perdía para siempre. Reintentarlo acá es seguro: sendMetaPurchase-
+          // Event deduplica localmente por eventId (store capi-events-sent,
+          // consistency strong) — si de verdad ya se mandó, ni le pega a Meta;
+          // y Meta igual deduplica por event_id dentro de su ventana de 48hs.
+          // Va ANTES de markProcessed: si el envío quedara a medias, un futuro
+          // reintento de MP vuelve a entrar por acá y entra otra vez.
+          await sendMercadoPagoCapiEvent(idempotencyKey, meta, payment.payer)
           await markProcessed(paymentId)
-          // OJO: no volvemos a llamar a sendMercadoPagoCapiEvent acá — esta
-          // rama es justamente la ENTREGA DUPLICADA de una notificación que
-          // ya se procesó con éxito en la primera entrega (esa ya mandó el
-          // evento a Meta). Repetirlo acá contaría la misma venta dos veces
-          // en las métricas de conversión de Meta Ads.
         } else {
           console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
           await notifyOrderFailed(paymentId, idempotencyKey, meta, orderResult.error)
@@ -382,7 +447,7 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
             statusResult.error,
           )
         }
-        await sendMercadoPagoCapiEvent(idempotencyKey, meta)
+        await sendMercadoPagoCapiEvent(idempotencyKey, meta, payment.payer)
       }
     }
   } catch (err) {

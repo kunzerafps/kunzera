@@ -3,7 +3,7 @@ import { Zap } from "lucide-react"
 import { memo, type ReactNode } from "react"
 import { SiWhatsapp } from "react-icons/si"
 import type { ChatMessage } from "../../types/order"
-import { trackPixelEvent } from "../../lib/pixel"
+import { trackServerBackedEvent } from "../../lib/pixel"
 
 type Props = {
   message: ChatMessage
@@ -109,7 +109,7 @@ function MessageBubbleImpl({ message, onChip }: Props) {
             target="_blank"
             rel="noreferrer"
             onClick={() =>
-              trackPixelEvent("Contact", { content_name: "chat_error_recovery" })
+              trackServerBackedEvent("Contact", {}, { content_name: "chat_error_recovery" })
             }
             className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-green-500 to-green-700 hover:from-green-400 hover:to-green-600 text-white text-sm font-semibold transition shadow-lg shadow-green-900/50"
           >

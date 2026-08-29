@@ -5,7 +5,9 @@ import { installFetchMock, jsonResponse } from "./helpers/fetchMock"
 
 vi.mock("@netlify/blobs", () => ({ getStore: (name: string) => fakeGetStore(name) }))
 
-const { sendMetaFunnelEvent } = await import("../lib/metaCapiFunnel")
+const { sendMetaFunnelEvent, sendConfirmedBookingScheduleEvent } = await import(
+  "../lib/metaCapiFunnel"
+)
 
 async function sha256HexRef(input: string): Promise<string> {
   const enc = new TextEncoder().encode(input)
@@ -156,6 +158,25 @@ describe("sendMetaFunnelEvent", () => {
     expect(customData.content_name).toBe("pricing_section") // texto libre, no se toca
   })
 
+  it("Contact: contentName es de dónde tocó WhatsApp, va como texto libre sin content_ids de producto", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaFunnelEvent({
+      eventId: "f-contact",
+      eventName: "Contact",
+      externalId: "vid-abc",
+      contentName: "whatsapp_float",
+    })
+
+    const data = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0]
+    expect(data.event_name).toBe("Contact")
+    expect(data.custom_data.content_name).toBe("whatsapp_float")
+    expect(data.custom_data.content_ids).toBeUndefined()
+    expect(data.custom_data.content_type).toBeUndefined()
+    expect(data.user_data.external_id[0]).toHaveLength(64) // el id de navegador sí viaja (hasheado)
+  })
+
   it("Lead ahora puede llevar value (precio del pack) para optimización por plata", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
@@ -240,5 +261,51 @@ describe("sendMetaFunnelEvent", () => {
 
     expect(result.ok).toBe(false)
     expect(await fakeGetStore("capi-funnel-events-sent").get("f-7")).toBeNull()
+  })
+
+  describe("sendConfirmedBookingScheduleEvent (G2: Schedule server-side)", () => {
+    it("manda Schedule con event_id '<key>-schedule', value/currency y teléfono hasheado", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+
+      const r = await sendConfirmedBookingScheduleEvent({
+        idempotencyKey: "abc123",
+        value: 70000,
+        contentName: "diamante",
+        whatsapp: "1155554444",
+        nombre: "Juan Perez",
+        externalId: "vid-1",
+      })
+
+      expect(r.ok).toBe(true)
+      const data = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0]
+      expect(data.event_name).toBe("Schedule")
+      expect(data.event_id).toBe("abc123-schedule")
+      expect(data.action_source).toBe("website")
+      expect(data.custom_data.value).toBe(70000)
+      expect(data.custom_data.currency).toBe("ARS")
+      expect(data.custom_data.content_ids).toEqual(["diamante"])
+      expect(data.user_data.ph[0]).toHaveLength(64)
+    })
+
+    it("value 0 / inválido NO se manda (no envenena la optimización por valor)", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+
+      await sendConfirmedBookingScheduleEvent({ idempotencyKey: "z", value: 0 })
+
+      const data = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0]
+      expect(data.custom_data?.value).toBeUndefined()
+    })
+
+    it("mismo <key>-schedule dos veces (webhook + 'Marcar como atendido') deduplica: un solo envío", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+
+      await sendConfirmedBookingScheduleEvent({ idempotencyKey: "dup-key", value: 50000 })
+      await sendConfirmedBookingScheduleEvent({ idempotencyKey: "dup-key", value: 50000 })
+
+      expect(fm.callsTo("graph.facebook.com").length).toBe(1)
+    })
   })
 })

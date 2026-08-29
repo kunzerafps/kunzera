@@ -112,24 +112,41 @@ describe("capi-funnel", () => {
     expect(bodies[1].data[0].custom_data.content_ids).toEqual(["diamante"])
   })
 
-  it("acepta turno_seleccionado y Schedule (item 03: las dos señales de turno)", async () => {
+  it("acepta turno_seleccionado (con el teléfono ya cargado) pero NO Schedule por esta vía pública", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
     const ctx = { ip: "1.2.3.4" } as any
 
-    await funnelHandler(req({ eventId: "cf-sel-1", event: "turno_seleccionado", value: 50000 }), ctx)
+    await funnelHandler(
+      req({ eventId: "cf-sel-1", event: "turno_seleccionado", value: 50000, whatsapp: "1155554444" }),
+      ctx,
+    )
+    // Schedule salió de la lista pública (FUNNEL_EVENTS): es objetivo de
+    // campaña y ahora es 100% server-side (mp-webhook / capi-confirmar-pago).
+    // Un cliente manipulado ya no puede fabricar una conversión "reservó".
     await funnelHandler(req({ eventId: "cf-sch-1", event: "Schedule", value: 70000, whatsapp: "1155554444" }), ctx)
 
     const bodies = fm.callsTo("graph.facebook.com").map((c) => JSON.parse(String(c.init?.body)))
+    expect(bodies).toHaveLength(1)
     expect(bodies[0].data[0].event_name).toBe("turno_seleccionado")
     expect(bodies[0].data[0].custom_data.value).toBe(50000)
     expect(bodies[0].data[0].action_source).toBe("website")
-    expect(bodies[1].data[0].event_name).toBe("Schedule")
-    expect(bodies[1].data[0].custom_data.value).toBe(70000)
-    expect(bodies[1].data[0].user_data.ph[0]).toHaveLength(64)
+    // turno_seleccionado ahora llega con el teléfono ya cargado (askWhatsapp
+    // pasó antes en el flujo) — antes iba anónimo.
+    expect(bodies[0].data[0].user_data.ph[0]).toHaveLength(64)
   })
 
-  it("turno_seleccionado y Schedule también respetan META_CAPI_TEST_EVENT_CODE", async () => {
+  it("un cliente que POSTea event: 'Schedule' al endpoint público no genera ningún evento", async () => {
+    const fm = installFetchMock()
+    const ctx = { ip: "1.2.3.4" } as any
+
+    const res = await funnelHandler(req({ eventId: "cf-fake-sched", event: "Schedule", value: 999999 }), ctx)
+
+    expect(res.status).toBe(200)
+    expect(fm.calls.length).toBe(0)
+  })
+
+  it("turno_seleccionado también respeta META_CAPI_TEST_EVENT_CODE", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
     process.env.META_CAPI_TEST_EVENT_CODE = "TESTQ"
@@ -153,6 +170,24 @@ describe("capi-funnel", () => {
 
     const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
     expect(body.data[0].custom_data.content_ids).toHaveLength(5)
+  })
+
+  it("acepta el evento Contact (tocó WhatsApp) y le adjunta id de navegador + IP para la atribución", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "190.190.190.190" } as any
+
+    const res = await funnelHandler(
+      req({ eventId: "cf-contact-1", event: "Contact", externalId: "vid-xyz", fbp: "fb.1.1.2" }),
+      ctx,
+    )
+
+    expect(res.status).toBe(200)
+    const data = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0]
+    expect(data.event_name).toBe("Contact")
+    expect(data.user_data.client_ip_address).toBe("190.190.190.190")
+    expect(data.user_data.external_id[0]).toHaveLength(64)
+    expect(data.user_data.fbp).toBe("fb.1.1.2")
   })
 
   it("un event_name no permitido (ej. Purchase) no manda nada a Meta", async () => {

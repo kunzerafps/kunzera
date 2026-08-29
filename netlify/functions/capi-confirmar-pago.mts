@@ -1,6 +1,7 @@
 import type { Config, Context } from "@netlify/functions"
 import { verifySessionToken } from "./lib/adminSession"
 import { sendMetaPurchaseEvent, MAX_EVENT_AGE_DAYS } from "./lib/metaCapi"
+import { sendConfirmedBookingScheduleEvent } from "./lib/metaCapiFunnel"
 import { notifyDiscord } from "./lib/discordAlert"
 import { isRateLimited } from "./lib/rateLimit"
 import { getAttribution } from "./lib/attribution"
@@ -88,6 +89,42 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   const metodo = await getPaymentMethod(body.idempotencyKey)
   const source = metodo === "mercadopago" ? "mercadopago" : "transferencia_binance"
   const attribution = await getAttribution(body.idempotencyKey)
+
+  // event_time real de la venta: el momento en que se creó la reserva (cliente
+  // subió el comprobante), NO cuando el admin aprieta "Confirmar pago", que
+  // puede ser días después. Se comparte entre Purchase y Schedule para que
+  // los dos eventos de esta misma venta caigan en la misma ventana de
+  // atribución de Meta. `undefined` si la reserva ya superó los 7 días (Meta
+  // rechazaría el evento) → cae a "ahora" adentro de sendMeta*.
+  const eventTime = resolveEventTime(body.reservaTimestamp)
+
+  // "Schedule" (reserva confirmada) — antes se disparaba desde el navegador al
+  // volver de Mercado Pago con "?mp=success", antes de que el pago estuviera
+  // realmente confirmado. Se dispara EN PARALELO al Purchase (no en serie).
+  // event_id + store de dedup propios: si este endpoint se llama sobre una
+  // reserva de MP (botón "Marcar como atendido"), deduplica contra el que ya
+  // mandó mp-webhook.mts. Sin alerta: señal blanda, la Compra ya avisa si falla.
+  const schedulePromise = sendConfirmedBookingScheduleEvent({
+    idempotencyKey: body.idempotencyKey,
+    value: Number(body.monto) || 0,
+    contentName: body.plan,
+    whatsapp: body.whatsapp,
+    nombre: body.nombre,
+    fbp: attribution?.fbp,
+    fbc: attribution?.fbc,
+    clientIpAddress: attribution?.ip,
+    clientUserAgent: attribution?.userAgent,
+    city: attribution?.city,
+    region: attribution?.region,
+    postalCode: attribution?.postalCode,
+    countryCode: attribution?.countryCode,
+    externalId: attribution?.visitorId,
+    eventTime,
+  }).catch((err) => {
+    console.error("[capi-confirmar-pago] error mandando Schedule a Meta:", err)
+    return { ok: false as const, error: String(err) }
+  })
+
   const result = await sendMetaPurchaseEvent({
     eventId: body.idempotencyKey,
     source,
@@ -105,7 +142,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     postalCode: attribution?.postalCode,
     countryCode: attribution?.countryCode,
     externalId: attribution?.visitorId,
-    eventTime: resolveEventTime(body.reservaTimestamp),
+    eventTime,
   })
 
   if (!result.ok) {
@@ -118,6 +155,8 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       `⚠️ **No se pudo mandar el evento de Compra a Meta** (reserva ${body.idempotencyKey.slice(0, 8)}…, ${source})\nLa reserva está bien confirmada — esto solo afecta el tracking de anuncios.\n${result.error}`,
     )
   }
+
+  await schedulePromise
 
   // Siempre 200 con el resultado: un fallo de tracking no debe bloquear ni
   // reintentar como si fuera un error de la reserva en sí — ya se avisó

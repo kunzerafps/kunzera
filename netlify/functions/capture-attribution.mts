@@ -3,7 +3,12 @@ import { saveAttribution } from "./lib/attribution"
 import { isRateLimited } from "./lib/rateLimit"
 
 const KEY_RE = /^[a-zA-Z0-9-]{6,80}$/
-const RATE_LIMIT_MAX = 20
+// Antes 20. capture-attribution se llama una sola vez por checkout, pero en
+// redes de celular compartidas (CGNAT) muchos compradores distintos salen por
+// la misma IP: 20/hora dejaba sin guardar fbp/fbc/IP/geo de compradores reales
+// detrás de esa IP, y esta es la ÚNICA captura de esos datos para las 3 formas
+// de pago. Mismo valor que capi-funnel.mts.
+const RATE_LIMIT_MAX = 150
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 
 const MAX_UTM_LEN = 100

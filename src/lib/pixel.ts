@@ -4,6 +4,45 @@ import { getVisitorId } from "./visitorId"
 
 type Fbq = (...args: unknown[]) => void
 
+// Ni el panel de administración ni los dispositivos de Eze / de quien lo
+// ayuda deben generar eventos de Meta: contarlos como "visitas" mete tráfico
+// interno en los públicos de remarketing y en el modelo de optimización, y
+// termina haciendo que se pague por mostrar anuncios al propio equipo.
+//   - `#admin` en la URL: se está abriendo el panel ahora mismo.
+//   - localStorage `kz_staff`: timestamp del último login al panel en este
+//     dispositivo (lo setea useAdminGate) — cubre navegar el sitio normal
+//     después. Vence a los STAFF_TTL_MS para que abrir el panel una vez en la
+//     PC de un cliente no la deje sin tracking para siempre.
+//   - `?kz_track=1` en la URL: escotilla — borra la marca de este dispositivo
+//     y fuerza tracking normal (para volver a testear el sitio real).
+// La MISMA lógica está duplicada, más chica, en el script inline de
+// index.html (ese HTML es estático y no puede importar de acá).
+const STAFF_TTL_MS = 90 * 24 * 60 * 60 * 1000
+
+export function isStaffSession(): boolean {
+  try {
+    if (typeof window === "undefined") return false
+    if (/[?&]kz_track=1(?:&|$)/.test(window.location.search)) {
+      try {
+        localStorage.removeItem("kz_staff")
+      } catch {
+        /* noop */
+      }
+      return false
+    }
+    if (window.location.hash === "#admin") return true
+    const raw = localStorage.getItem("kz_staff")
+    if (!raw) return false
+    // Compat con el valor viejo "1" (pre-timestamp): sigue valiendo hasta que
+    // el próximo login lo reescriba como timestamp.
+    if (raw === "1") return true
+    const ts = Number(raw)
+    return Number.isFinite(ts) && Date.now() - ts < STAFF_TTL_MS
+  } catch {
+    return false
+  }
+}
+
 // Eventos estándar de Meta — el resto se manda con "trackCustom" (Meta tira
 // un warning si le pasás un nombre desconocido por "track").
 const STANDARD_META_EVENTS = new Set([
@@ -37,6 +76,7 @@ export function trackPixelEvent(
   params?: Record<string, unknown>,
   eventId?: string,
 ): void {
+  if (isStaffSession()) return
   const fbq = (window as unknown as { fbq?: Fbq }).fbq
   if (typeof fbq !== "function") return
   const method = STANDARD_META_EVENTS.has(eventName) ? "track" : "trackCustom"
@@ -62,10 +102,19 @@ const SERVER_BACKED_EVENTS = [
   "ViewContent",
   "AddToCart",
   // "turno_seleccionado": señal temprana (tocó un horario), sirve para armar
-  // públicos de "gente con intención". "Schedule": el turno reservado de
-  // verdad (reserva confirmada), el evento que las campañas usan como objetivo.
+  // públicos de "gente con intención". ("Schedule" — la reserva confirmada,
+  // que es objetivo de campaña — ya NO se dispara desde el navegador: es 100%
+  // server-side, junto con el Purchase, ver mp-webhook.mts /
+  // capi-confirmar-pago.mts. Antes salía de acá al volver de Mercado Pago,
+  // antes de que el pago estuviera confirmado.)
   "turno_seleccionado",
-  "Schedule",
+  // "Contact": tocó el botón de WhatsApp. NUNCA se usa como objetivo de
+  // campaña (el objetivo siempre es Purchase) — la copia server-side existe
+  // sólo para que lleve el id de navegador / _fbp / _fbc / IP, y así una
+  // compra real que después se cierra por WhatsApp (y se carga a mano) se
+  // pueda atribuir al anuncio en vez de caer en "vino de la nada". El píxel
+  // del navegador solo se pierde en iOS/Safari/adblock.
+  "Contact",
 ] as const
 export type ServerBackedEventName = (typeof SERVER_BACKED_EVENTS)[number]
 
@@ -83,6 +132,7 @@ export function trackServerBackedEvent(
   identity: Identity = {},
   params?: Record<string, unknown>,
 ): void {
+  if (isStaffSession()) return
   const eventId = randomId()
   trackPixelEvent(eventName, params, eventId)
 

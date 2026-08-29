@@ -95,21 +95,52 @@
       } catch (e) { /* noop */ }
     })();
 
-    // Este ID también vive server-side en netlify/functions/lib/metaPixelId.ts
-    // (configurable por la env var META_PIXEL_ID, con este mismo valor como
-    // fallback). Este archivo es HTML estático — no lee esa env var — así que
-    // si alguna vez se migra el Pixel a otro dataset, hay que actualizar ACÁ
-    // también a mano y mantenerlo igual.
-    // Se pasa el id propio del navegador como external_id (advanced
-    // matching): así hasta los eventos anónimos (PageView, ViewContent) le
-    // dan a Meta una clave para reconocer a la persona, y se reconcilian con
-    // la copia server-side, que ya manda este mismo id.
-    fbq('init', '761377043609509', window.__kunzeraVid ? { external_id: window.__kunzeraVid } : {});
-    // eventID compartido con el envío server-side (ver useServerPageView.ts)
-    // para que Meta deduplique el PageView del navegador y el del servidor
-    // como un solo evento, en vez de contar la visita dos veces.
-    window.__kunzeraPvId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
-    fbq('track', 'PageView', {}, {eventID: window.__kunzeraPvId});
+    // Sesión interna (panel de admin / dispositivo del equipo): NO se
+    // inicializa el pixel ni se manda el PageView. Contar esas visitas como
+    // tráfico real ensucia los públicos de remarketing y el modelo de
+    // optimización de Meta (se termina pagando por mostrarle anuncios al
+    // propio equipo). Misma lógica que src/lib/pixel.ts isStaffSession —
+    // duplicada acá porque este HTML es estático y no puede importar.
+    //   - '?kz_track=1' en la URL: escotilla, borra la marca y trackea normal.
+    //   - '#admin' en la URL: se está abriendo el panel ahora.
+    //   - localStorage 'kz_staff': timestamp del último login al panel (lo
+    //     setea src/hooks/useAdminGate.ts); vence a los 90 días.
+    var __kzStaff = false;
+    try {
+      var __KZ_TTL = 7776000000; // 90 días en ms
+      if (/[?&]kz_track=1(?:&|$)/.test(window.location.search)) {
+        try { localStorage.removeItem('kz_staff'); } catch (e2) {}
+        __kzStaff = false;
+      } else if (window.location.hash === '#admin') {
+        __kzStaff = true;
+      } else {
+        var __kzRaw = localStorage.getItem('kz_staff');
+        if (__kzRaw === '1') {
+          __kzStaff = true; // valor viejo pre-timestamp
+        } else if (__kzRaw) {
+          var __kzTs = Number(__kzRaw);
+          __kzStaff = isFinite(__kzTs) && (Date.now() - __kzTs) < __KZ_TTL;
+        }
+      }
+    } catch (e) { /* localStorage bloqueado: se trata como visitante normal */ }
+
+    if (!__kzStaff) {
+      // Este ID también vive server-side en netlify/functions/lib/metaPixelId.ts
+      // (configurable por la env var META_PIXEL_ID, con este mismo valor como
+      // fallback). Este archivo es HTML estático — no lee esa env var — así que
+      // si alguna vez se migra el Pixel a otro dataset, hay que actualizar ACÁ
+      // también a mano y mantenerlo igual.
+      // Se pasa el id propio del navegador como external_id (advanced
+      // matching): así hasta los eventos anónimos (PageView, ViewContent) le
+      // dan a Meta una clave para reconocer a la persona, y se reconcilian con
+      // la copia server-side, que ya manda este mismo id.
+      fbq('init', '761377043609509', window.__kunzeraVid ? { external_id: window.__kunzeraVid } : {});
+      // eventID compartido con el envío server-side (ver useServerPageView.ts)
+      // para que Meta deduplique el PageView del navegador y el del servidor
+      // como un solo evento, en vez de contar la visita dos veces.
+      window.__kunzeraPvId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('pv-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+      fbq('track', 'PageView', {}, {eventID: window.__kunzeraPvId});
+    }
     </script>
     <!-- End Meta Pixel Code -->
   </head>

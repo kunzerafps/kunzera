@@ -15,8 +15,6 @@ import {
   loadDraft,
   saveDraft,
 } from "../lib/storage"
-import { trackServerBackedEvent } from "../lib/pixel"
-import { packEventParams } from "../lib/prices"
 
 // Demora simulada del "escribiendo…": corta, sólo para que se lea como "el
 // bot está respondiendo" y no como una página trabada. Antes eran 700ms al
@@ -57,7 +55,6 @@ export function useChatFlow(): FlowReturn {
   const [resumable, setResumable] = useState(() => loadDraft())
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const greeted = useRef(false)
-  const scheduleFired = useRef(false)
 
   const dispatch = useCallback((ev: FlowEvent) => {
     const isUserMove =
@@ -113,40 +110,20 @@ export function useChatFlow(): FlowReturn {
       setResumable(null)
       clearTurnoSelFired()
       clearFiredOnceInSession()
-      // "Schedule" = el turno quedó reservado de verdad (reserva confirmada,
-      // comprobante subido / MP aprobado). Esta SÍ va cliente-side +
-      // server-side (a diferencia de Purchase): no tiene el problema de la
-      // ventana de dedup de 48hs porque se dispara justo cuando el cliente
-      // termina, no días después. Una sola vez por sesión.
-      if (!scheduleFired.current) {
-        scheduleFired.current = true
-        const pp = packEventParams(ctx.draft.pack)
-        const ppValue = typeof pp.value === "number" ? pp.value : undefined
-        trackServerBackedEvent(
-          "Schedule",
-          { whatsapp: ctx.draft.whatsapp, nombre: ctx.draft.nombre },
-          {
-            ...pp,
-            // draft.monto es el precio exacto que vio y aceptó el cliente,
-            // guardado con el draft — más confiable que el precio "actual"
-            // (que en el regreso de Mercado Pago puede no haberse cargado
-            // todavía desde la config del sitio).
-            value: ctx.draft.monto ?? ppValue ?? 0,
-            currency: "ARS",
-          },
-        )
-      }
-      // El evento de Compra para Meta Ads NUNCA se manda desde acá — se
-      // manda 100% server-side: mp-webhook.mts para Mercado Pago (al
-      // confirmarse el pago), capi-confirmar-pago.mts para
-      // transferencia/binance (cuando el admin revisa el comprobante y
-      // aprieta "Confirmar pago"). Se probó disparar el píxel del navegador
-      // acá + deduplicar por event_id contra el evento del servidor, pero la
-      // ventana de deduplicación de Meta es de 48hs — el admin puede tardar
-      // más que eso en confirmar un comprobante, y ahí Meta contaría la
-      // misma venta dos veces en vez de fusionarla. Un solo origen de verdad
-      // (servidor, disparado recién cuando la venta está confirmada de
-      // verdad) evita ese problema de raíz.
+      // NI "Schedule" NI "Purchase" se disparan desde el navegador. Los dos
+      // se mandan 100% server-side, juntos, recién cuando el pago está
+      // confirmado de verdad: mp-webhook.mts (Mercado Pago) y
+      // capi-confirmar-pago.mts (transferencia/binance).
+      //
+      // Antes "Schedule" SÍ salía de acá, al entrar a "confirmed". Problema:
+      // en Mercado Pago ese estado se alcanza al volver con "?mp=success",
+      // que ocurre ANTES de que el webhook confirme el pago — así se contaban
+      // como "reservó" pagos que después fallaban (webhook caído, pago
+      // revertido), inflando la campaña optimizada a ese evento. Y "Purchase"
+      // desde el navegador chocaba con la ventana de dedup de 48hs de Meta
+      // cuando el admin tardaba más que eso en confirmar un comprobante.
+      // Un solo origen de verdad (servidor, con la reserva ya confirmada)
+      // evita los dos problemas.
     }
   }, [ctx.state, ctx.draft])
 

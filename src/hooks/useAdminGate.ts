@@ -44,6 +44,17 @@ export function useAdminGate() {
         | null
       if (data?.ok) {
         setAdminAuthed(data.token)
+        // Marca este dispositivo como "del equipo" para que no genere eventos
+        // de Meta (ni ahora en el panel, ni después navegando el sitio). Se
+        // guarda el timestamp: isStaffSession lo vence a los ~90 días, así
+        // abrir el panel una vez en una PC ajena no la silencia para siempre.
+        // Para reactivar antes: entrar con ?kz_track=1. Ver src/lib/pixel.ts.
+        try {
+          localStorage.setItem("kz_staff", String(Date.now()))
+        } catch {
+          // localStorage no disponible — el chequeo de "#admin" igual cubre
+          // la sesión del panel en curso.
+        }
         setPhase("authed")
         return true
       }

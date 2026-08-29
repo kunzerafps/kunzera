@@ -33,6 +33,28 @@ describe("capi-pageview", () => {
     expect(body.data[0].user_data.client_user_agent).toBe("Mozilla/5.0 Visitante")
   })
 
+  it("reenvía la geo de ctx.geo a Meta (hasheada, nombre de provincia no código)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = {
+      ip: "200.1.2.3",
+      geo: {
+        city: "Rosario",
+        subdivision: { name: "Santa Fe", code: "S" },
+        postalCode: "2000",
+        country: { code: "AR" },
+      },
+    } as any
+
+    await pageViewHandler(req({ eventId: "pv-geo-http" }), ctx)
+
+    const userData = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].user_data
+    expect(userData.ct).toHaveLength(64)
+    expect(userData.st).toHaveLength(64)
+    expect(userData.zp).toHaveLength(64)
+    expect(userData.country).toHaveLength(64)
+  })
+
   it("un eventId inválido no manda nada a Meta", async () => {
     const fm = installFetchMock()
     const ctx = { ip: "201.201.201.201" } as any
@@ -58,13 +80,13 @@ describe("capi-pageview", () => {
     fm.on("graph.facebook.com", () => jsonResponse({}))
     const ctx = { ip: "201.201.201.201" } as any
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 150; i++) {
       await pageViewHandler(req({ eventId: `pv-rl-${i}` }), ctx)
     }
     const callsAfterLimit = fm.calls.length
     await pageViewHandler(req({ eventId: "pv-rl-excedido" }), ctx)
 
-    expect(fm.calls.length).toBe(callsAfterLimit) // el request 21 no generó una llamada nueva
+    expect(fm.calls.length).toBe(callsAfterLimit) // el request 151 no generó una llamada nueva
   })
 
   it("un método distinto de POST no hace nada", async () => {

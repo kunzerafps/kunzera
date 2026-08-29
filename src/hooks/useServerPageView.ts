@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { getFbp, getFbc } from "../lib/cookies"
 import { getVisitorId } from "../lib/visitorId"
+import { isStaffSession } from "../lib/pixel"
 
 // Manda a Meta, desde el servidor, el mismo PageView que index.html ya
 // manda desde el navegador — comparten eventID (generado ahí, guardado en
@@ -16,6 +17,10 @@ import { getVisitorId } from "../lib/visitorId"
 // nunca en desarrollo (bug real, encontrado en review).
 export function useServerPageView(): void {
   useEffect(() => {
+    // Sesión interna (panel de admin / dispositivo del equipo): no mandar el
+    // PageView server-side. El de index.html tampoco se dispara en ese caso
+    // (misma lógica, duplicada allá). Ver isStaffSession.
+    if (isStaffSession()) return
     const pvId = (window as unknown as { __kunzeraPvId?: string }).__kunzeraPvId
     if (!pvId) return
 
