@@ -1,6 +1,5 @@
 import type { Config, Context } from "@netlify/functions"
 import type { Order } from "../../src/types/order"
-import { dateOnlyInArgentina, daysAgoInArgentina } from "./lib/argentinaTime"
 import { listRecentDeliveries } from "./lib/deliveryLog"
 import { getSheetOrders } from "./lib/sheetOrders"
 import { listManualSales, updateManualSaleByEvent } from "./lib/manualSalesStore"
@@ -9,42 +8,40 @@ import { getPaymentMethod } from "./lib/facturacion"
 import { sendMetaPurchaseEvent, MAX_EVENT_AGE_DAYS } from "./lib/metaCapi"
 import { notifyDiscord } from "./lib/discordAlert"
 
-// Corre todos los días (09:00 Argentina) y REENVÍA a Meta cualquier venta real
-// que no le haya llegado como evento de Compra. No es un "reporte" que hay que
-// leer: repara solo. Discord solo se toca si algo NO se pudo reenviar (eso sí
-// es un problema real) o si no se pudo leer el Sheet.
+// Corre 1 vez por día (09:00 Argentina). NO es un reporte para leer: repara
+// solo. Por cada venta que YA le tendría que haber llegado a Meta y no le
+// llegó, se la reenvía. Meta deduplica del otro lado por event_id, así que
+// reenviar de más NO cuenta la venta dos veces.
 //
-// Por qué "reenviar todo lo que falta" en vez de comparar contra lo que Meta
-// dice haber contado: Meta solo cuenta como "compra de anuncio" las ventas que
-// pudo atribuir a un clic reciente. Una venta orgánica, o una por WhatsApp, o
-// una de alguien que clickeó el anuncio hace más de una semana, es una venta
-// real que NO aparece en ese número — comparar contra él daba una "brecha"
-// falsa casi todos los días. Lo que importa es si el EVENTO le llegó a Meta,
-// y eso se sabe con el log de entregas (deliveryLog) + la dedup de metaCapi.
+// "Ya le tendría que haber llegado" se define por el ESTADO de la venta, no
+// por una fecha — alguien puede pagar hoy y tener el turno en 2 semanas, así
+// que "cuándo se cargó" no dice nada:
+//   · Reserva del sitio marcada "atendido" en el panel. Ese click es lo que
+//     dispara el aviso a Meta para transferencia/binance; para Mercado Pago
+//     el aviso ya salió al momento de pagar. Si la reserva está atendida, el
+//     evento de Compra tuvo que haber salido sí o sí.
+//   · Venta manual por WhatsApp cuyo aviso a Meta no figura entregado.
 //
-// Ventana: de hace 9 días a hace 2 días. Se deja 1 día de gracia porque para
-// transferencia/binance el evento se manda recién cuando el admin marca
-// "atendido" (puede ser 24-48hs después de la reserva). No se toca "hoy" ni
-// "ayer" para no reenviar algo que todavía está en curso.
-const WINDOW_FROM_DAYS = 9
-const WINDOW_TO_DAYS = 2
+// La verdad de "salió o no" es el log de entregas (deliveryLog): se marca
+// entregada si Meta la aceptó, o si la dedup local vio que Meta ya la tenía.
+//
+// Discord SOLO se toca si algo NO se pudo reenviar (problema real que
+// necesita tu mano) o si no se pudo leer la planilla. Si reenvió algo y todo
+// salió bien, manda un aviso corto de "ya está" que no requiere que hagas
+// nada.
 
 // Tope de seguridad: si de golpe faltan MÁS de esto, casi seguro se rompió
-// algo sistémico (el store de dedup se borró, el Sheet devuelve basura) — NO
-// se bombardea a Meta con decenas de eventos viejos, se avisa y listo.
+// algo sistémico (el registro de envíos se borró, la planilla devuelve
+// basura) — NO se bombardea a Meta con decenas de eventos, se avisa y listo.
 const MAX_RESEND_PER_RUN = 10
 
-const VENTA_ESTADOS = new Set(["confirmado", "atendido"])
-
-function inWindow(dateStr: string, from: string, to: string): boolean {
-  return dateStr >= from && dateStr <= to
-}
-
-// Unix seconds para el evento: la fecha real de la venta si está dentro de la
-// ventana de 7 días que acepta Meta; si es más vieja, `undefined` → metaCapi
-// usa "ahora" (evento mal fechado, pero mejor que perderlo).
-function eventTimeWithinWindow(ms: number): number | undefined {
-  const ageDays = (Date.now() - ms) / (24 * 60 * 60 * 1000)
+// event_time del evento reenviado: la fecha del turno (lo más cercano a
+// "cuándo se atendió y debió dispararse el aviso"), si entra en la ventana
+// de 7 días que Meta acepta hacia atrás. Si es más viejo → undefined y
+// metaCapi usa "ahora" (evento mal fechado, pero mejor que perder la venta).
+function eventTimeOrNow(ms: number): number | undefined {
+  if (!Number.isFinite(ms)) return undefined
+  const ageDays = (Date.now() - ms) / 86_400_000
   if (ageDays < 0 || ageDays > MAX_EVENT_AGE_DAYS) return undefined
   return Math.floor(ms / 1000)
 }
@@ -52,10 +49,7 @@ function eventTimeWithinWindow(ms: number): number | undefined {
 type Missing = { label: string; kind: "sitio" | "manual" }
 
 export default async (_req: Request, _ctx: Context): Promise<Response> => {
-  const from = daysAgoInArgentina(WINDOW_FROM_DAYS)
-  const to = daysAgoInArgentina(WINDOW_TO_DAYS)
-
-  // Sheet: se tolera que falle (Apps Script es intermitente) — igual se
+  // La planilla puede fallar (Apps Script es intermitente) — igual se
   // reconcilian las ventas manuales, y se avisa aparte que no se pudo leer.
   const [ordersRes, manualSales, deliveries] = await Promise.all([
     getSheetOrders({ attempts: 2, timeoutMs: 6000 }).then(
@@ -63,65 +57,66 @@ export default async (_req: Request, _ctx: Context): Promise<Response> => {
       (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
     ),
     listManualSales(500).catch(() => [] as Awaited<ReturnType<typeof listManualSales>>),
-    listRecentDeliveries(1000).catch(() => []),
+    // Tope alto a propósito: el chequeo es contra el estado de la venta, no
+    // contra una ventana de fechas — una entrega vieja tiene que seguir
+    // contando como "ya avisada".
+    listRecentDeliveries(10000).catch(() => []),
   ])
 
   const sheetOk = ordersRes.ok && ordersRes.orders.length > 0
   const orders: Order[] = ordersRes.ok ? ordersRes.orders : []
 
-  // event_id de toda venta que YA le llegó a Meta (o que Meta ya tenía y
+  // event_id de toda venta que YA le llegó a Meta (o que Meta ya tenía y la
   // dedup local descartó). Contra esto se decide qué reenviar.
   const deliveredOk = new Set(
     deliveries.filter((d) => d.ok || d.dedupedLocally).map((d) => d.eventId),
   )
 
-  // ── Ventas del sitio (Sheet) que faltan ──
+  // ── Reservas del sitio marcadas "atendido" cuyo evento no figura enviado ──
   const missingSite = orders.filter((o) => {
-    if (!VENTA_ESTADOS.has(String(o.estado || "").toLowerCase())) return false
+    if (String(o.estado || "").toLowerCase() !== "atendido") return false
     if (!o.idempotencykey) return false
-    if (!inWindow(dateOnlyInArgentina(o.timestamp), from, to)) return false
     return !deliveredOk.has(o.idempotencykey)
   })
 
-  // ── Ventas manuales (WhatsApp) que faltan ──
+  // ── Ventas manuales (WhatsApp) sin cancelar cuyo evento no figura enviado ──
   const missingManual = manualSales.filter((m) => {
     if (m.canceled) return false
-    if (!inWindow(m.saleDate, from, to)) return false
     return !deliveredOk.has(m.metaEventId)
   })
 
   const totalMissing = missingSite.length + missingManual.length
 
-  // Nada que hacer → silencio total (salvo que el Sheet no se haya podido leer).
+  // Nada que hacer → silencio total (salvo que la planilla no se haya podido leer).
   if (totalMissing === 0) {
     if (!ordersRes.ok || !sheetOk) {
       await notifyDiscord(
-        `gap-sheet-unreadable-${to}`,
-        `⚠️ No se pudieron leer las reservas del Sheet para revisar que las ventas hayan llegado a Meta. Las ventas por WhatsApp sí se revisaron. Revisar Apps Script.`,
+        "gap-sheet-unreadable",
+        "⚠️ No se pudieron leer las reservas de la planilla para revisar que las ventas hayan llegado a Meta. Las ventas por WhatsApp sí se revisaron. Revisar Apps Script.",
       )
     }
-    console.log(`[reconcile] ${from}..${to}: sin faltantes (sheetOk=${sheetOk})`)
-    return Response.json({ ok: true, from, to, resent: 0, failed: 0, sheetOk })
+    console.log(`[reconcile] sin faltantes (sheetOk=${sheetOk})`)
+    return Response.json({ ok: true, resent: 0, failed: 0, skipped: 0, sheetOk })
   }
 
   // Demasiadas faltantes de golpe → no reenviar en masa, avisar.
   if (totalMissing > MAX_RESEND_PER_RUN) {
     await notifyDiscord(
-      `gap-too-many-${to}`,
-      `⚠️ Figuran ${totalMissing} ventas sin llegar a Meta entre ${from} y ${to} (${missingSite.length} del sitio, ${missingManual.length} manuales). Es demasiado — probablemente se rompió algo (el registro de envíos, o la lectura del Sheet). NO se reenviaron para no duplicar. Revisar antes de forzar.`,
+      "gap-too-many",
+      `⚠️ Figuran ${totalMissing} ventas atendidas sin llegar a Meta (${missingSite.length} del sitio, ${missingManual.length} manuales). Es demasiado — probablemente se rompió algo (el registro de envíos, o la lectura de la planilla). NO se reenviaron para no duplicar. Revisar antes de forzar.`,
     )
     console.error(`[reconcile] ${totalMissing} faltantes — sobre el tope, no se reenvía`)
-    return Response.json({ ok: false, from, to, tooMany: totalMissing }, { status: 200 })
+    return Response.json({ ok: false, tooMany: totalMissing, sheetOk }, { status: 200 })
   }
 
   const resent: Missing[] = []
   const failed: Missing[] = []
   const skipped: Missing[] = []
 
-  // ── Reenviar ventas del sitio ──
+  // ── Reenviar reservas del sitio ──
   for (const o of missingSite) {
     const key = o.idempotencykey!
-    const label = `${o.nombre || "-"} (${dateOnlyInArgentina(o.timestamp)}, $${o.monto})`
+    const label = `${o.nombre || "-"} (turno ${String(o.turno || "").slice(0, 10) || "?"}, $${o.monto})`
     const value = Number(o.monto) || 0
     if (value <= 0) {
       skipped.push({ label: `${label} — monto inválido`, kind: "sitio" })
@@ -149,7 +144,7 @@ export default async (_req: Request, _ctx: Context): Promise<Response> => {
         postalCode: attribution?.postalCode,
         countryCode: attribution?.countryCode,
         externalId: attribution?.visitorId,
-        eventTime: eventTimeWithinWindow(new Date(o.timestamp).getTime()),
+        eventTime: eventTimeOrNow(new Date(o.turno).getTime()),
       })
       ;(result.ok ? resent : failed).push({ label, kind: "sitio" })
     } catch (err) {
@@ -178,7 +173,7 @@ export default async (_req: Request, _ctx: Context): Promise<Response> => {
         nombre: m.nombre,
         email: m.email || undefined,
         countryCode: "ar",
-        eventTime: eventTimeWithinWindow(middayMs),
+        eventTime: eventTimeOrNow(middayMs),
         saleDate: m.saleDate,
       })
       if (result.ok) {
@@ -197,7 +192,7 @@ export default async (_req: Request, _ctx: Context): Promise<Response> => {
   }
 
   console.log(
-    `[reconcile] ${from}..${to}: reenviadas=${resent.length} fallaron=${failed.length} saltadas=${skipped.length}`,
+    `[reconcile] reenviadas=${resent.length} fallaron=${failed.length} saltadas=${skipped.length}`,
   )
 
   // Discord: SOLO si hay algo que el robot no pudo arreglar solo.
@@ -215,15 +210,15 @@ export default async (_req: Request, _ctx: Context): Promise<Response> => {
     )
   }
   if (!ordersRes.ok || !sheetOk) {
-    problemas.push("⚠️ No se pudieron leer las reservas del Sheet (Apps Script) — solo se revisaron las manuales.")
+    problemas.push("⚠️ No se pudieron leer las reservas de la planilla (Apps Script) — solo se revisaron las manuales.")
   }
 
   if (problemas.length > 0) {
-    await notifyDiscord(`gap-problems-${to}`, problemas.join("\n\n"))
+    await notifyDiscord("gap-problems", problemas.join("\n\n"))
   } else if (resent.length > 0) {
     // Aviso corto de "ya lo arreglé" — no requiere que hagas nada.
     await notifyDiscord(
-      `gap-fixed-${to}`,
+      "gap-fixed",
       `✅ Reenvié ${resent.length} venta(s) que no habían llegado a Meta (ya está resuelto, no hace falta que hagas nada):\n` +
         resent.map((r) => `• ${r.label} [${r.kind}]`).join("\n"),
     )
@@ -231,8 +226,6 @@ export default async (_req: Request, _ctx: Context): Promise<Response> => {
 
   return Response.json({
     ok: failed.length === 0,
-    from,
-    to,
     resent: resent.length,
     failed: failed.length,
     skipped: skipped.length,
