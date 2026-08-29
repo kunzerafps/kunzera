@@ -17,12 +17,27 @@ export const WHATSAPP_MESSAGE_GENERAL =
 // plataformas. Los *asteriscos* son negrita de WhatsApp: no se ven, la app
 // los convierte. OJO: WhatsApp NO autoenvía — la persona toca "enviar".
 export const WHATSAPP_FLOAT_MESSAGE = [
-  "» No hace falta que te responda para reservar: en kunzera.com elegí *día y hora*.",
-  "» Turnos de *13 a 21h*. Minutos antes te escribo y arrancamos.",
-  "» *PLATINO $50.000* → Windows",
-  "» *DIAMANTE $70.000* → Windows + BIOS · máximo salto de FPS",
-  "» Remoto por AnyDesk, ~20 min",
-  "» Todo está en kunzera.com",
+  "» ¡Hola! Gracias por escribir. *Para reservar no tenés que esperar mi respuesta* — lo hacés vos en el momento, en kunzera.com, en 2 minutos.",
+  "",
+  "*CÓMO RESERVÁS*",
+  "» Entrás a kunzera.com, elegís tu pack y elegís vos el día y la hora que mejor te queden.",
+  "» Turnos todos los días de *13 a 21h*.",
+  "» Pagás por transferencia, Mercado Pago o Binance (USDT), subís el comprobante en la misma web y tu turno queda confirmado al toque.",
+  "",
+  "*LOS PACKS*",
+  "» *PLATINO $50.000* → te dejo el Windows fino de punta a punta: limpieza a fondo, apago procesos que corren de gusto, CPU/placa de video/RAM al máximo sin los límites de fábrica, mouse y teclado sin demora y conexión estable. Más FPS y menos input lag.",
+  "» *DIAMANTE $70.000* → hago toda la optimización de Windows del plan Platino (limpieza a fondo, apago procesos, CPU/placa de video/RAM al máximo, mouse y teclado sin demora, conexión estable) y además entro al BIOS, donde Windows no te deja llegar. Es el salto de FPS más grande y te deja el rendimiento parejo aunque juegues horas, sin caídas a mitad de partida. Lo máximo que se le puede sacar a tu PC — es el que más eligen.",
+  "",
+  "*EL DÍA DEL TURNO*",
+  "» Unos minutos antes te escribo por acá y arrancamos juntos.",
+  "» Me conecto por AnyDesk (te paso el link) y ves todo lo que hago en tu pantalla, en vivo.",
+  "» Antes de tocar nada hago un punto de restauración y backup del registro. Si algo no te cierra, te lo dejo como estaba — tu PC siempre segura.",
+  "» No abro nada personal tuyo. En 20 minutos más o menos ya estás jugando distinto.",
+  "",
+  "*LO QUE NECESITÁS*",
+  "» Tu PC prendida, buena conexión y estar disponible en el horario que elegiste. Nada más.",
+  "",
+  "» Ya lo hice en *+6000 PCs*. Cuando quieras elegís tu turno en kunzera.com — te espero.",
 ].join("\n")
 
 export const waLink = (message: string) =>
