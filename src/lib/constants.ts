@@ -8,9 +8,8 @@ export const WHATSAPP_MESSAGE_GENERAL =
   "Hola! Quiero info sobre la optimización de PC."
 
 // Mensaje que queda pre-escrito al tocar el botón flotante de WhatsApp de la
-// web (WhatsAppFloat.tsx). Corto a propósito: solo redirige a auto-reservar y
-// da la prueba social — el detalle de packs / cómo es la sesión ya está en la
-// web y alargarlo hace que parezca spam y que nadie lo mande.
+// web (WhatsAppFloat.tsx). Trae todo lo clave + empuja a auto-reservar en el
+// sitio (texto exacto elegido por Eze).
 //
 // SIN EMOJIS a propósito: los emojis "grandes" (astral plane) que viajan en
 // un link wa.me se rompen en WhatsApp de escritorio/web (se ven como
@@ -20,6 +19,11 @@ export const WHATSAPP_MESSAGE_GENERAL =
 export const WHATSAPP_FLOAT_MESSAGE = [
   "» ¡Hola! *No hace falta que te conteste para reservar* — lo hacés solo en kunzera.com en 2 minutos: elegís pack, día y hora, pagás y subís el comprobante. Queda confirmado al toque.",
   "» Turnos todos los días de *13 a 21h*.",
+  "",
+  "» *PLATINO $50.000* → optimización completa de Windows: limpieza, procesos, CPU/placa de video/RAM al máximo, mouse y teclado sin demora y conexión estable. Más FPS y menos input lag.",
+  "» *DIAMANTE $70.000* → todo eso de Windows (lo que hace el plan Platino) + entro al BIOS, algo que Windows ni te deja tocar y que hace una diferencia enorme: es donde tu PC pega el salto de FPS más grande. Es el que más eligen.",
+  "",
+  "» El día del turno te escribo unos minutos antes y arrancamos. Me conecto por AnyDesk, ves todo lo que hago en tu pantalla en vivo, hago un punto de restauración antes de tocar nada y no abro nada personal tuyo. Dura 20 minutos más o menos.",
   "",
   "» Ya lo hice en *+6000 PCs*. Elegí tu turno en kunzera.com — te espero.",
 ].join("\n")
