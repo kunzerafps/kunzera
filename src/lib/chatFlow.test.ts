@@ -33,6 +33,7 @@ describe("chatFlow reducer — happy path", () => {
       { type: "SELECT_CHIP", payload: "reservar", label: "Sí, reservar" },
       { type: "SET_NAME", value: "Juan Perez" },
       { type: "SET_WHATSAPP", value: "3511234567" },
+      { type: "SET_EMAIL", value: "juan@gmail.com" },
       { type: "PICK_SLOT", slotIso: SLOT },
       { type: "CONFIRM_REVIEW" },
       { type: "CONFIRM_PAYMENT" },
@@ -41,8 +42,68 @@ describe("chatFlow reducer — happy path", () => {
     expect(ctx.draft.pack).toBe("diamante")
     expect(ctx.draft.nombre).toBe("Juan Perez")
     expect(ctx.draft.whatsapp).toBe("3511234567")
+    expect(ctx.draft.email).toBe("juan@gmail.com")
     expect(ctx.draft.discord).toBe("-")
     expect(ctx.draft.turno).toBe(SLOT)
+  })
+})
+
+// ─────────── Paso del mail (opcional) ───────────
+// Es la señal que más sube la precisión con la que Meta reconoce al comprador
+// y la que más faltaba: llegaba solo en el 40% de las compras. Tiene que
+// sumar cobertura SIN frenar a nadie, por eso es salteable.
+describe("chatFlow reducer — paso del mail (opcional)", () => {
+  const hastaElMail = [
+    { type: "OPEN" } as const,
+    { type: "SELECT_CHIP", payload: "platino", label: "Quiero Platino" } as const,
+    { type: "SELECT_CHIP", payload: "reservar", label: "Sí, reservar" } as const,
+    { type: "SET_NAME", value: "Ana Gomez" } as const,
+    { type: "SET_WHATSAPP", value: "3511234567" } as const,
+  ]
+
+  it("después del WhatsApp pregunta el mail, no salta directo al calendario", () => {
+    const ctx = run([...hastaElMail])
+    expect(ctx.state).toBe("askEmail")
+  })
+
+  it("dejando el mail sigue al calendario y lo guarda", () => {
+    const ctx = run([...hastaElMail, { type: "SET_EMAIL", value: "ana@gmail.com" }])
+    expect(ctx.state).toBe("pickSlot")
+    expect(ctx.draft.email).toBe("ana@gmail.com")
+  })
+
+  it("saltearlo sigue al calendario igual, sin mail y sin costar un paso extra", () => {
+    const ctx = run([...hastaElMail, { type: "SKIP_EMAIL" }])
+    expect(ctx.state).toBe("pickSlot")
+    expect(ctx.draft.email).toBeUndefined()
+  })
+
+  it("saltearlo después de haber escrito uno no deja pegado el mail viejo", () => {
+    const conMail = run([...hastaElMail, { type: "SET_EMAIL", value: "viejo@gmail.com" }])
+    // vuelve atrás y esta vez lo saltea
+    const volvio = reduce(conMail, { type: "BACK" })
+    expect(volvio.state).toBe("askEmail")
+    const ctx = reduce(volvio, { type: "SKIP_EMAIL" })
+    expect(ctx.state).toBe("pickSlot")
+    expect(ctx.draft.email).toBeUndefined()
+  })
+
+  it("BACK desde el mail vuelve al WhatsApp, y desde el calendario vuelve al mail", () => {
+    const enMail = run([...hastaElMail])
+    expect(reduce(enMail, { type: "BACK" }).state).toBe("askWhatsapp")
+
+    const enSlot = run([...hastaElMail, { type: "SKIP_EMAIL" }])
+    expect(reduce(enSlot, { type: "BACK" }).state).toBe("askEmail")
+  })
+
+  it("al retomar un pedido guardado en el paso del mail, el chat vuelve a preguntarlo", () => {
+    const ctx = reduce(initialContext(), {
+      type: "HYDRATE",
+      state: "askEmail",
+      draft: { pack: "platino", monto: 50000, nombre: "Ana", whatsapp: "3511234567" },
+    })
+    expect(ctx.state).toBe("askEmail")
+    expect(ctx.messages.length).toBeGreaterThan(0)
   })
 })
 
@@ -90,6 +151,7 @@ describe("chatFlow reducer — RESET (bug: chat muerto tras 'Descartar')", () =>
       { type: "SELECT_CHIP", payload: "reservar", label: "Sí, reservar" },
       { type: "SET_NAME", value: "Ana Gomez" },
       { type: "SET_WHATSAPP", value: "3511234567" },
+      { type: "SKIP_EMAIL" },
       { type: "PICK_SLOT", slotIso: SLOT },
       { type: "CONFIRM_REVIEW" },
       { type: "CONFIRM_PAYMENT" },
@@ -290,6 +352,7 @@ describe("chatFlow reducer — regresiones", () => {
       { type: "SELECT_CHIP", payload: "reservar", label: "Sí, reservar" },
       { type: "SET_NAME", value: "Juan" },
       { type: "SET_WHATSAPP", value: "3511234567" },
+      { type: "SKIP_EMAIL" },
       { type: "PICK_SLOT", slotIso: SLOT },
       { type: "CONFIRM_REVIEW" },
       { type: "CONFIRM_PAYMENT" },

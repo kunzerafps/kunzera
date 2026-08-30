@@ -25,6 +25,7 @@ export type FlowContext = {
 const EXPANDED_STATES: FlowState[] = [
   "askName",
   "askWhatsapp",
+  "askEmail",
   "askDiscord",
   "pickSlot",
   "review",
@@ -135,6 +136,15 @@ function askWhatsappMessages(): ChatMessage[] {
   ]
 }
 
+// Paso opcional. Se puede saltear con el botón "Prefiero no dejarlo" del
+// FormField (ver FlowRenderer). El texto dice para qué es, porque pedir un
+// mail sin motivo en la mitad de una compra hace abandonar.
+function askEmailMessages(): ChatMessage[] {
+  return [
+    bot("¿Me dejás tu *mail* para la factura?\nSi no querés, lo podés saltear — la reserva sale igual."),
+  ]
+}
+
 function pickSlotMessages(): ChatMessage[] {
   return [
     bot("Elegí el día y horario que prefieras 👇"),
@@ -239,6 +249,8 @@ function resumeMessages(state: FlowState, draft: OrderDraft): ChatMessage[] {
       return askNameMessages()
     case "askWhatsapp":
       return askWhatsappMessages()
+    case "askEmail":
+      return askEmailMessages()
     case "pickSlot":
       return pickSlotMessages()
     case "review":
@@ -452,7 +464,7 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
     case "askWhatsapp":
       if (ev.type === "SET_WHATSAPP") {
         const withUser = pushUser(ctx, ev.value)
-        const withBot = pushMessages(withUser, pickSlotMessages())
+        const withBot = pushMessages(withUser, askEmailMessages())
         // Discord se omite: se setea un placeholder para satisfacer el backend.
         return transition(
           {
@@ -460,10 +472,34 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
             draft: { ...ctx.draft, whatsapp: ev.value, discord: "-" },
             error: undefined,
           },
-          "pickSlot",
+          "askEmail",
         )
       }
       if (ev.type === "BACK") return back(ctx, "askName")
+      break
+
+    // Paso OPCIONAL: los dos caminos (dejar el mail o saltearlo) terminan en
+    // pickSlot, así que saltearlo no cuesta ni un paso extra.
+    case "askEmail":
+      if (ev.type === "SET_EMAIL") {
+        const withUser = pushUser(ctx, ev.value)
+        const withBot = pushMessages(withUser, pickSlotMessages())
+        return transition(
+          { ...withBot, draft: { ...ctx.draft, email: ev.value }, error: undefined },
+          "pickSlot",
+        )
+      }
+      if (ev.type === "SKIP_EMAIL") {
+        const withUser = pushUser(ctx, "Prefiero no dejarlo")
+        const withBot = pushMessages(withUser, pickSlotMessages())
+        // `email` se limpia por si venía de un draft retomado: si ahora eligió
+        // saltearlo, no queda pegado el mail viejo.
+        return transition(
+          { ...withBot, draft: { ...ctx.draft, email: undefined }, error: undefined },
+          "pickSlot",
+        )
+      }
+      if (ev.type === "BACK") return back(ctx, "askWhatsapp")
       break
 
     case "pickSlot":
@@ -473,7 +509,7 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
         const withBot = pushMessages(withUser, reviewMessages(draftNext))
         return transition({ ...withBot, draft: draftNext }, "review")
       }
-      if (ev.type === "BACK") return back(ctx, "askWhatsapp")
+      if (ev.type === "BACK") return back(ctx, "askEmail")
       break
 
     case "review":

@@ -28,7 +28,15 @@ import { getVisitorId } from "./visitorId"
 const RETRY_DELAY_MS = 2000
 const MAX_ATTEMPTS = 2
 
-export async function captureAttribution(idempotencyKey: string): Promise<boolean> {
+export async function captureAttribution(
+  idempotencyKey: string,
+  // Mail opcional que dejó la persona en el chat. Viaja por acá y NO por el
+  // Apps Script: el campo `email` de ese payload es un honeypot anti-spam
+  // (Code.gs:108 rechaza la reserva entera con "spam_detected" si viene con
+  // algo). capi-confirmar-pago lo lee de este blob y lo suma al evento de
+  // Compra — es la señal que más sube la calidad de coincidencia en Meta.
+  email?: string,
+): Promise<boolean> {
   if (!idempotencyKey) return false
 
   const utm = getStoredUtm()
@@ -37,6 +45,7 @@ export async function captureAttribution(idempotencyKey: string): Promise<boolea
     fbp: getFbp(),
     fbc: getFbc(),
     visitorId: getVisitorId(),
+    email,
     utm_source: utm.utm_source,
     utm_medium: utm.utm_medium,
     utm_campaign: utm.utm_campaign,

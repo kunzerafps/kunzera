@@ -5,10 +5,16 @@ import { useState } from "react"
 type Props = {
   label: string
   placeholder: string
-  type?: "text" | "tel"
+  type?: "text" | "tel" | "email"
   autoComplete?: string
   initialValue?: string
   onSubmit: (value: string) => string | null
+  // Si viene, el campo es opcional: se dibuja un botón para seguir sin
+  // completarlo. Lo usa el paso del mail — pedirlo en la mitad de una compra
+  // sin salida hace abandonar, y el objetivo es sumar cobertura, no frenar
+  // ventas.
+  skipLabel?: string
+  onSkip?: () => void
 }
 
 export default function FormField({
@@ -18,6 +24,8 @@ export default function FormField({
   autoComplete,
   initialValue = "",
   onSubmit,
+  skipLabel,
+  onSkip,
 }: Props) {
   const [value, setValue] = useState(initialValue)
   const [error, setError] = useState<string | null>(null)
@@ -74,6 +82,15 @@ export default function FormField({
         >
           {error}
         </motion.p>
+      )}
+      {skipLabel && onSkip && (
+        <button
+          type="button"
+          onClick={onSkip}
+          className="self-start text-xs text-white/40 hover:text-white/70 underline underline-offset-4 decoration-white/20 transition py-1"
+        >
+          {skipLabel}
+        </button>
       )}
     </motion.form>
   )

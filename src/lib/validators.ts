@@ -23,6 +23,26 @@ export function normalizeWhatsapp(value: string): string {
   return value.replace(/\D/g, "")
 }
 
+// Mail del comprador — OPCIONAL, se puede saltear (ver askEmail en
+// chatFlow.ts). Es el dato que más sube la precisión con la que Meta
+// reconoce al comprador y hoy solo llega en el 40% de las compras: Mercado
+// Pago lo trae solo y las ventas manuales lo piden, pero transferencia y
+// Binance —que son la mayoría— no lo pedían en ningún paso.
+//
+// Validación deliberadamente laxa (misma regex que ManualSaleModal): la idea
+// es no frenar a nadie en la mitad de la compra por un mail raro pero válido.
+export function validateEmail(value: string): string | null {
+  const v = value.trim()
+  if (!v) return "Escribí tu mail o tocá «Prefiero no dejarlo»"
+  if (v.length > 120) return "Demasiado largo"
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Ese mail no parece válido"
+  return null
+}
+
+export function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase()
+}
+
 export function validateDiscord(value: string): string | null {
   const v = value.trim()
   if (v.length < 2) return "Ingresá tu usuario de Discord"

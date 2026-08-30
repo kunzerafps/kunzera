@@ -34,6 +34,17 @@ export type AttributionData = {
   // en el evento de Compra. Deja que Meta una esa compra con la visita
   // anónima previa (el PageView server-side manda el mismo id).
   visitorId?: string
+  // Mail que la persona dejó en el chat (paso opcional askEmail). Se guarda
+  // acá, y NO en el Sheet, porque el campo `email` del payload del Apps
+  // Script es un honeypot anti-spam: Code.gs:108 rechaza la reserva entera
+  // con "spam_detected" si llega con algo. Sin hashear — metaCapi.ts lo
+  // normaliza y hashea antes de mandarlo como `em`.
+  //
+  // Es la señal que más sube la calidad de coincidencia de Meta y la que más
+  // faltaba: llegaba solo en el 40% de las compras (Mercado Pago lo trae
+  // solo, las ventas manuales lo piden, pero transferencia y Binance —la
+  // mayoría— no lo pedían en ningún paso).
+  email?: string
   capturedAt: number
 }
 

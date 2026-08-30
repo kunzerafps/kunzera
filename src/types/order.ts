@@ -20,6 +20,7 @@ export type FlowState =
   | "planPicked"
   | "askName"
   | "askWhatsapp"
+  | "askEmail"
   | "askDiscord"
   | "pickSlot"
   | "review"
@@ -34,6 +35,12 @@ export type OrderDraft = {
   monto?: number
   nombre?: string
   whatsapp?: string
+  // Opcional ("para la factura"). NO viaja al Apps Script: el campo `email`
+  // de ese payload es un HONEYPOT anti-spam — Code.gs:108 rechaza la reserva
+  // entera con "spam_detected" si viene con algo. Se manda al servidor por
+  // capture-attribution y vive en el blob de atribución, de donde lo lee
+  // capi-confirmar-pago para sumarlo al evento de Compra de Meta.
+  email?: string
   discord?: string
   turno?: string
   file?: {
@@ -92,6 +99,8 @@ export type FlowEvent =
   | { type: "START_RESERVATION" }
   | { type: "SET_NAME"; value: string }
   | { type: "SET_WHATSAPP"; value: string }
+  | { type: "SET_EMAIL"; value: string }
+  | { type: "SKIP_EMAIL" }
   | { type: "SET_DISCORD"; value: string }
   | { type: "PICK_SLOT"; slotIso: string }
   | { type: "CONFIRM_REVIEW" }

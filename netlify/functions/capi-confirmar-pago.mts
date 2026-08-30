@@ -163,6 +163,13 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     contentName: body.plan,
     whatsapp: body.whatsapp,
     nombre: body.nombre,
+    // Mail que la persona dejó en el chat (paso opcional). Viene del blob de
+    // atribución y no del Sheet, porque el campo `email` del Apps Script es
+    // un honeypot anti-spam (Code.gs:108). Es la señal que más sube la
+    // calidad de coincidencia de Meta y la que más faltaba: este camino
+    // (transferencia/Binance) es la mayoría de las ventas y no mandaba `em`
+    // en ninguna.
+    email: attribution?.email,
     fbp: attribution?.fbp,
     fbc: attribution?.fbc,
     clientIpAddress: attribution?.ip,

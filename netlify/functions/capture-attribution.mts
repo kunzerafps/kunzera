@@ -28,9 +28,25 @@ type Body = {
   fbp?: string
   fbc?: string
   visitorId?: string
+  // Mail opcional que la persona dejó en el chat (paso askEmail). Llega por
+  // acá y NO por el Apps Script a propósito: el campo `email` de ese payload
+  // es un honeypot anti-spam (Code.gs:108 rechaza la reserva entera con
+  // "spam_detected" si viene con algo).
+  email?: string
   utm_source?: string
   utm_medium?: string
   utm_campaign?: string
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// Se valida y normaliza también acá (además del cliente): este endpoint es
+// público, así que nada de lo que llega es confiable. Un mail basura no
+// mejora el match de Meta, lo ensucia.
+function cleanEmail(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const v = value.trim().toLowerCase().slice(0, 120)
+  return EMAIL_RE.test(v) ? v : undefined
 }
 
 // Se llama UNA vez, apenas el cliente entra a la pantalla de pago (ver
@@ -71,6 +87,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
         typeof body.visitorId === "string" && body.visitorId
           ? body.visitorId.slice(0, 200)
           : undefined,
+      email: cleanEmail(body.email),
       // ctx.ip es la IP que Netlify ya resolvió en el edge — a diferencia de
       // un header tipo x-forwarded-for, quien hace el request no la puede
       // falsificar.

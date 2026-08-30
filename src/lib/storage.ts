@@ -18,6 +18,7 @@ const RESUMABLE_STATES: FlowState[] = [
   "planPicked",
   "askName",
   "askWhatsapp",
+  "askEmail",
   "pickSlot",
   "review",
   "payment",

@@ -6,7 +6,14 @@ import SlotPicker from "./SlotPicker"
 import OrderSummary from "./OrderSummary"
 import PaymentStep from "./PaymentStep"
 import FileUploader from "./FileUploader"
-import { normalizeWhatsapp, validateDiscord, validateName, validateWhatsapp } from "../../lib/validators"
+import {
+  normalizeEmail,
+  normalizeWhatsapp,
+  validateDiscord,
+  validateEmail,
+  validateName,
+  validateWhatsapp,
+} from "../../lib/validators"
 import { useTakenSlots } from "../../hooks/useTakenSlots"
 import { trackServerBackedEvent } from "../../lib/pixel"
 import { packEventParams } from "../../lib/prices"
@@ -80,6 +87,36 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
               )
             }
             dispatch({ type: "SET_WHATSAPP", value: whatsapp })
+            return null
+          }}
+        />
+      )
+
+    // Paso opcional. El mail es la señal que más sube la precisión con la que
+    // Meta reconoce al comprador, y hoy solo llega en el 40% de las compras
+    // (Mercado Pago lo trae solo, las ventas manuales lo piden; transferencia
+    // y Binance —la mayoría— no lo pedían nunca).
+    //
+    // OJO: este mail NO viaja al Apps Script. El campo `email` de ese payload
+    // es un honeypot anti-spam (Code.gs:108 rechaza la reserva entera con
+    // "spam_detected" si viene con algo). Va al servidor por
+    // capture-attribution y lo lee capi-confirmar-pago para el evento de
+    // Compra.
+    case "askEmail":
+      return (
+        <FormField
+          key="askEmail"
+          label="Mail (opcional)"
+          placeholder="juan@gmail.com"
+          type="email"
+          autoComplete="email"
+          initialValue={ctx.draft.email || ""}
+          skipLabel="Prefiero no dejarlo"
+          onSkip={() => dispatch({ type: "SKIP_EMAIL" })}
+          onSubmit={(v) => {
+            const err = validateEmail(v)
+            if (err) return err
+            dispatch({ type: "SET_EMAIL", value: normalizeEmail(v) })
             return null
           }}
         />

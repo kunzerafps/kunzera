@@ -239,8 +239,13 @@ async function sendMercadoPagoCapiEvent(
   // cualquier identificador que coincida), pero por eso no se toca el nombre
   // ni el teléfono del pagador acá. El teléfono como 2º valor de `ph` queda
   // para cuando se agregue soporte multi-valor (ver punto "Sin multi-valor").
+  // Prioridad: el mail que la persona dejó en el chat (paso opcional askEmail,
+  // guardado en el blob de atribución) por sobre el de la cuenta de Mercado
+  // Pago. Puede haber pagado un familiar/amigo, así que el del chat es más
+  // probablemente el del comprador real; el de MP queda como respaldo.
   const payerEmail =
-    typeof payer?.email === "string" && payer.email.includes("@") ? payer.email : undefined
+    attribution?.email ||
+    (typeof payer?.email === "string" && payer.email.includes("@") ? payer.email : undefined)
 
   // "Schedule" (reserva confirmada) — misma atribución que la Compra. Antes se
   // disparaba desde el navegador al volver de Mercado Pago, ANTES de que este

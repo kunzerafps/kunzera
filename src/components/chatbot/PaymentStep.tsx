@@ -126,8 +126,11 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
   useEffect(() => {
     if (attributionTried.current) return
     attributionTried.current = true
-    void captureAttribution(idempotencyKey)
-  }, [idempotencyKey])
+    // El mail (opcional, paso askEmail) viaja por acá y NO por el Apps
+    // Script: ahí el campo `email` es un honeypot anti-spam que rechazaría
+    // la reserva entera.
+    void captureAttribution(idempotencyKey, draft.email)
+  }, [idempotencyKey, draft.email])
 
   // Si el cliente toca "Pagar con Mercado Pago" y después usa el botón
   // ATRÁS del navegador (en vez del link "Volver a la tienda" de MP), Chrome
