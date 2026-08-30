@@ -140,14 +140,12 @@ export function clearTurnoSelFired(): void {
   }
 }
 
-// Mismo guard "una vez por sesión de navegador" para Lead y AddToCart: si el
-// cliente vuelve atrás y avanza de nuevo (cambió el pack, corrigió el
-// teléfono), el evento se disparaba otra vez e inflaba la cuenta / ensuciaba
-// el aprendizaje de Meta. Se limpian al confirmar una reserva, igual que
-// turno_seleccionado.
+// Guard "una vez por sesión de navegador" para Lead: si el cliente vuelve
+// atrás y avanza de nuevo (corrigió el teléfono), el evento se disparaba otra
+// vez e inflaba la cuenta / ensuciaba el aprendizaje de Meta. Se limpia al
+// confirmar una reserva, igual que turno_seleccionado.
 const FIRED_ONCE_KEYS = {
   lead: "kz_lead_fired",
-  addToCart: "kz_addtocart_fired",
 } as const
 
 type FiredOnceEvent = keyof typeof FIRED_ONCE_KEYS
@@ -168,11 +166,42 @@ export function markFiredOnceInSession(ev: FiredOnceEvent): void {
   }
 }
 
+// AddToCart guarda QUÉ pack se disparó, no un simple "ya salió". Dos razones:
+//
+// 1. Antes el guard era booleano y quedaba pegado al primer pack elegido: el
+//    que comparaba Platino y terminaba comprando Diamante le mandaba a Meta
+//    "agregó Platino $50.000" y después "compró Diamante $70.000". La
+//    optimización por valor aprendía un precio que no era el de la venta.
+// 2. El evento pasó a dispararse desde el reducer (ver ChatBot.tsx), que es
+//    el único punto por el que pasan los CUATRO caminos de elegir pack: el
+//    chip del chat, el botón "Reservar" de la sección de precios, los
+//    deep-links de anuncios (/reservar/<pack>, ?pack=) y el texto libre.
+//    Antes solo el chip lo disparaba, así que el tráfico pago con link
+//    directo al pack —el de más intención— nunca lo mandaba.
+const ADD_TO_CART_PACK_KEY = "kz_addtocart_pack"
+
+export function addToCartFiredForPack(): string | null {
+  try {
+    return sessionStorage.getItem(ADD_TO_CART_PACK_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function markAddToCartFiredForPack(pack: string): void {
+  try {
+    sessionStorage.setItem(ADD_TO_CART_PACK_KEY, pack)
+  } catch {
+    // modo privado — en el peor caso se manda alguna vez de más
+  }
+}
+
 export function clearFiredOnceInSession(): void {
   try {
     for (const key of Object.values(FIRED_ONCE_KEYS)) {
       sessionStorage.removeItem(key)
     }
+    sessionStorage.removeItem(ADD_TO_CART_PACK_KEY)
   } catch {
     // noop
   }

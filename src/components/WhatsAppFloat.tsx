@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { SiWhatsapp } from "react-icons/si"
 import { waLink, WHATSAPP_FLOAT_MESSAGE } from "../lib/constants"
+import { withAdReturnLink } from "../lib/deeplink"
 import { listenChatProgress } from "../lib/chatBus"
 import { trackServerBackedEvent } from "../lib/pixel"
 
@@ -12,7 +13,15 @@ export default function WhatsAppFloat() {
   const [inFunnel, setInFunnel] = useState(false)
   useEffect(() => listenChatProgress(setInFunnel), [])
 
-  const href = useMemo(() => waLink(WHATSAPP_FLOAT_MESSAGE), [])
+  // withAdReturnLink le suma al mensaje el link de regreso con fbclid+utm
+  // SOLO cuando la visita vino de un anuncio (si no, el mensaje queda igual).
+  // Este boton es la salida a WhatsApp mas usada del sitio y era el unico de
+  // los tres que NO lo llevaba, justo el caso que mas plata mueve: clic en
+  // anuncio -> toca WhatsApp -> cierra la venta por ahi. Sin el link de
+  // regreso esa compra le llega a Meta sin el dato del anuncio que la trajo.
+  // Se calcula una sola vez al montar: el fbclid ya esta en la URL desde la
+  // carga de la pagina.
+  const href = useMemo(() => waLink(withAdReturnLink(WHATSAPP_FLOAT_MESSAGE)), [])
 
   return (
     <motion.a

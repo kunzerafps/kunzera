@@ -3,12 +3,16 @@ import { saveAttribution } from "./lib/attribution"
 import { isRateLimited } from "./lib/rateLimit"
 
 const KEY_RE = /^[a-zA-Z0-9-]{6,80}$/
-// Antes 20. capture-attribution se llama una sola vez por checkout, pero en
-// redes de celular compartidas (CGNAT) muchos compradores distintos salen por
-// la misma IP: 20/hora dejaba sin guardar fbp/fbc/IP/geo de compradores reales
-// detrás de esa IP, y esta es la ÚNICA captura de esos datos para las 3 formas
-// de pago. Mismo valor que capi-funnel.mts.
-const RATE_LIMIT_MAX = 150
+// 20 → 150 → 400. En redes de celular compartidas (CGNAT) muchos compradores
+// distintos salen por la misma IP, y ésta es la ÚNICA captura del rastro del
+// anuncio para las 3 formas de pago: lo que se corta acá es una venta que
+// después le llega a Meta sin poder atribuirse a ninguna campaña.
+//
+// El salto a 400 es porque ahora se reintenta (attributionCapture.ts: 2
+// intentos) y se recaptura cada vez que se entra a la pantalla de pago, así
+// que el gasto por comprador subió. Escribir de más es inofensivo: es un
+// upsert contra la misma clave. El tope existe solo como freno anti-abuso.
+const RATE_LIMIT_MAX = 400
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 
 const MAX_UTM_LEN = 100

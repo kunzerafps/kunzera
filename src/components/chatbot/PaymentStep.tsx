@@ -10,9 +10,7 @@ import { saveDraft } from "../../lib/storage"
 import { mpTotal } from "../../lib/pricing"
 import { trackServerBackedEvent } from "../../lib/pixel"
 import { packEventParams } from "../../lib/prices"
-import { getStoredUtm } from "../../lib/utm"
-import { getFbp, getFbc } from "../../lib/cookies"
-import { getVisitorId } from "../../lib/visitorId"
+import { captureAttribution } from "../../lib/attributionCapture"
 
 type Props = {
   draft: OrderDraft
@@ -106,30 +104,30 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
       },
     )
 
-    // Captura fbp/fbc (cookies que el propio píxel de Meta ya puso, nunca
-    // se inventan) + IP/user-agent reales del comprador (del lado del
-    // servidor, en capture-attribution.mts) — ACÁ, mientras hay una sesión
-    // de navegador real. Si esto se capturara recién cuando el admin
-    // confirma el pago (transferencia/binance, horas o días después), ya no
-    // habría forma de saber la IP/cookies reales de quien compró. Best
-    // effort: si falla, el Purchase se manda igual más tarde, sin estos
-    // campos.
-    const utm = getStoredUtm()
-    void fetch("/api/capture-attribution", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        idempotencyKey,
-        fbp: getFbp(),
-        fbc: getFbc(),
-        visitorId: getVisitorId(),
-        utm_source: utm.utm_source,
-        utm_medium: utm.utm_medium,
-        utm_campaign: utm.utm_campaign,
-      }),
-    }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Captura del rastro del anuncio (fbp/fbc/visitorId/utm + IP y user-agent
+  // que agrega el servidor) — ACÁ, mientras hay una sesión de navegador real.
+  // Si se capturara recién cuando el admin confirma el pago
+  // (transferencia/binance, horas o días después), ya no habría forma de
+  // saber la IP/cookies reales de quien compró.
+  //
+  // Va en su PROPIO efecto, separado del setup de arriba, a propósito: aquel
+  // corta con `if (draft.idempotencyKey) return` porque no hay que repetir el
+  // InitiateCheckout, pero eso hacía que volver a entrar a pagar (cambiar de
+  // método, retomar el pedido al día siguiente) NO reintentara la captura.
+  // Ésta es un upsert idempotente contra la misma clave, así que repetirla es
+  // gratis y suma otra chance de que entre.
+  //
+  // El ref frena solo el doble-mount de React StrictMode en desarrollo (misma
+  // instancia); un re-mount real trae un ref nuevo y sí vuelve a capturar.
+  const attributionTried = useRef(false)
+  useEffect(() => {
+    if (attributionTried.current) return
+    attributionTried.current = true
+    void captureAttribution(idempotencyKey)
+  }, [idempotencyKey])
 
   // Si el cliente toca "Pagar con Mercado Pago" y después usa el botón
   // ATRÁS del navegador (en vez del link "Volver a la tienda" de MP), Chrome

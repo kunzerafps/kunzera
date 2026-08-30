@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { canResume, clearDraft, loadDraft, saveDraft } from "./storage"
+import {
+  addToCartFiredForPack,
+  canResume,
+  clearDraft,
+  clearFiredOnceInSession,
+  firedOnceInSession,
+  loadDraft,
+  markAddToCartFiredForPack,
+  markFiredOnceInSession,
+  saveDraft,
+} from "./storage"
 import type { OrderDraft } from "../types/order"
 
 // vitest corre en entorno "node" — se arma un localStorage mínimo a mano.
@@ -14,7 +24,22 @@ function stubLocalStorage() {
   return map
 }
 
-beforeEach(() => stubLocalStorage())
+// Los guards de eventos ("ya mandé AddToCart") viven en sessionStorage, no en
+// localStorage: tienen que morir cuando se cierra la pestaña.
+function stubSessionStorage() {
+  const map = new Map<string, string>()
+  vi.stubGlobal("sessionStorage", {
+    getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
+    setItem: (k: string, v: string) => void map.set(k, v),
+    removeItem: (k: string) => void map.delete(k),
+  })
+  return map
+}
+
+beforeEach(() => {
+  stubLocalStorage()
+  stubSessionStorage()
+})
 afterEach(() => vi.unstubAllGlobals())
 
 const draft: OrderDraft = { pack: "platino", monto: 50000 }
@@ -72,5 +97,40 @@ describe("loadDraft", () => {
     saveDraft(draft, "askName")
     clearDraft()
     expect(loadDraft()).toBeNull()
+  })
+})
+
+// El guard de AddToCart guarda QUÉ pack se mandó, no un booleano. Si la
+// persona compara los dos packs y termina cambiando, Meta tiene que recibir
+// el evento con el pack y el precio de la venta real, no con los del primero
+// que miró.
+describe("guard de AddToCart por pack", () => {
+  it("arranca sin nada disparado", () => {
+    expect(addToCartFiredForPack()).toBeNull()
+  })
+
+  it("recuerda el pack que se mandó", () => {
+    markAddToCartFiredForPack("platino")
+    expect(addToCartFiredForPack()).toBe("platino")
+  })
+
+  it("elegir el MISMO pack de nuevo no lo vuelve a contar", () => {
+    markAddToCartFiredForPack("diamante")
+    expect(addToCartFiredForPack()).toBe("diamante") // el caller compara y no re-dispara
+  })
+
+  it("cambiar de pack sí tiene que volver a mandarlo, con el pack nuevo", () => {
+    markAddToCartFiredForPack("platino")
+    expect(addToCartFiredForPack()).not.toBe("diamante") // el caller ve que difiere → re-dispara
+    markAddToCartFiredForPack("diamante")
+    expect(addToCartFiredForPack()).toBe("diamante")
+  })
+
+  it("se limpia al confirmar una reserva, para que otra compra en la misma sesión vuelva a contar", () => {
+    markAddToCartFiredForPack("platino")
+    markFiredOnceInSession("lead")
+    clearFiredOnceInSession()
+    expect(addToCartFiredForPack()).toBeNull()
+    expect(firedOnceInSession("lead")).toBe(false)
   })
 })

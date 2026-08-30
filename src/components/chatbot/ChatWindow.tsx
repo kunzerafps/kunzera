@@ -7,9 +7,6 @@ import TypingBubble from "./TypingBubble"
 import FlowRenderer from "./FlowRenderer"
 import type { FlowContext } from "../../lib/chatFlow"
 import type { OrderDraft } from "../../types/order"
-import { trackServerBackedEvent } from "../../lib/pixel"
-import { packEventParams } from "../../lib/prices"
-import { firedOnceInSession, markFiredOnceInSession } from "../../lib/storage"
 
 type Props = {
   ctx: FlowContext
@@ -36,18 +33,14 @@ export default function ChatWindow({
   onResume,
   onDiscard,
 }: Props) {
+  // AddToCart ya NO se dispara acá. Vive en un efecto de ChatBot.tsx que mira
+  // `ctx.draft.pack`, que es por donde pasan los cuatro caminos de elegir pack
+  // (este chip, el botón "Reservar" de precios, los deep-links de anuncios y
+  // el texto libre). Disparándolo solo acá, el tráfico pago con link directo
+  // al pack nunca lo mandaba: en los datos de Meta se veía como más
+  // InitiateCheckout que AddToCart, que es imposible en un embudo real.
   const handleChip = useCallback(
     (payload: string, label: string) => {
-      if (
-        (payload === "platino" || payload === "diamante") &&
-        !firedOnceInSession("addToCart")
-      ) {
-        // También server-side y con el precio del pack como value, para que
-        // Meta pueda optimizar por plata desde este paso. Una sola vez por
-        // sesión: elegir el pack de nuevo (o cambiarlo) no lo recuenta.
-        markFiredOnceInSession("addToCart")
-        trackServerBackedEvent("AddToCart", undefined, packEventParams(payload))
-      }
       dispatch({ type: "SELECT_CHIP", payload, label })
     },
     [dispatch],

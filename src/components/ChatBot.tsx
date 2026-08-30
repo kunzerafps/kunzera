@@ -9,6 +9,8 @@ import { isExpanded } from "../lib/chatFlow"
 import { emitChatProgress, listenOpenChat, type OpenChatDetail } from "../lib/chatBus"
 import { PACKS } from "../lib/packs"
 import { trackServerBackedEvent } from "../lib/pixel"
+import { packEventParams } from "../lib/prices"
+import { addToCartFiredForPack, markAddToCartFiredForPack } from "../lib/storage"
 
 export default function ChatBot() {
   const flow = useChatFlow()
@@ -33,6 +35,29 @@ export default function ChatBot() {
   useEffect(() => {
     emitChatProgress(flow.open && (flow.ctx.state === "planPicked" || isExpanded(flow.ctx.state)))
   }, [flow.open, flow.ctx.state])
+
+  // AddToCart ("eligió un pack"), disparador ÚNICO para los cuatro caminos.
+  //
+  // Antes vivía en el handler del chip del chat (ChatWindow), así que solo
+  // contaba a quien tocaba el globito adentro del chat. El botón "Reservar
+  // Platino/Diamante" de la sección de precios y los deep-links de anuncios
+  // (/reservar/<pack>, ?pack=) despachan SELECT_CHIP directo desde acá abajo,
+  // salteándolo — justo el tráfico pago con más intención. En los datos de
+  // Meta eso se veía como más InitiateCheckout que AddToCart, que en un
+  // embudo real es imposible.
+  //
+  // Mirando `draft.pack` se cubren los cuatro caminos con un solo punto,
+  // porque todos terminan pasando por el reducer. El guard vive en
+  // sessionStorage y guarda QUÉ pack se mandó: si la persona compara los dos
+  // y cambia, sale de nuevo con el pack y el precio correctos (antes quedaba
+  // pegado al primero).
+  useEffect(() => {
+    const pack = flow.ctx.draft.pack
+    if (!pack) return
+    if (addToCartFiredForPack() === pack) return
+    markAddToCartFiredForPack(pack)
+    trackServerBackedEvent("AddToCart", undefined, packEventParams(pack))
+  }, [flow.ctx.draft.pack])
 
   // Contact: señal de "abrió el chat de reserva", sin importar si entró por
   // el botón "Reservar" (Navbar/Hero/Pricing/CTA, vía chatBus) o tocando
