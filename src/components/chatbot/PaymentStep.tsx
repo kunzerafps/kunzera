@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { ArrowLeft, Check, Copy, CreditCard, Landmark, Wallet } from "lucide-react"
+import { ArrowLeft, Check, Copy, CreditCard, Landmark } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { OrderDraft } from "../../types/order"
 import { BINANCE_EMAIL, MP_ALIAS, MP_ALIAS_TITULAR } from "../../lib/constants"
@@ -21,13 +21,25 @@ type Props = {
 
 type Method = "transferencia" | "binance" | "mercadopago"
 
+// Binance está DADO DE BAJA como método de pago (decisión de Eze, 2026-08-30:
+// "JAMÁS vendo por Binance"). Se saca de esta lista y con eso desaparece de la
+// pantalla de pago — es el único lugar que dibuja las solapas.
+//
+// A propósito NO se borra el resto de la maquinaria (el tipo `Method`,
+// ALIAS_METHODS.binance, `getPaymentMethod` devolviendo "binance",
+// tag-payment-method, la regla de facturación que no factura Binance): hay
+// reservas VIEJAS etiquetadas así, y romper eso les cambiaría la facturación
+// o el evento de Compra retroactivamente. Para volver a ofrecerlo alcanza con
+// devolver la línea a este array.
+//
+// Efecto colateral bueno: con esto se cae solo el problema de que las ventas
+// por Binance le informaban a Meta pesos habiendo cobrado dólares.
 const METHODS: {
   id: Method
   label: string
   icon: typeof CreditCard
 }[] = [
   { id: "transferencia", label: "Transferencia", icon: CreditCard },
-  { id: "binance", label: "Binance", icon: Wallet },
   { id: "mercadopago", label: "Mercado Pago", icon: Landmark },
 ]
 

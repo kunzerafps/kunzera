@@ -162,7 +162,7 @@ function reviewMessages(draft: OrderDraft): ChatMessage[] {
 function paymentMessages(draft: OrderDraft): ChatMessage[] {
   return [
     bot(
-      `Perfecto. Pagá *${formatARS(draft.monto || 0)}* por *transferencia* (alias \`${MP_ALIAS}\`) o por *Binance Pay* en USDT. Elegí abajo cuál usás 👇`,
+      `Perfecto. Pagá *${formatARS(draft.monto || 0)}* por *transferencia* (alias \`${MP_ALIAS}\`) o con *Mercado Pago*. Elegí abajo cuál usás 👇`,
     ),
   ]
 }

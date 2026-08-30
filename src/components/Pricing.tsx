@@ -215,7 +215,7 @@ export default function Pricing() {
                       Pago único · Sin mensualidades
                     </div>
                     <div className="text-white/40 text-xs font-mono mt-2">
-                      💳 Transferencia · Mercado Pago · Binance (USDT)
+                      💳 Transferencia · Mercado Pago
                     </div>
                   </div>
 
@@ -264,7 +264,7 @@ export default function Pricing() {
           transition={{ delay: 0.5 }}
           className="text-center text-white/40 text-sm mt-10 font-mono"
         >
-          * Transferencia bancaria, Mercado Pago o Binance (USDT). Consultá otros métodos por WhatsApp.
+          * Transferencia bancaria o Mercado Pago. Consultá otros métodos por WhatsApp.
         </motion.p>
       </div>
     </section>

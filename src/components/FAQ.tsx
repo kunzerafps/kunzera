@@ -45,7 +45,7 @@ const faqs = [
   },
   {
     q: "¿Qué métodos de pago aceptás?",
-    a: "Te acepto transferencia bancaria, Mercado Pago (dinero en cuenta o tarjeta) o Binance (USDT). El pago se hace antes de arrancar la sesión.",
+    a: "Te acepto transferencia bancaria o Mercado Pago (dinero en cuenta o tarjeta). El pago se hace antes de arrancar la sesión.",
   },
   {
     q: "¿Incluye soporte después?",
