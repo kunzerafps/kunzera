@@ -200,14 +200,20 @@ async function notifyOrderFailed(
 // al navegador, que puede pasar sin que la reserva llegue a crearse). Esto
 // reemplaza al píxel del navegador para el flujo de Mercado Pago — además
 // de ser más preciso, captura compras que el píxel pierde por bloqueadores
-// de anuncios o las protecciones de privacidad de Safari/iOS. Va después de
-// updateOrderStatus en la ruta crítica, así que un cuelgue acá ya no arriesga
-// dejar la reserva a medio confirmar.
+// de anuncios o las protecciones de privacidad de Safari/iOS.
+//
+// Devuelve si la Compra le llegó a Meta. El caller usa esto para decidir si
+// marca el pago como "procesado": si NO llegó, se deja sin marcar a
+// propósito, para que un reintento automático de Mercado Pago (reintenta
+// solo durante ~24hs) vuelva a entrar y lo intente de nuevo. Reintentar es
+// seguro: sendMetaPurchaseEvent deduplica local por eventId + Meta por
+// event_id (48hs), así que aunque de verdad ya haya salido, no cuenta dos
+// veces.
 async function sendMercadoPagoCapiEvent(
   idempotencyKey: string,
   meta: NonNullable<MpPayment["metadata"]>,
   payer?: MpPayment["payer"],
-): Promise<void> {
+): Promise<{ ok: boolean }> {
   // Política de valor (decisión explícita, no accidente de implementación):
   // se manda el precio BASE del pack ($50.000/$70.000), no lo que el
   // cliente terminó pagando con la comisión de Mercado Pago sumada
@@ -292,13 +298,15 @@ async function sendMercadoPagoCapiEvent(
     // no debe compartir el freno anti-spam con esos otros avisos.
     await notifyDiscord(
       `capi-${idempotencyKey}`,
-      `⚠️ **No se pudo mandar el evento de Compra a Meta** (reserva ${idempotencyKey.slice(0, 8)}…)\nLa reserva está bien creada — esto solo afecta el tracking de anuncios. Revisar si el token de la API de Conversiones sigue vigente.\n${result.error}`,
+      `⚠️ **No se pudo mandar el evento de Compra a Meta** (reserva ${idempotencyKey.slice(0, 8)}…)\nLa reserva está bien creada — se reintenta solo (reintento de Mercado Pago + barrido del panel). Si sigue, revisar si el token de la API de Conversiones sigue vigente.\n${result.error}`,
     )
   }
 
   // Ya arrancó en paralelo arriba; se espera acá para no dejar trabajo async
   // colgando cuando la función termina (en Lambda eso se congela).
   await schedulePromise
+
+  return { ok: result.ok }
 }
 
 // Aviso de respaldo para cuando ni siquiera pudimos averiguar el estado del
@@ -399,10 +407,13 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
           // Event deduplica localmente por eventId (store capi-events-sent,
           // consistency strong) — si de verdad ya se mandó, ni le pega a Meta;
           // y Meta igual deduplica por event_id dentro de su ventana de 48hs.
-          // Va ANTES de markProcessed: si el envío quedara a medias, un futuro
-          // reintento de MP vuelve a entrar por acá y entra otra vez.
-          await sendMercadoPagoCapiEvent(idempotencyKey, meta, payment.payer)
-          await markProcessed(paymentId)
+          // Va ANTES de markProcessed, y markProcessed SOLO si la Compra le
+          // llegó a Meta: si no llegó, se deja el pago sin marcar para que el
+          // próximo reintento de MP (reintenta ~24hs) vuelva a entrar por acá
+          // y lo reintente. Lo que quede colgado pasadas las 24hs lo levanta
+          // el barrido del panel admin (AdminDashboard).
+          const capi = await sendMercadoPagoCapiEvent(idempotencyKey, meta, payment.payer)
+          if (capi.ok) await markProcessed(paymentId)
         } else {
           console.error("[mp-webhook] no se pudo crear la reserva", idempotencyKey, orderResult.error)
           await notifyOrderFailed(paymentId, idempotencyKey, meta, orderResult.error)
@@ -434,11 +445,14 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
         const tagged = await tagAsMercadoPago(paymentId, idempotencyKey)
         if (!tagged) return new Response(null, { status: 200 })
 
-        await markProcessed(paymentId)
-        // updateOrderStatus va primero: es lo importante (que la planilla
-        // quede bien). El aviso a Meta es un beneficio aparte — si se
-        // cortara acá, mejor que ya haya quedado "confirmado" en la
-        // planilla antes de arriesgar esa llamada extra.
+        // updateOrderStatus primero: es lo importante (que la planilla quede
+        // bien). Después el aviso a Meta. markProcessed va AL FINAL y SOLO si
+        // la Compra le llegó a Meta — si no llegó, el pago queda sin marcar
+        // para que el próximo reintento de MP (~24hs) vuelva a entrar (esta
+        // vez por la rama ownRow, porque la fila ya existe) y lo reintente.
+        // Reintentar no duplica: dedup local por eventId + dedup de Meta
+        // (48hs). Lo que quede colgado más de 24hs lo levanta el barrido del
+        // panel admin (AdminDashboard).
         const statusResult = await updateOrderStatus(idempotencyKey, "confirmado")
         if (!statusResult.ok) {
           console.error(
@@ -447,7 +461,8 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
             statusResult.error,
           )
         }
-        await sendMercadoPagoCapiEvent(idempotencyKey, meta, payment.payer)
+        const capi = await sendMercadoPagoCapiEvent(idempotencyKey, meta, payment.payer)
+        if (capi.ok) await markProcessed(paymentId)
       }
     }
   } catch (err) {

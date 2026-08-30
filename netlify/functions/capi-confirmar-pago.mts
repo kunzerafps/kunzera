@@ -6,6 +6,7 @@ import { notifyDiscord } from "./lib/discordAlert"
 import { isRateLimited } from "./lib/rateLimit"
 import { getAttribution } from "./lib/attribution"
 import { getPaymentMethod } from "./lib/facturacion"
+import { updateOrderStatus } from "../../src/lib/appsScript"
 
 type Body = {
   token?: string
@@ -20,6 +21,14 @@ type Body = {
   // pago", que puede ser horas o días después y no tiene relación con
   // cuándo ocurrió la compra real.
   reservaTimestamp?: string
+  // Si viene true, además del aviso a Meta este endpoint marca la reserva
+  // como "atendido" en la planilla — así el botón "Marcar como atendido" del
+  // panel es UNA sola llamada al servidor y no dos desde el navegador que se
+  // pueden cortar por la mitad (pestaña cerrada, sesión vencida). Cuando es
+  // false/ausente, solo reintenta el aviso a Meta sin tocar el estado (lo
+  // usa el botón "Reintentar aviso a Meta" y el barrido automático del
+  // panel).
+  markAtendido?: boolean
 }
 
 // Política de event_time para transferencia/binance: se usa el momento en
@@ -37,7 +46,10 @@ function resolveEventTime(reservaTimestamp: string | undefined): number | undefi
   return Math.floor(ms / 1000)
 }
 
-const RATE_LIMIT_MAX = 30
+// 60/hora por IP: el panel admin ahora puede disparar hasta 15 reintentos
+// de golpe (barrido al abrir) además de los clicks manuales de "marcar
+// atendido" / "reintentar aviso". Todo desde la misma IP del admin.
+const RATE_LIMIT_MAX = 60
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 
 // Único punto donde transferencia/binance le mandan a Meta un evento de
@@ -70,6 +82,24 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
 
   if (!body.idempotencyKey || !body.nombre || body.monto === undefined) {
     return Response.json({ ok: false, error: "missing_field" }, { status: 400 })
+  }
+
+  // Marcar "atendido" en la planilla ANTES del aviso a Meta y desde acá (no
+  // desde el navegador). Es lo que le importa al admin ("marcar atendido"
+  // siempre tiene que funcionar); el aviso a Meta va después y si falla lo
+  // levanta el barrido del panel / el botón "Reintentar". Antes esto eran
+  // DOS llamadas separadas desde OrderDetailModal.tsx y una pestaña cerrada
+  // entre medio dejaba la reserva atendida sin avisar a Meta y sin forma de
+  // reintentar.
+  let statusOk: boolean | undefined
+  let statusError: string | undefined
+  if (body.markAtendido) {
+    const st = await updateOrderStatus(body.idempotencyKey, "atendido")
+    statusOk = st.ok
+    if (!st.ok) {
+      statusError = st.error
+      console.error("[capi-confirmar-pago] no se pudo marcar atendido:", body.idempotencyKey, st.error)
+    }
   }
 
   // Política de valor: precio real de la reserva (transferencia/binance no
@@ -160,8 +190,14 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
 
   // Siempre 200 con el resultado: un fallo de tracking no debe bloquear ni
   // reintentar como si fuera un error de la reserva en sí — ya se avisó
-  // por Discord arriba.
-  return Response.json(result)
+  // por Discord arriba. `metaOk` = si la Compra le llegó a Meta;
+  // `statusOk` = si se marcó "atendido" (solo presente cuando markAtendido).
+  return Response.json({
+    ok: result.ok,
+    metaOk: result.ok,
+    error: result.ok ? undefined : result.error,
+    ...(statusOk !== undefined ? { statusOk, statusError } : {}),
+  })
 }
 
 export const config: Config = {

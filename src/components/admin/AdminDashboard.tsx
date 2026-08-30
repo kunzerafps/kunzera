@@ -10,10 +10,12 @@ import {
   Settings,
   Wallet,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { Order, AdminMetrics, Pack } from "../../types/order"
 import { getOrders } from "../../lib/appsScript"
+import { getAdminToken } from "../../lib/storage"
 import { getDayKey, isToday } from "../../lib/formatters"
+import type { MetaDeliveryStatus } from "./OrderDetailModal"
 import MetricsCards from "./MetricsCards"
 import OrdersTable from "./OrdersTable"
 import SalesChart from "./SalesChart"
@@ -33,6 +35,49 @@ type Props = {
   onClose: () => void
 }
 
+// Estados de venta cuyo evento de Compra YA le tendría que haber llegado a
+// Meta (para el badge y el barrido de reintento). "pendiente" en el sitio =
+// pagó por Mercado Pago; "atendido" = Eze cerró la venta.
+const SALE_STATES = new Set(["confirmado", "atendido"])
+// El badge/reintento solo aplica a ventas de los últimos N días — una venta
+// vieja reenviada llegaría a Meta mal fechada (fuera de la ventana de 7
+// días) y no vale la pena.
+const META_RECENT_DAYS = 21
+// Tope de reintentos por apertura del panel — si faltan más, algo raro pasa
+// y no conviene bombardear a Meta.
+const META_SWEEP_MAX = 15
+
+function orderAgeDays(o: Order): number {
+  const ms = Date.parse(o.timestamp)
+  if (Number.isNaN(ms)) return Infinity
+  return (Date.now() - ms) / (24 * 60 * 60 * 1000)
+}
+
+// Construye el mapa idempotencyKey -> estado del aviso a Meta a partir del
+// log de entregas (capi-delivery-log). Solo entra lo que tiene registro:
+// "enviado" (Meta lo aceptó o ya lo tenía) o "fallo" (se intentó y falló).
+async function fetchMetaDeliveryMap(): Promise<Map<string, MetaDeliveryStatus>> {
+  const map = new Map<string, MetaDeliveryStatus>()
+  const token = getAdminToken()
+  if (!token) return map
+  try {
+    const res = await fetch(
+      `/api/capi-delivery-log?token=${encodeURIComponent(token)}&limit=200`,
+    )
+    if (!res.ok) return map
+    const data = (await res.json()) as {
+      ok: boolean
+      entries?: { eventId: string; ok: boolean; dedupedLocally: boolean }[]
+    }
+    for (const e of data.entries || []) {
+      map.set(e.eventId, e.ok || e.dedupedLocally ? "enviado" : "fallo")
+    }
+  } catch {
+    /* sin conexión al log → el panel funciona igual, solo sin badges */
+  }
+  return map
+}
+
 export default function AdminDashboard({ onLogout, onClose }: Props) {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -45,6 +90,63 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
   // Se incrementa tras cargar una venta manual — fuerza a ManualSalesList a
   // recargar sin tener que refrescar toda la página.
   const [manualSalesRefresh, setManualSalesRefresh] = useState(0)
+  // Estado del aviso de Compra a Meta por reserva (idempotencyKey).
+  const [metaMap, setMetaMap] = useState<Map<string, MetaDeliveryStatus>>(new Map())
+  const [metaLoaded, setMetaLoaded] = useState(false)
+  const sweptRef = useRef(false)
+
+  const refreshMetaMap = async () => {
+    const map = await fetchMetaDeliveryMap()
+    setMetaMap(map)
+    setMetaLoaded(true)
+    return map
+  }
+
+  // Barrido de reintento: reenvía a Meta las ventas recientes que no figuran
+  // "enviado". Corre UNA vez, al abrir el panel (no en cada refresh). No es
+  // un robot de fondo ni compara contra ningún número de Meta — solo re-
+  // empuja lo que el propio log de entregas dice que quedó a medias. En
+  // silencio: si algo no se puede reenviar, el badge queda en rojo y está el
+  // botón "Reintentar" en el detalle.
+  const sweepPendingMeta = async (list: Order[], map: Map<string, MetaDeliveryStatus>) => {
+    const token = getAdminToken()
+    if (!token) return
+    const stuck = list.filter(
+      (o) =>
+        !!o.idempotencykey &&
+        SALE_STATES.has(String(o.estado || "").toLowerCase()) &&
+        orderAgeDays(o) <= META_RECENT_DAYS &&
+        map.get(String(o.idempotencykey)) !== "enviado",
+    )
+    if (stuck.length === 0) return
+    if (stuck.length > META_SWEEP_MAX) {
+      console.warn(
+        `[meta-sweep] ${stuck.length} ventas sin aviso a Meta — demasiadas, no se reintenta en masa`,
+      )
+      return
+    }
+    for (const o of stuck) {
+      try {
+        await fetch("/api/capi-confirmar-pago", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token,
+            idempotencyKey: o.idempotencykey,
+            nombre: o.nombre,
+            whatsapp: o.whatsapp,
+            plan: o.plan,
+            monto: o.monto,
+            reservaTimestamp: o.timestamp,
+            markAtendido: false,
+          }),
+        })
+      } catch {
+        /* se reintenta la próxima vez que se abra el panel */
+      }
+    }
+    await refreshMetaMap()
+  }
 
   const load = async () => {
     setLoading(true)
@@ -52,6 +154,11 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
       const data = await getOrders()
       setOrders(data)
       setLastUpdate(new Date())
+      const map = await refreshMetaMap()
+      if (!sweptRef.current) {
+        sweptRef.current = true
+        void sweepPendingMeta(data, map)
+      }
     } finally {
       setLoading(false)
     }
@@ -60,6 +167,15 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
   useEffect(() => {
     load()
   }, [])
+
+  const metaStatusFor = (o: Order | null): MetaDeliveryStatus | undefined => {
+    if (!o || !metaLoaded || !o.idempotencykey) return undefined
+    const s = metaMap.get(String(o.idempotencykey))
+    if (s) return s
+    if (!SALE_STATES.has(String(o.estado || "").toLowerCase())) return undefined
+    if (orderAgeDays(o) > META_RECENT_DAYS) return undefined
+    return "pendiente"
+  }
 
   const metrics: AdminMetrics = useMemo(() => computeMetrics(orders), [orders])
 
@@ -245,6 +361,7 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
       >
         <OrderDetailModal
           order={selectedOrder}
+          metaStatus={metaStatusFor(selectedOrder)}
           onClose={() => {
             setSelectedOrder(null)
             if (returnToDay) {

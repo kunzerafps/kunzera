@@ -232,6 +232,78 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
     expect(metaEvent(fm, "Schedule").event_time).toBe(expectedEventTime)
   })
 
+  it("markAtendido:true marca la reserva como atendido en la planilla y avisa a Meta en una sola llamada", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    fm.on("script.google.com", () => jsonResponse({ ok: true, row: 5, estado: "atendido" }))
+
+    const res = await confirmarPagoHandler(
+      req({
+        token,
+        idempotencyKey: "atender-1",
+        nombre: "Cliente",
+        whatsapp: "1122334455",
+        plan: "platino",
+        monto: 50000,
+        markAtendido: true,
+      }),
+      FAKE_CTX,
+    )
+    const data = await res.json()
+    expect(data.statusOk).toBe(true)
+    expect(data.metaOk).toBe(true)
+    expect(metaEventCount(fm, "Purchase")).toBe(1)
+
+    const appsCall = fm.callsTo("script.google.com")[0]
+    const sent = JSON.parse(String(appsCall.init?.body))
+    expect(sent.action).toBe("updateStatus")
+    expect(sent.estado).toBe("atendido")
+    expect(sent.idempotencyKey).toBe("atender-1")
+  })
+
+  it("markAtendido:true — si la planilla falla, devuelve statusOk:false (error duro para el panel)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    fm.on("script.google.com", () => jsonResponse({ ok: false, error: "no_row" }))
+
+    const res = await confirmarPagoHandler(
+      req({ token, idempotencyKey: "atender-fail-1", nombre: "Cliente", monto: 50000, markAtendido: true }),
+      FAKE_CTX,
+    )
+    const data = await res.json()
+    expect(data.statusOk).toBe(false)
+    expect(data.statusError).toBeTruthy()
+  })
+
+  it("markAtendido:true — si el aviso a Meta falla, la reserva IGUAL queda atendida (statusOk:true, metaOk:false)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({ error: { message: "bad" } }, 400))
+    fm.on("script.google.com", () => jsonResponse({ ok: true, row: 5, estado: "atendido" }))
+
+    const res = await confirmarPagoHandler(
+      req({ token, idempotencyKey: "atender-meta-fail-1", nombre: "Cliente", monto: 50000, markAtendido: true }),
+      FAKE_CTX,
+    )
+    const data = await res.json()
+    expect(data.statusOk).toBe(true)
+    expect(data.metaOk).toBe(false)
+  })
+
+  it("sin markAtendido (reintento de aviso / barrido) NO toca la planilla, solo reintenta el aviso a Meta", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    fm.on("script.google.com", () => jsonResponse({ ok: true }))
+
+    const res = await confirmarPagoHandler(
+      req({ token, idempotencyKey: "reintento-1", nombre: "Cliente", monto: 50000 }),
+      FAKE_CTX,
+    )
+    const data = await res.json()
+    expect(fm.callsTo("script.google.com")).toHaveLength(0)
+    expect(data.statusOk).toBeUndefined()
+    expect(data.metaOk).toBe(true)
+  })
+
   it("event_time cae a 'ahora' si el timestamp de la reserva supera los 7 días (evita que Meta rechace el evento)", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))

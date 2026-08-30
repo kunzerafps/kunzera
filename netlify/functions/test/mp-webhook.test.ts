@@ -167,6 +167,57 @@ describe("mp-webhook: Purchase solo con pago approved", () => {
     expect(await fakeGetStore("mp-webhook-processed").get("key-transient")).toBeNull()
   })
 
+  it("pago approved pero el aviso de Compra a Meta falla: NO marca procesado (deja que MP reintente el aviso)", async () => {
+    const fm = installFetchMock()
+    fm.on("api.mercadopago.com", () =>
+      jsonResponse(mpPaymentPayload({ status: "approved", idempotencyKey: "key-meta-fail", monto: 50000 })),
+    )
+    // Meta rechaza el evento (4xx → sin reintento interno, rápido)
+    fm.on("graph.facebook.com", () => jsonResponse({ error: { message: "bad" } }, 400))
+    fm.on("discord.com", () => jsonResponse({}))
+
+    vi.mocked(submitOrder).mockResolvedValue({ ok: true, fileUrl: "-", timestamp: new Date().toISOString() })
+    vi.mocked(updateOrderStatus).mockResolvedValue({ ok: true, row: 1, estado: "confirmado" })
+
+    const res = await mpWebhookHandler(mpNotification("meta-fail-1"), FAKE_CTX)
+    expect(res.status).toBe(200)
+    // La reserva se creó y se confirmó igual…
+    expect(submitOrder).toHaveBeenCalledTimes(1)
+    // …pero como la Compra no le llegó a Meta, el pago (paymentId) queda SIN
+    // marcar procesado → el próximo reintento de MP vuelve a entrar y reintenta.
+    expect(await fakeGetStore("mp-webhook-processed").get("meta-fail-1")).toBeNull()
+  })
+
+  it("un reintento de MP tras un fallo de Meta reintenta el aviso y, si esta vez sale, recién ahí marca procesado", async () => {
+    const fm = installFetchMock()
+    fm.on("api.mercadopago.com", () =>
+      jsonResponse(mpPaymentPayload({ status: "approved", idempotencyKey: "key-recovers", monto: 50000 })),
+    )
+    fm.on("discord.com", () => jsonResponse({}))
+
+    vi.mocked(submitOrder)
+      .mockResolvedValueOnce({ ok: true, fileUrl: "-", timestamp: new Date().toISOString() })
+      // el 2º intento ve el turno ocupado por su propia reserva → rama ownRow
+      .mockResolvedValue({ ok: false, error: "slot_taken" })
+    vi.mocked(updateOrderStatus).mockResolvedValue({ ok: true, row: 1, estado: "confirmado" })
+
+    // 1ª entrega: Meta falla
+    let metaShouldFail = true
+    fm.on("graph.facebook.com", () =>
+      metaShouldFail ? jsonResponse({ error: { message: "bad" } }, 400) : jsonResponse({}),
+    )
+    await mpWebhookHandler(mpNotification("recovers-1"), FAKE_CTX)
+    expect(await fakeGetStore("mp-webhook-processed").get("recovers-1")).toBeNull()
+
+    // 2ª entrega (reintento de MP): Meta ahora sí acepta
+    metaShouldFail = false
+    await mpWebhookHandler(mpNotification("recovers-1"), FAKE_CTX)
+    expect(await fakeGetStore("mp-webhook-processed").get("recovers-1")).not.toBeNull()
+    // el Purchase que Meta aceptó quedó marcado como enviado en el store de
+    // dedup → un 3er intento ni le pegaría a Meta
+    expect(await fakeGetStore("capi-events-sent").get("key-recovers")).not.toBeNull()
+  })
+
   it("pago rejected: NO genera Purchase", async () => {
     const fm = installFetchMock()
     fm.on("api.mercadopago.com", () =>

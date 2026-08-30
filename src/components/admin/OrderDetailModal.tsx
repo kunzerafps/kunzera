@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion"
 import {
+  AlertTriangle,
   Calendar,
   Check,
   CheckCircle2,
@@ -9,6 +10,7 @@ import {
   MessageSquare,
   Phone,
   Receipt,
+  RefreshCw,
   Tag,
   Trash2,
   User,
@@ -19,17 +21,25 @@ import { createPortal } from "react-dom"
 import type { Order } from "../../types/order"
 import { PACKS } from "../../lib/packs"
 import { formatARS, formatDateAR, formatSlotLabel } from "../../lib/formatters"
-import { deleteOrder, updateOrderStatus } from "../../lib/appsScript"
+import { deleteOrder } from "../../lib/appsScript"
 import { comprobanteUrl } from "../../lib/comprobante"
 import { applyTemplate } from "../../lib/waMessages"
 import { useSiteConfig } from "../../hooks/useWaMessages"
 import { getAdminToken } from "../../lib/storage"
+
+// Estado del aviso de Compra a Meta para esta reserva, calculado por
+// AdminDashboard a partir del log de entregas (capi-delivery-log):
+// "enviado" = Meta lo recibió · "fallo" = se intentó y falló ·
+// "pendiente" = no hay registro de entrega (nunca se intentó, o el registro
+// no se pudo escribir). undefined = todavía no se consultó el log.
+export type MetaDeliveryStatus = "enviado" | "fallo" | "pendiente"
 
 type Props = {
   order: Order | null
   onClose: () => void
   onStatusChanged?: () => void
   onDeleted?: () => void
+  metaStatus?: MetaDeliveryStatus
 }
 
 function isBrokenWhatsapp(value: unknown): boolean {
@@ -55,7 +65,7 @@ function buildWhatsAppLink(order: Order, template: string): string | null {
   return `https://wa.me/${waFull}?text=${encodeURIComponent(mensaje)}`
 }
 
-export default function OrderDetailModal({ order, onClose, onStatusChanged, onDeleted }: Props) {
+export default function OrderDetailModal({ order, onClose, onStatusChanged, onDeleted, metaStatus }: Props) {
   const { clientTemplate } = useSiteConfig()
   if (typeof document === "undefined") return null
   return createPortal(
@@ -146,6 +156,7 @@ export default function OrderDetailModal({ order, onClose, onStatusChanged, onDe
                 <StatusActions
                   key={order.idempotencykey || order.timestamp}
                   order={order}
+                  metaStatus={metaStatus}
                   onStatusChanged={onStatusChanged}
                   onDeleted={onDeleted}
                   onClose={onClose}
@@ -366,18 +377,24 @@ function OrigenSection({ order }: { order: Order }) {
 
 function StatusActions({
   order,
+  metaStatus,
   onStatusChanged,
   onDeleted,
   onClose,
 }: {
   order: Order
+  metaStatus?: MetaDeliveryStatus
   onStatusChanged?: () => void
   onDeleted?: () => void
   onClose: () => void
 }) {
-  const [loading, setLoading] = useState<"confirmar" | "atender" | "eliminar" | "factura" | null>(
-    null,
-  )
+  const [loading, setLoading] = useState<
+    "confirmar" | "atender" | "eliminar" | "factura" | "reintentarMeta" | null
+  >(null)
+  // Estado del aviso a Meta, con override local optimista tras "Reintentar"
+  // (el prop viene del dashboard y no se refresca hasta que se recargue).
+  const [metaLocal, setMetaLocal] = useState<MetaDeliveryStatus | undefined>(undefined)
+  const metaState = metaLocal ?? metaStatus
   // Traba sincrónica aparte de `loading`: setState es asíncrono/batcheado,
   // así que un doble click rápido (o dos clicks separados antes del primer
   // re-render) puede disparar generarFactura() dos veces con `loading`
@@ -395,15 +412,28 @@ function StatusActions({
   const isAtendido = current === "atendido"
   const hasKey = !!order.idempotencykey
 
+  // Payload común para capi-confirmar-pago (aviso de Compra a Meta).
+  const metaPayload = () => ({
+    token: getAdminToken(),
+    idempotencyKey: order.idempotencykey,
+    nombre: order.nombre,
+    whatsapp: order.whatsapp,
+    plan: order.plan,
+    monto: order.monto,
+    reservaTimestamp: order.timestamp,
+  })
+
   // Un solo botón para "confirmar pago" + "atender": para este negocio son
-  // el mismo evento real — Eze solo marca atendido cuando ya cobró, nunca
-  // antes (a diferencia del supuesto original de separarlos en dos pasos).
-  // Marca "atendido" directo (salta el estado intermedio "confirmado", que
-  // ahora no lo pone nadie desde el panel — Mercado Pago lo sigue poniendo
-  // solo, automático, vía mp-webhook.mts) y dispara el aviso a Meta.
-  // capi-confirmar-pago.mts es idempotente (dedup local + el propio dedup
-  // de Meta por event_id, ver metaCapi.ts) — llamarlo también para pedidos
-  // de Mercado Pago que ya se lo mandaron solos no genera un duplicado.
+  // el mismo evento real — Eze solo marca atendido cuando ya cobró.
+  //
+  // AHORA es UNA sola llamada al servidor (markAtendido: true): el propio
+  // endpoint marca "atendido" en la planilla Y avisa a Meta. Antes eran dos
+  // llamadas separadas desde el navegador (updateOrderStatus + fetch), y si
+  // se cortaba entre medio (pestaña cerrada, sesión de admin vencida) la
+  // reserva quedaba atendida sin aviso a Meta y sin forma de reintentar
+  // (el botón desaparecía). Ahora, si el aviso a Meta falla, la reserva
+  // igual queda atendida y aparece el botón "Reintentar aviso a Meta"
+  // (más abajo), además del reintento automático del barrido del panel.
   const marcarAtendido = async () => {
     if (!hasKey) {
       setError("Esta reserva no tiene ID interno — actualizá el estado manualmente en el Sheet")
@@ -411,61 +441,73 @@ function StatusActions({
     }
     setLoading("atender")
     setError(null)
-    const result = await updateOrderStatus(String(order.idempotencykey), "atendido")
-    if (!result.ok) {
-      setLoading(null)
+    const res = await fetch("/api/capi-confirmar-pago", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...metaPayload(), markAtendido: true }),
+    }).catch((err) => {
+      console.error("[marcarAtendido] no se pudo llamar al servidor:", err)
+      return null
+    })
+    const data = res ? await res.json().catch(() => null) : null
+    setLoading(null)
+
+    // statusOk === false → lo importante (marcar atendido) falló: error duro.
+    if (!res || data?.statusOk === false) {
       setError(
-        result.error === "unauthorized"
-          ? "Token admin inválido"
-          : "No se pudo actualizar: " + result.error,
+        res?.status === 401
+          ? "Tu sesión de admin venció. Recargá la página, volvé a entrar y probá de nuevo."
+          : "No se pudo marcar como atendido: " + (data?.statusError || "error de red") +
+            ". Probá de nuevo.",
       )
       return
     }
-    onStatusChanged?.() // la planilla ya quedó bien — avisar al dashboard pase lo que pase con Meta después de esto
 
-    // A diferencia de antes: esto ahora se espera y se chequea. Este
-    // endpoint usa el token de sesión del admin (vence a las 12hs, ver
-    // adminSession.ts) — no el token fijo que usa Apps Script para
-    // updateOrderStatus de arriba. Con una pestaña abierta muchas horas es
-    // real que ESTE fetch falle con 401 aunque el de arriba haya
-    // funcionado perfecto: la reserva queda bien marcada, pero el aviso a
-    // Meta nunca sale, y como el fallo de auth corta ANTES de llegar al
-    // notifyDiscord de capi-confirmar-pago.mts, nadie se entera salvo que
-    // se muestre acá. Antes esto era "fire and forget" con un
-    // console.error mudo — exactamente el tipo de falla silenciosa que no
-    // se puede permitir cuando de esto depende la plata que se gasta en
-    // publicidad.
-    const metaRes = await fetch("/api/capi-confirmar-pago", {
+    // La reserva quedó atendida. Avisar al dashboard para que recargue.
+    onStatusChanged?.()
+
+    // El aviso a Meta falló, pero la reserva SÍ quedó atendida: no es un
+    // error duro. Se muestra suave y NO se cierra el modal, para que se vea
+    // el botón "Reintentar aviso a Meta".
+    if (data?.metaOk === false || !res.ok) {
+      setMetaLocal("fallo")
+      setError(
+        "Quedó marcada como atendida. El aviso de esta venta a Meta no salió — se reintenta solo, o podés reintentarlo con el botón de acá abajo.",
+      )
+      return
+    }
+
+    setMetaLocal("enviado")
+    onClose()
+  }
+
+  // Reintenta SOLO el aviso de Compra a Meta (no toca el estado de la
+  // reserva). Aparece siempre que el aviso no figure "enviado", aunque la
+  // reserva ya esté atendida — antes no había forma de reintentar en ese
+  // caso. capi-confirmar-pago es idempotente: si Meta ya lo tenía, no
+  // duplica.
+  const reintentarMeta = async () => {
+    if (!hasKey) return
+    setLoading("reintentarMeta")
+    setError(null)
+    const res = await fetch("/api/capi-confirmar-pago", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token: getAdminToken(),
-        idempotencyKey: order.idempotencykey,
-        nombre: order.nombre,
-        whatsapp: order.whatsapp,
-        plan: order.plan,
-        monto: order.monto,
-        reservaTimestamp: order.timestamp,
-      }),
-    }).catch((err) => {
-      console.error("[marcarAtendido] no se pudo avisar a Meta:", err)
-      return null
-    })
+      body: JSON.stringify({ ...metaPayload(), markAtendido: false }),
+    }).catch(() => null)
+    const data = res ? await res.json().catch(() => null) : null
     setLoading(null)
-
-    if (!metaRes || !metaRes.ok) {
-      if (metaRes?.status === 401) {
-        setError(
-          "La reserva ya quedó marcada como atendida, pero tu sesión de admin venció y el aviso a Meta NO se mandó. Recargá la página, volvé a entrar, y abrí esta reserva de nuevo para reintentar el aviso a Meta.",
-        )
-      } else {
-        setError(
-          "La reserva ya quedó marcada como atendida, pero no se pudo avisar a Meta de esta venta — ya te va a llegar (o ya llegó) un aviso a Discord con el detalle.",
-        )
-      }
-      return // no cierra el modal a propósito: que el admin vea esto
+    if (res && res.ok && data?.metaOk !== false) {
+      setMetaLocal("enviado")
+      setError(null)
+    } else {
+      setMetaLocal("fallo")
+      setError(
+        res?.status === 401
+          ? "Tu sesión de admin venció. Recargá la página, volvé a entrar y reintentá."
+          : "El reintento tampoco salió — probá de nuevo en un rato. Igual se reintenta solo.",
+      )
     }
-    onClose()
   }
 
   const doDelete = async () => {
@@ -626,6 +668,47 @@ function StatusActions({
         <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-green-500/10 border border-green-500/30 text-green-300 text-sm">
           <CheckCircle2 className="w-4 h-4" />
           <span>Turno atendido</span>
+        </div>
+      )}
+
+      {/* Estado del aviso de Compra a Meta + reintento. El botón de reintento
+          aparece SIEMPRE que el aviso no figure "enviado", aunque la reserva
+          ya esté atendida — antes en ese caso no había forma de reintentar. */}
+      {!confirmDelete && metaState === "enviado" && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/50 text-xs">
+          <Check className="w-3.5 h-3.5 text-green-400" />
+          <span>Aviso de venta a Meta: enviado</span>
+        </div>
+      )}
+      {!confirmDelete && hasKey && (metaState === "fallo" || metaState === "pendiente") && (
+        <div className="flex flex-col gap-2 px-3 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+          <div className="flex items-center gap-2 text-amber-300 text-sm">
+            <AlertTriangle className="w-4 h-4" />
+            <span>
+              {metaState === "fallo"
+                ? "El aviso de esta venta a Meta falló"
+                : "El aviso de esta venta a Meta no figura enviado"}
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-200/70 leading-relaxed">
+            Se reintenta solo cuando abrís el panel. También podés reintentarlo ahora — no
+            duplica: si Meta ya la tenía, no pasa nada.
+          </p>
+          <button
+            onClick={reintentarMeta}
+            disabled={!!loading}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-100 text-xs font-semibold transition disabled:opacity-40"
+          >
+            {loading === "reintentarMeta" ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Reintentando…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-3.5 h-3.5" /> Reintentar aviso a Meta
+              </>
+            )}
+          </button>
         </div>
       )}
 
