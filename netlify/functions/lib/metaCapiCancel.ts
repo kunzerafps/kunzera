@@ -13,7 +13,7 @@
 // (metaUserData.ts). Store de deduplicación propio.
 import { getStore } from "@netlify/blobs"
 import { sha256Hex, stripAccents, normalizePhoneForHash } from "./metaUserData"
-import { META_PIXEL_ID } from "./metaPixelId"
+import { metaEventsUrl } from "./metaPixelId"
 
 const ALREADY_SENT_STORE = "capi-cancel-events-sent"
 
@@ -63,7 +63,7 @@ export async function sendMetaCancelEvent(p: MetaCancelEvent): Promise<MetaCance
   const timer = setTimeout(() => controller.abort(), 8000)
   try {
     const res = await fetch(
-      `https://graph.facebook.com/v21.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(accessToken)}`,
+      metaEventsUrl(accessToken),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -78,6 +78,9 @@ export async function sendMetaCancelEvent(p: MetaCancelEvent): Promise<MetaCance
               action_source: "business_messaging",
               messaging_channel: "whatsapp",
               event_id: cancelEventId,
+              // Faltaba solo acá: los otros tres módulos sí lo mandan. Es lo
+              // que le dice a Meta qué integración generó el evento.
+              partner_agent: "kunzera-web",
               user_data: userData,
               custom_data: { currency: "ARS", value: p.value, order_id: p.eventId },
             },

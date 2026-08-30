@@ -9,53 +9,25 @@ import { recordDelivery, type DeliverySource } from "./deliveryLog"
 import { logMetaResponse } from "./metaResponseLog"
 import { PACKS } from "../../../src/lib/packs"
 import type { Pack } from "../../../src/types/order"
-import { META_PIXEL_ID } from "./metaPixelId"
+import { metaEventsUrl } from "./metaPixelId"
 
 const ALREADY_SENT_STORE = "capi-events-sent"
 // Identifica la integración ante Meta (recomendado por su spec de CAPI).
 const PARTNER_AGENT = "kunzera-web"
 
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input)
-  const hash = await crypto.subtle.digest("SHA-256", data)
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-}
-
-// Normaliza a como Meta espera el teléfono para el hash: sólo dígitos, con
-// código de país, sin el "0" de larga distancia local (ej. "011 2345-6789"
-// → "1123456789" antes de anteponer "549"). Mismo criterio de "549" que ya
-// usa el panel admin para armar links de WhatsApp (OrderDetailModal.tsx).
-export function normalizePhoneForHash(whatsapp: string): string {
-  let digits = whatsapp.replace(/\D/g, "")
-  if (digits.startsWith("549")) digits = digits.slice(3)
-  else if (digits.startsWith("54") && digits.length > 10) digits = digits.slice(2)
-  if (digits.startsWith("0")) digits = digits.slice(1)
-  // "15" pre-unificación: mucha gente todavía dicta el número como
-  // "<código de área> 15 <número local>" (ej. "3382 15 677871") — ese "15"
-  // no es parte del número real, Meta nunca lo va a tener así en el
-  // perfil del usuario, y dejarlo adentro del hash rompe el matching. Se
-  // busca justo después de un código de área de 2 a 4 dígitos y se saca,
-  // solo cuando eso deja exactamente los 10 dígitos esperados (código de
-  // área + número local) — evita tocar un "15" que sea parte legítima de
-  // otro número por casualidad.
-  for (const areaLen of [2, 3, 4]) {
-    if (digits.length === 12 && digits.slice(areaLen, areaLen + 2) === "15") {
-      digits = digits.slice(0, areaLen) + digits.slice(areaLen + 2)
-      break
-    }
-  }
-  return "549" + digits
-}
-
-// Meta espera fn/ln sin acentos ni diacríticos (documentado en su spec de
-// Advanced Matching/CAPI) — Unicode NFD separa cada letra acentuada en
-// base + marca combinante, y se descarta la marca. "ñ" también cae acá
-// (se descompone en "n" + tilde combinante).
-function stripAccents(s: string): string {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-}
+// Estos helpers vivian DUPLICADOS aca, palabra por palabra, en vez de
+// importarse de metaUserData.ts (que es de donde ya los tomaban
+// metaCapiFunnel y metaCapiPageView). Eran identicos, pero significaba que
+// los datos del comprador del evento de COMPRA -el que mueve la plata- se
+// armaban con una copia distinta que los de los eventos previos del embudo:
+// si alguien tocaba la normalizacion en un lado y no en el otro, Meta dejaba
+// de poder unir la visita con la venta de la misma persona, en silencio.
+//
+// `normalizePhoneForHash` se re-exporta porque capi-venta-manual.mts lo
+// importa desde aca para armar el event_id determinista de las ventas
+// manuales.
+import { normalizePhoneForHash, sha256Hex, stripAccents } from "./metaUserData"
+export { normalizePhoneForHash }
 
 // Meta rechaza el evento entero si event_time queda fuera de esta ventana
 // hacia el pasado (documentado: 7 días). No hay margen "por las dudas": si
@@ -115,9 +87,19 @@ export type MetaCapiPurchase = {
   // como "cargado".
   eventTime?: number
   // Fecha real (YYYY-MM-DD, hora Argentina) de la venta — solo la manda
-  // capi-venta-manual.mts hoy, para que daily-gap-report.mts pueda bucketear
+  // capi-venta-manual.mts hoy, para que el log de entregas pueda bucketear
   // por el día real de la venta en vez de por cuándo se cargó en el panel.
   saleDate?: string
+  // De qué campaña/anuncio vino, según lo que el admin ve en WhatsApp
+  // Business y elige al cargar una venta manual. Texto libre.
+  //
+  // Se guardaba en el panel y NUNCA se le mandaba a Meta — o sea, el único
+  // dato de origen que Eze tiene a mano para las ventas cerradas por
+  // WhatsApp (las que no traen cookie del anuncio) se tiraba. Va como
+  // `custom_data` para que aparezca en el reporting de Meta; NO reemplaza a
+  // la atribución real (Meta no matchea campañas por este texto), pero
+  // permite cruzarlo a mano.
+  campania?: string
 }
 
 export type MetaCapiResult = { ok: true } | { ok: false; error: string }
@@ -274,11 +256,14 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
               : undefined,
             order_id: params.eventId,
             num_items: 1,
+            // Solo en ventas manuales por WhatsApp: de qué anuncio dice el
+            // cliente que vino. Antes se guardaba en el panel y se tiraba.
+            ...(params.campania ? { campania: params.campania } : {}),
           },
         },
       ],
     })
-    const url = `https://graph.facebook.com/v21.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(accessToken)}`
+    const url = metaEventsUrl(accessToken)
 
     // Reintento acotado. La Graph API tira 5xx transitorios y cortes de
     // conexión cada tanto; antes un solo intento fallido dejaba la venta sin

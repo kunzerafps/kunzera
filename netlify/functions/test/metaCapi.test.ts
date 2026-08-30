@@ -5,6 +5,7 @@ import { installFetchMock, jsonResponse } from "./helpers/fetchMock"
 vi.mock("@netlify/blobs", () => ({ getStore: (name: string) => fakeGetStore(name) }))
 
 const { sendMetaPurchaseEvent, normalizePhoneForHash } = await import("../lib/metaCapi")
+const { META_GRAPH_VERSION, META_PIXEL_ID } = await import("../lib/metaPixelId")
 
 // Implementación de referencia recalculada a mano en el test (mismo
 // algoritmo, cálculo independiente) para no "probar contra sí misma" — si
@@ -505,5 +506,60 @@ describe("sendMetaPurchaseEvent", () => {
     const manualBody = JSON.parse(String(calls[1].init?.body))
     expect(websiteBody.data[0].event_source_url).toBeTruthy()
     expect(manualBody.data[0].event_source_url).toBeUndefined()
+  })
+})
+
+// ─────────────── Batch 3: consistencia de la integracion ───────────────
+describe("consistencia de la integración con Meta", () => {
+  beforeEach(() => {
+    resetBlobsMock()
+    process.env.META_CAPI_ACCESS_TOKEN = "test-token"
+  })
+
+  it("la versión de la Graph API sale de un solo lugar (era una bomba de tiempo repetida en 5 archivos)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "ver-1",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 50000,
+    })
+
+    const url = fm.callsTo("graph.facebook.com")[0].url
+    expect(url).toContain(`/${META_GRAPH_VERSION}/`)
+    expect(url).toContain(META_PIXEL_ID)
+  })
+
+  it("manda la campaña de las ventas manuales — antes se guardaba en el panel y se tiraba", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "camp-1",
+      source: "venta_manual",
+      actionSource: "business_messaging",
+      value: 70000,
+      campania: "REELS AGOSTO",
+    })
+
+    const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+    expect(cd.campania).toBe("REELS AGOSTO")
+  })
+
+  it("sin campaña no manda el campo vacío", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await sendMetaPurchaseEvent({
+      eventId: "camp-2",
+      source: "mercadopago",
+      actionSource: "website",
+      value: 50000,
+    })
+
+    const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+    expect(cd.campania).toBeUndefined()
   })
 })

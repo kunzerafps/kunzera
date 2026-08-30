@@ -15,7 +15,7 @@
 // nombre/teléfono en este punto) y con su propio store de deduplicación,
 // completamente separado del de Purchase.
 import { getStore } from "@netlify/blobs"
-import { META_PIXEL_ID } from "./metaPixelId"
+import { metaEventsUrl } from "./metaPixelId"
 import { sha256Hex, stripAccents } from "./metaUserData"
 import { logMetaResponse } from "./metaResponseLog"
 
@@ -95,7 +95,7 @@ export async function sendMetaPageViewEvent(params: MetaCapiPageView): Promise<M
   const timer = setTimeout(() => controller.abort(), 8000)
   try {
     const res = await fetch(
-      `https://graph.facebook.com/v21.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(accessToken)}`,
+      metaEventsUrl(accessToken),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

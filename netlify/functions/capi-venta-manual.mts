@@ -194,6 +194,10 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     region: phoneTrail?.region,
     postalCode: phoneTrail?.postalCode,
     externalId: phoneTrail?.visitorId,
+    // De qué anuncio dice el cliente que vino. Se guardaba en el panel y no
+    // se le mandaba a Meta — era el único dato de origen disponible para las
+    // ventas por WhatsApp, que no traen cookie del anuncio.
+    campania: body.campania?.trim() || undefined,
     eventTime,
     saleDate: fecha,
   })

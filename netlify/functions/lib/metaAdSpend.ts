@@ -1,6 +1,7 @@
-// Trae el gasto de anuncios de Meta (Marketing API). Usa el mismo token y
-// ad account que daily-gap-report.mts (META_MARKETING_ACCESS_TOKEN /
-// META_AD_ACCOUNT_ID).
+// Trae el gasto de anuncios de Meta (Marketing API), para el panel de
+// ingresos. Token y ad account propios (META_MARKETING_ACCESS_TOKEN /
+// META_AD_ACCOUNT_ID) — distintos de los de la Conversions API.
+import { META_GRAPH_VERSION } from "./metaPixelId"
 
 const META_AD_ACCOUNT_ID = process.env.META_AD_ACCOUNT_ID || "215090675"
 const FETCH_TIMEOUT_MS = 10000
@@ -40,7 +41,7 @@ export async function fetchAdSpend(
 
   const timeRange = encodeURIComponent(JSON.stringify({ since, until }))
   let url =
-    `https://graph.facebook.com/v21.0/act_${META_AD_ACCOUNT_ID}/insights` +
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${META_AD_ACCOUNT_ID}/insights` +
     `?fields=spend,campaign_name,account_currency&level=campaign&time_range=${timeRange}` +
     `&limit=500&access_token=${encodeURIComponent(token)}`
 

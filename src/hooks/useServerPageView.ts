@@ -42,6 +42,19 @@ export function useServerPageView(): void {
           // cookie del píxel en el medio.
           externalId: getVisitorId(),
         }),
+        // CLAVE. Sin esto el navegador MATA el pedido si la página se
+        // descarga antes de que termine, y acá eso pasa todo el tiempo: el
+        // envío arranca recién a los 400ms (esperando la cookie _fbp) y
+        // mucha gente que llega de un anuncio rebota o toca un link antes.
+        //
+        // Se nota en los datos de Meta: la geo del PageView (que solo puede
+        // venir de esta copia server-side) llegaba al ~30%, mientras que en
+        // ViewContent —mismo origen de geo, pero disparado cuando la persona
+        // ya está navegando— llega al 96%. El PageView del navegador sí
+        // salía siempre, así que la visita se contaba igual: lo que faltaba
+        // era la mitad rica del dato (IP real, geo, resistencia a
+        // bloqueadores), justo en el tráfico pago.
+        keepalive: true,
       }).catch(() => {})
     }, 400)
 

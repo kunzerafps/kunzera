@@ -20,7 +20,7 @@
 // separado del de Purchase y del de PageView.
 import { getStore } from "@netlify/blobs"
 import { sha256Hex, stripAccents, normalizePhoneForHash } from "./metaUserData"
-import { META_PIXEL_ID } from "./metaPixelId"
+import { metaEventsUrl } from "./metaPixelId"
 import { logMetaResponse } from "./metaResponseLog"
 import { PACKS } from "../../../src/lib/packs"
 import type { Pack } from "../../../src/types/order"
@@ -196,7 +196,7 @@ export async function sendMetaFunnelEvent(params: MetaCapiFunnelEvent): Promise<
 
     timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 8000)
     const res = await fetch(
-      `https://graph.facebook.com/v21.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(accessToken)}`,
+      metaEventsUrl(accessToken),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
