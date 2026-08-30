@@ -63,3 +63,82 @@ export async function getAttribution(idempotencyKey: string): Promise<Attributio
     return null
   }
 }
+
+// ─────────────────── Índice por teléfono (ventas por WhatsApp) ───────────────
+//
+// El problema que resuelve: una venta cerrada por WhatsApp y cargada a mano
+// en el panel le llega a Meta con teléfono + mail + nombre + país y NADA MÁS
+// — sin la cookie del clic del anuncio (fbc), sin fbp, sin IP, sin id de
+// visitante. El evento "Contact" que la persona disparó al tocar WhatsApp SÍ
+// llevaba todo eso, pero era fire-and-forget: no quedaba guardado en ningún
+// lado. Entre el Contact y la Compra de esa misma persona, el único campo en
+// común era `country`.
+//
+// Este índice guarda el rastro del anuncio contra el teléfono, para que
+// capi-venta-manual.mts pueda recuperarlo al cargar la venta.
+//
+// ALCANCE HONESTO: solo cubre a quien dejó su teléfono EN EL SITIO (evento
+// Lead) y después terminó cerrando por WhatsApp — checkouts abandonados, el
+// link de recuperación del chat tras un error o un pago pendiente. A quien
+// hizo clic en un anuncio de INTERACCIÓN y fue derecho a WhatsApp sin pasar
+// por la web NO lo cubre: para eso hace falta el `ctwa_clid`, que solo se
+// puede capturar con la WhatsApp Business Platform API.
+//
+// La CLAVE es el hash SHA-256 del teléfono normalizado, no el teléfono en
+// claro: así el listado del store no expone números de clientes. Como el
+// hash es determinístico, la búsqueda desde la venta manual da igual.
+const PHONE_INDEX_STORE = "attribution-by-phone"
+
+// 90 días: la ventana de atribución más larga de Meta es de 28, pero una
+// conversación de WhatsApp puede tardar en cerrarse y guardar de más no
+// cuesta nada. Se filtra al leer (Blobs no tiene expiración nativa).
+const PHONE_INDEX_TTL_MS = 90 * 24 * 60 * 60 * 1000
+
+export type PhoneAttribution = {
+  fbp?: string
+  fbc?: string
+  ip?: string
+  userAgent?: string
+  city?: string
+  region?: string
+  postalCode?: string
+  countryCode?: string
+  visitorId?: string
+  capturedAt: number
+}
+
+// `phoneKey` tiene que venir ya hasheado por el caller (sha256Hex de
+// normalizePhoneForHash), para no arrastrar el teléfono en claro hasta acá.
+export async function savePhoneAttribution(
+  phoneKey: string,
+  data: PhoneAttribution,
+): Promise<void> {
+  try {
+    const store = getStore(PHONE_INDEX_STORE)
+    const previous = (await store.get(phoneKey, { type: "json" })) as PhoneAttribution | null
+    // No pisar un rastro que YA tenía la cookie del clic del anuncio con uno
+    // que no la tiene: la primera visita desde el anuncio es la que vale, y
+    // una visita orgánica posterior de la misma persona no debe borrarla.
+    if (previous?.fbc && !data.fbc) {
+      await store.setJSON(phoneKey, { ...data, fbc: previous.fbc })
+      return
+    }
+    await store.setJSON(phoneKey, data)
+  } catch (err) {
+    // Nunca romper el envío del evento por esto — es un índice de apoyo.
+    console.error("[attribution] no se pudo guardar el índice por teléfono:", err)
+  }
+}
+
+export async function getPhoneAttribution(phoneKey: string): Promise<PhoneAttribution | null> {
+  try {
+    const data = (await getStore(PHONE_INDEX_STORE).get(phoneKey, {
+      type: "json",
+    })) as PhoneAttribution | null
+    if (!data) return null
+    if (Date.now() - data.capturedAt > PHONE_INDEX_TTL_MS) return null
+    return data
+  } catch {
+    return null
+  }
+}

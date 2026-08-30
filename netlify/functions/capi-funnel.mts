@@ -1,6 +1,8 @@
 import type { Config, Context } from "@netlify/functions"
 import { sendMetaFunnelEvent, FUNNEL_EVENTS, type FunnelEventName } from "./lib/metaCapiFunnel"
 import { isRateLimited } from "./lib/rateLimit"
+import { savePhoneAttribution } from "./lib/attribution"
+import { normalizePhoneForHash, sha256Hex } from "./lib/metaUserData"
 
 const KEY_RE = /^[a-zA-Z0-9-]{6,80}$/
 // Antes 40. Con ViewContent + AddToCart yendo server-side, casi toda visita
@@ -93,6 +95,35 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     })
   } catch (err) {
     console.error("[capi-funnel] error inesperado:", err)
+  }
+
+  // Índice teléfono → rastro del anuncio. Se guarda cuando la persona YA dejó
+  // su teléfono en el sitio (evento Lead) y hay algo del anuncio que valga la
+  // pena conservar. Sirve para cuando esa misma persona termina cerrando por
+  // WhatsApp y la venta se carga a mano: sin esto, esa Compra le llega a Meta
+  // sin fbc/fbp/IP/id de visitante y no se puede atribuir a ninguna campaña.
+  //
+  // La clave va hasheada, así el store no expone teléfonos de clientes.
+  // Best-effort y después de mandar el evento: si falla, no afecta nada.
+  const phone = str(body.whatsapp)
+  if (phone && (body.fbc || body.fbp || body.externalId)) {
+    try {
+      const phoneKey = await sha256Hex(normalizePhoneForHash(phone))
+      await savePhoneAttribution(phoneKey, {
+        fbp: str(body.fbp),
+        fbc: str(body.fbc),
+        ip: ctx.ip || undefined,
+        userAgent: req.headers.get("user-agent") || undefined,
+        city: ctx.geo?.city || undefined,
+        region: ctx.geo?.subdivision?.name || undefined,
+        postalCode: ctx.geo?.postalCode || undefined,
+        countryCode: ctx.geo?.country?.code || undefined,
+        visitorId: str(body.externalId),
+        capturedAt: Date.now(),
+      })
+    } catch (err) {
+      console.error("[capi-funnel] no se pudo indexar por teléfono:", err)
+    }
   }
 
   return new Response(null, { status: 200 })

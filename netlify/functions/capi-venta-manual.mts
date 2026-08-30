@@ -3,6 +3,8 @@ import { verifySessionToken } from "./lib/adminSession"
 import { sendMetaPurchaseEvent, normalizePhoneForHash, MAX_EVENT_AGE_DAYS } from "./lib/metaCapi"
 import { notifyDiscord } from "./lib/discordAlert"
 import { isRateLimited } from "./lib/rateLimit"
+import { getPhoneAttribution } from "./lib/attribution"
+import { sha256Hex } from "./lib/metaUserData"
 import {
   generateManualSaleId,
   getManualSaleByEvent,
@@ -158,6 +160,19 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   }
 
   const nombre = body.nombre!.trim()
+
+  // Rastro del anuncio recuperado por teléfono. Si esta persona pasó antes por
+  // el sitio y dejó su WhatsApp (evento Lead), guardamos su fbc/fbp/IP/id de
+  // visitante en un índice (ver lib/attribution.ts). Sin esto, una venta
+  // cerrada por WhatsApp le llega a Meta solo con teléfono + mail + nombre +
+  // país, y la campaña que la trajo no se lleva el crédito.
+  //
+  // Best-effort: si no hay nada indexado (la persona nunca pasó por la web),
+  // la venta se manda igual, como antes.
+  const phoneTrail = await getPhoneAttribution(
+    await sha256Hex(normalizePhoneForHash(body.whatsapp!)),
+  ).catch(() => null)
+
   const result = await sendMetaPurchaseEvent({
     eventId,
     source: "venta_manual",
@@ -169,7 +184,16 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     email,
     // Todos los clientes son de Argentina — mandar el país es match gratis
     // que hasta ahora no se aprovechaba en las ventas manuales.
-    countryCode: "ar",
+    // El de `phoneTrail` (geo real de la visita) gana si existe.
+    countryCode: phoneTrail?.countryCode || "ar",
+    fbp: phoneTrail?.fbp,
+    fbc: phoneTrail?.fbc,
+    clientIpAddress: phoneTrail?.ip,
+    clientUserAgent: phoneTrail?.userAgent,
+    city: phoneTrail?.city,
+    region: phoneTrail?.region,
+    postalCode: phoneTrail?.postalCode,
+    externalId: phoneTrail?.visitorId,
     eventTime,
     saleDate: fecha,
   })
