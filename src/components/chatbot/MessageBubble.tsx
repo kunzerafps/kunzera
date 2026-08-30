@@ -3,11 +3,14 @@ import { Zap } from "lucide-react"
 import { memo, type ReactNode } from "react"
 import { SiWhatsapp } from "react-icons/si"
 import type { ChatMessage } from "../../types/order"
-import { trackServerBackedEvent } from "../../lib/pixel"
 
 type Props = {
   message: ChatMessage
   onChip: (payload: string, label: string) => void
+  // Clic en el link "Ir a WhatsApp" de recuperación. Lo maneja ChatWindow,
+  // que es quien tiene el draft con el nombre y el teléfono ya cargados —
+  // acá el evento se mandaba anónimo (ver contactEvent.ts).
+  onContactLink: () => void
 }
 
 // Mini-renderer de markdown inline: *bold*, `code`
@@ -46,7 +49,7 @@ function renderInlineMarkdown(text: string): ReactNode[] {
   return parts
 }
 
-function MessageBubbleImpl({ message, onChip }: Props) {
+function MessageBubbleImpl({ message, onChip, onContactLink }: Props) {
   const isBot = message.from === "bot"
   const variant = message.variant || "default"
 
@@ -108,9 +111,7 @@ function MessageBubbleImpl({ message, onChip }: Props) {
             href={message.link.href}
             target="_blank"
             rel="noreferrer"
-            onClick={() =>
-              trackServerBackedEvent("Contact", {}, { content_name: "chat_error_recovery" })
-            }
+            onClick={onContactLink}
             className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-green-500 to-green-700 hover:from-green-400 hover:to-green-600 text-white text-sm font-semibold transition shadow-lg shadow-green-900/50"
           >
             <SiWhatsapp className="w-4 h-4" />

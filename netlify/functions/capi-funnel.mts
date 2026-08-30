@@ -3,6 +3,7 @@ import { sendMetaFunnelEvent, FUNNEL_EVENTS, type FunnelEventName } from "./lib/
 import { isRateLimited } from "./lib/rateLimit"
 import { savePhoneAttribution } from "./lib/attribution"
 import { normalizePhoneForHash, sha256Hex } from "./lib/metaUserData"
+import { getServerPackPricesArs, isPackSlug } from "./lib/packPrices"
 
 const KEY_RE = /^[a-zA-Z0-9-]{6,80}$/
 // Antes 40. Con ViewContent + AddToCart yendo server-side, casi toda visita
@@ -69,6 +70,20 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     return new Response(null, { status: 200 })
   }
 
+  // El monto NUNCA se toma de lo que manda el navegador: este endpoint es
+  // público y sin contraseña, así que cualquiera podía postear "dejó los
+  // datos" por $999.999.999 y ensuciarle a Meta la optimización por valor.
+  // Se resuelve del lado del servidor a partir del pack, contra los precios
+  // reales del panel (ver lib/packPrices.ts). Si el evento no trae un pack
+  // conocido, va SIN monto — mejor un evento sin valor que con uno inventado.
+  // EXACTAMENTE un pack: la sección de precios manda los dos
+  // (`["platino","diamante"]`, un ViewContent de "vio la lista"), y ahí no
+  // hay un monto único honesto — mejor sin `value` que con uno inventado.
+  const contentIds = strArray(body.contentIds)
+  const packSlugs = contentIds?.filter(isPackSlug) ?? []
+  const serverValue =
+    packSlugs.length === 1 ? (await getServerPackPricesArs())[packSlugs[0]] : undefined
+
   try {
     await sendMetaFunnelEvent({
       eventId: body.eventId,
@@ -87,10 +102,12 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       region: ctx.geo?.subdivision?.name || undefined,
       postalCode: ctx.geo?.postalCode || undefined,
       countryCode: ctx.geo?.country?.code || undefined,
-      value: typeof body.value === "number" && Number.isFinite(body.value) ? body.value : undefined,
-      currency: str(body.currency),
+      value: serverValue,
+      // La moneda también se fija acá: si el monto lo pone el servidor, la
+      // moneda no puede venir del cliente.
+      currency: serverValue !== undefined ? "ARS" : undefined,
       contentName: str(body.contentName),
-      contentIds: strArray(body.contentIds),
+      contentIds,
       contentType: str(body.contentType),
     })
   } catch (err) {

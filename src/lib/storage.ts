@@ -147,6 +147,16 @@ export function clearTurnoSelFired(): void {
 // confirmar una reserva, igual que turno_seleccionado.
 const FIRED_ONCE_KEYS = {
   lead: "kz_lead_fired",
+  // "Vio los precios". Se disparaba con el scroll y el guard era el
+  // `viewport={{once:true}}` de framer-motion, que es POR MONTAJE del
+  // componente: cada recarga de página sumaba otro. En los datos de Meta la
+  // relación ViewContent/PageView pasó de ~15% a ~60% en una semana.
+  viewContent: "kz_viewcontent_fired",
+  // "Tocó WhatsApp". Un solo tope COMPARTIDO por los 4 botones (flotante,
+  // pie de página, link de recuperación del chat y apertura del chat). Antes
+  // solo el chat tenía tope, y era un ref de React (por carga de página):
+  // una persona podía generar 3 o 4 Contact en la misma visita.
+  contact: "kz_contact_fired",
 } as const
 
 type FiredOnceEvent = keyof typeof FIRED_ONCE_KEYS

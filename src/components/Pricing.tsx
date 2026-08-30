@@ -6,6 +6,7 @@ import { openChat } from "../lib/chatBus"
 import type { Pack } from "../types/order"
 import { useSiteConfig } from "../hooks/useWaMessages"
 import { trackServerBackedEvent } from "../lib/pixel"
+import { firedOnceInSession, markFiredOnceInSession } from "../lib/storage"
 
 const PLATINO_FEATURES = [
   "Limpio tu PC de archivos y basura que la hacen más lenta",
@@ -92,17 +93,26 @@ export default function Pricing() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          onViewportEnter={() =>
+          onViewportEnter={() => {
             // Se manda también desde el servidor (resiste bloqueadores/iOS) y
             // con los dos packs como content_ids, para poder armar públicos
-            // de "vio los precios". El viewport once:true de este mismo
-            // motion.div hace que se dispare una sola vez por visita.
+            // de "vio los precios".
+            //
+            // El guard NO puede ser el `viewport={{once:true}}` de acá: eso
+            // es por MONTAJE del componente, y <Pricing/> se monta en cada
+            // carga de página. Quien recarga o vuelve al sitio sumaba un
+            // ViewContent cada vez (la relación ViewContent/PageView en Meta
+            // pasó de ~15% a ~60% en una semana). Con el guard en
+            // sessionStorage se cuenta una vez por visita de verdad, igual
+            // que Lead y AddToCart.
+            if (firedOnceInSession("viewContent")) return
+            markFiredOnceInSession("viewContent")
             trackServerBackedEvent("ViewContent", undefined, {
               content_name: "pricing_section",
               content_type: "product_group",
               content_ids: ["platino", "diamante"],
             })
-          }
+          }}
           className="text-center max-w-2xl mx-auto mb-16"
         >
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-950/60 border border-brand-900 text-brand-300 text-xs font-mono uppercase tracking-widest mb-5">

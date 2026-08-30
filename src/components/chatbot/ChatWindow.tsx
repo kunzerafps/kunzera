@@ -5,6 +5,7 @@ import type { ChatMessage, FlowEvent } from "../../types/order"
 import MessageBubble from "./MessageBubble"
 import TypingBubble from "./TypingBubble"
 import FlowRenderer from "./FlowRenderer"
+import { trackContactOnce } from "../../lib/contactEvent"
 import type { FlowContext } from "../../lib/chatFlow"
 import type { OrderDraft } from "../../types/order"
 
@@ -53,6 +54,25 @@ export default function ChatWindow({
     [dispatch],
   )
 
+  // "Tocó WhatsApp" desde el link de recuperación del chat (aparece cuando la
+  // reserva falla o cuando Mercado Pago vuelve con el pago pendiente). Ahí la
+  // persona YA dejó nombre y teléfono, y ese Contact existe justamente para
+  // poder atribuirle después la venta que se termina cerrando por WhatsApp —
+  // mandarlo anónimo, como iba antes, le sacaba a Meta lo único con lo que
+  // podía unir las dos puntas.
+  //
+  // El draft se lee de un ref para que el callback sea estable (MessageBubble
+  // está memoizado y solo se re-renderiza si cambia el mensaje) pero el dato
+  // siempre esté fresco al momento del clic.
+  const draftRef = useRef(ctx.draft)
+  draftRef.current = ctx.draft
+  const handleContactLink = useCallback(() => {
+    trackContactOnce("chat_error_recovery", {
+      whatsapp: draftRef.current.whatsapp,
+      nombre: draftRef.current.nombre,
+    })
+  }, [])
+
   const showTextInput =
     ctx.state === "greeting" ||
     ctx.state === "exploring" ||
@@ -80,6 +100,7 @@ export default function ChatWindow({
         messages={ctx.messages}
         typing={typing}
         onChip={handleChip}
+        onContactLink={handleContactLink}
         flowSlot={<FlowRenderer ctx={ctx} dispatch={dispatch} onSubmit={onSubmit} />}
         bumpKey={ctx.state}
       />
@@ -215,6 +236,7 @@ type MessagesListProps = {
   messages: ChatMessage[]
   typing: boolean
   onChip: (payload: string, label: string) => void
+  onContactLink: () => void
   flowSlot: React.ReactNode
   bumpKey: string
 }
@@ -223,6 +245,7 @@ const MessagesList = memo(function MessagesList({
   messages,
   typing,
   onChip,
+  onContactLink,
   flowSlot,
   bumpKey: _bumpKey,
 }: MessagesListProps) {
@@ -244,7 +267,7 @@ const MessagesList = memo(function MessagesList({
       aria-live="polite"
     >
       {messages.map((m) => (
-        <MessageBubble key={m.id} message={m} onChip={onChip} />
+        <MessageBubble key={m.id} message={m} onChip={onChip} onContactLink={onContactLink} />
       ))}
       {typing && <TypingBubble />}
       {flowSlot}

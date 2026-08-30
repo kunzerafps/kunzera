@@ -9,6 +9,7 @@ import { isExpanded } from "../lib/chatFlow"
 import { emitChatProgress, listenOpenChat, type OpenChatDetail } from "../lib/chatBus"
 import { PACKS } from "../lib/packs"
 import { trackServerBackedEvent } from "../lib/pixel"
+import { trackContactOnce } from "../lib/contactEvent"
 import { packEventParams } from "../lib/prices"
 import { addToCartFiredForPack, markAddToCartFiredForPack } from "../lib/storage"
 
@@ -61,17 +62,23 @@ export default function ChatBot() {
 
   // Contact: señal de "abrió el chat de reserva", sin importar si entró por
   // el botón "Reservar" (Navbar/Hero/Pricing/CTA, vía chatBus) o tocando
-  // directo el ícono flotante — una sola vez por carga de página, para no
-  // inflar el conteo si abre/cierra el chat varias veces mientras completa
-  // el flujo.
+  // directo el ícono flotante.
+  //
+  // El tope ahora es COMPARTIDO con los otros tres botones de WhatsApp (ver
+  // contactEvent.ts) y vive en sessionStorage, no en este ref: antes cada
+  // sitio contaba por su lado y una misma persona podía generar 3 o 4
+  // Contact en la misma visita (abrir el chat + tocar el flotante + el del
+  // pie). El ref se conserva igual para no reintentar en cada render.
   useEffect(() => {
     if (flow.open && !contactFired.current && !autoOpened.current) {
       contactFired.current = true
       const pack = pendingIntent.current?.pack
-      trackServerBackedEvent("Contact", {}, {
-        content_name: pack ? PACKS[pack].name : "chat_bot",
+      trackContactOnce(pack ? PACKS[pack].name : "chat_bot", {
+        whatsapp: flow.ctx.draft.whatsapp,
+        nombre: flow.ctx.draft.nombre,
       })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flow.open])
 
   // Escucha eventos externos ("Reservar" desde Navbar/Hero/Pricing/CTA, y los

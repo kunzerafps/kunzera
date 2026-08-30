@@ -4,7 +4,7 @@ import { SiWhatsapp } from "react-icons/si"
 import { waLink, WHATSAPP_FLOAT_MESSAGE } from "../lib/constants"
 import { withAdReturnLink } from "../lib/deeplink"
 import { listenChatProgress } from "../lib/chatBus"
-import { trackServerBackedEvent } from "../lib/pixel"
+import { trackContactOnce } from "../lib/contactEvent"
 
 export default function WhatsAppFloat() {
   // Se esconde cuando la persona ya eligió un pack o entró al flujo de reserva
@@ -34,7 +34,7 @@ export default function WhatsAppFloat() {
       aria-hidden={inFunnel}
       tabIndex={inFunnel ? -1 : 0}
       style={{ pointerEvents: inFunnel ? "none" : "auto" }}
-      onClick={() => trackServerBackedEvent("Contact", {}, { content_name: "whatsapp_float" })}
+      onClick={() => trackContactOnce("whatsapp_float")}
       // bottom-left, no bottom-right: el lanzador del chat y el panel de chat
       // compacto ya ocupan esa esquina. En celular sube un poco (bottom-20)
       // para no chocar con la barra fija de planes (StickyPlansBar).

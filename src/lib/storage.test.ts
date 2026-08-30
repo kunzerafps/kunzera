@@ -134,3 +134,38 @@ describe("guard de AddToCart por pack", () => {
     expect(firedOnceInSession("lead")).toBe(false)
   })
 })
+
+// Estos dos se contaban de más y le inflaban a Meta el volumen de eventos.
+describe("topes de ViewContent y Contact", () => {
+  it("'vio los precios' se cuenta una vez por VISITA, no una por carga de página", () => {
+    // El guard viejo era el viewport once:true de framer-motion, que es por
+    // montaje del componente: cada recarga sumaba otro ViewContent.
+    expect(firedOnceInSession("viewContent")).toBe(false)
+    markFiredOnceInSession("viewContent")
+    expect(firedOnceInSession("viewContent")).toBe(true)
+  })
+
+  it("'tocó WhatsApp' tiene UN tope compartido por los 4 botones", () => {
+    // Antes cada botón contaba por su lado: abrir el chat + flotante + pie de
+    // página + link de recuperación = 4 Contact de la misma persona.
+    expect(firedOnceInSession("contact")).toBe(false)
+    markFiredOnceInSession("contact") // p. ej. el flotante
+    expect(firedOnceInSession("contact")).toBe(true) // el del pie ya no cuenta
+  })
+
+  it("los dos sobreviven a que el chat se desmonte (viven en sessionStorage, no en un ref)", () => {
+    markFiredOnceInSession("viewContent")
+    markFiredOnceInSession("contact")
+    // Un ref de React se reiniciaría acá; sessionStorage no.
+    expect(sessionStorage.getItem("kz_viewcontent_fired")).toBe("1")
+    expect(sessionStorage.getItem("kz_contact_fired")).toBe("1")
+  })
+
+  it("se limpian al confirmar una reserva, junto con el resto", () => {
+    markFiredOnceInSession("viewContent")
+    markFiredOnceInSession("contact")
+    clearFiredOnceInSession()
+    expect(firedOnceInSession("viewContent")).toBe(false)
+    expect(firedOnceInSession("contact")).toBe(false)
+  })
+})

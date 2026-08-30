@@ -73,11 +73,16 @@ describe("capi-funnel", () => {
     fm.on("graph.facebook.com", () => jsonResponse({}))
     const ctx = { ip: "1.2.3.4" } as any
 
-    await funnelHandler(req({ eventId: "cf-ic-1", event: "InitiateCheckout", value: 50000 }), ctx)
+    await funnelHandler(
+      req({ eventId: "cf-ic-1", event: "InitiateCheckout", contentIds: ["platino"] }),
+      ctx,
+    )
 
     const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
     expect(body.data[0].event_name).toBe("InitiateCheckout")
+    // El monto lo pone el SERVIDOR a partir del pack, no el navegador.
     expect(body.data[0].custom_data.value).toBe(50000)
+    expect(body.data[0].custom_data.currency).toBe("ARS")
   })
 
   it("acepta ViewContent y AddToCart (nuevos eventos server-side)", async () => {
@@ -118,7 +123,16 @@ describe("capi-funnel", () => {
     const ctx = { ip: "1.2.3.4" } as any
 
     await funnelHandler(
-      req({ eventId: "cf-sel-1", event: "turno_seleccionado", value: 50000, whatsapp: "1155554444" }),
+      req({
+        eventId: "cf-sel-1",
+        event: "turno_seleccionado",
+        value: 50000,
+        // El monto ya no se toma del body: se resuelve en el servidor a
+        // partir del pack (ver lib/packPrices.ts), así que el evento tiene
+        // que traer content_ids para llevar valor.
+        contentIds: ["platino"],
+        whatsapp: "1155554444",
+      }),
       ctx,
     )
     // Schedule salió de la lista pública (FUNNEL_EVENTS): es objetivo de
@@ -245,5 +259,83 @@ describe("capi-funnel", () => {
 
     expect(res.status).toBe(200)
     expect(fm.calls.length).toBe(0)
+  })
+
+  // Este endpoint es público y sin contraseña por diseño (lo llama cualquier
+  // visitante anónimo para mandar la copia server-side de los eventos, la que
+  // los bloqueadores no pueden tapar). Antes aceptaba el `value` del body sin
+  // verificarlo: cualquiera podía mandar cientos de "dejó los datos" por
+  // $999.999.999 y ensuciarle a Meta la optimización por valor.
+  describe("el monto lo pone el servidor, nunca el cliente", () => {
+    const ctx = { ip: "7.7.7.7" } as any
+
+    it("ignora un monto inventado y manda el precio real del pack", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+
+      await funnelHandler(
+        req({
+          eventId: "cf-hack-1",
+          event: "Lead",
+          value: 999999999, // ← lo que mandaría un atacante
+          currency: "USD",
+          contentIds: ["diamante"],
+        }),
+        ctx,
+      )
+
+      const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+      expect(cd.value).toBe(70000) // el precio real, no el inventado
+      expect(cd.value).not.toBe(999999999)
+      expect(cd.currency).toBe("ARS") // la moneda tampoco se acepta del cliente
+    })
+
+    it("sin un pack conocido el evento va SIN monto, en vez de con uno inventado", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+
+      await funnelHandler(
+        req({ eventId: "cf-hack-2", event: "Lead", value: 999999999, contentIds: ["pack-trucho"] }),
+        ctx,
+      )
+
+      const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+      expect(cd?.value).toBeUndefined()
+    })
+
+    it("con los dos packs (la sección de precios) tampoco inventa un monto", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+
+      await funnelHandler(
+        req({
+          eventId: "cf-hack-3",
+          event: "ViewContent",
+          value: 999999999,
+          contentIds: ["platino", "diamante"],
+        }),
+        ctx,
+      )
+
+      const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+      expect(cd?.value).toBeUndefined()
+    })
+
+    it("usa el precio que Eze tiene puesto en el panel, no el hardcodeado", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+      // Igual que cuando cambia un precio desde Configuración.
+      await fakeGetStore("site-config").set("site-config", {
+        prices: { platino: { ars: 55000, usd: 45 }, diamante: { ars: 80000, usd: 65 } },
+      })
+
+      await funnelHandler(
+        req({ eventId: "cf-precio-1", event: "AddToCart", contentIds: ["diamante"] }),
+        ctx,
+      )
+
+      const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+      expect(cd.value).toBe(80000)
+    })
   })
 })
