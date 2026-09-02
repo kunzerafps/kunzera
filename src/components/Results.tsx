@@ -11,7 +11,7 @@ type Metric = {
 }
 
 const METRICS: Metric[] = [
-  { label: "FPS promedio", optVal: "187", stdVal: "100", optPct: 100, stdPct: 53.5, delta: "+87%", deltaLabel: "en promedio" },
+  { label: "FPS promedio", optVal: "224", stdVal: "120", optPct: 100, stdPct: 53.6, delta: "+87%", deltaLabel: "en promedio" },
   { label: "1% Lows (estabilidad)", optVal: "130", stdVal: "100", optPct: 100, stdPct: 76.9, delta: "+30%", deltaLabel: "menos caídas de FPS" },
   { label: "Ping · menos es mejor", optVal: "28ms", stdVal: "32ms", optPct: 87.5, stdPct: 100, delta: "-13%", deltaLabel: "de ping promedio" },
   { label: "Latencia de Windows · menos es mejor", optVal: "1ms", stdVal: "15ms", optPct: 6.7, stdPct: 100, delta: "-93%", deltaLabel: "de latencia del sistema" },
