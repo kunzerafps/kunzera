@@ -38,7 +38,9 @@ describe("logMetaResponse", () => {
   it("no tira si el cuerpo no es JSON", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const res = new Response("<html>502 Bad Gateway</html>", { status: 200 })
-    await expect(logMetaResponse(res, "test")).resolves.toBeUndefined()
+    // Conservador: si el cuerpo no se puede leer, NO se afirma que Meta
+    // descartó el evento (eso cortaría envíos que hoy funcionan).
+    await expect(logMetaResponse(res, "test")).resolves.toEqual({ eventsReceivedZero: false })
     expect(warn).not.toHaveBeenCalled()
   })
 

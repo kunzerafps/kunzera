@@ -19,7 +19,7 @@
 // (metaUserData.ts), no la lógica de negocio. Store de dedup propio,
 // separado del de Purchase y del de PageView.
 import { getStore } from "@netlify/blobs"
-import { sha256Hex, stripAccents, normalizePhoneForHash } from "./metaUserData"
+import { sha256Hex, stripAccents, normalizePhoneForMeta } from "./metaUserData"
 import { metaEventsUrl } from "./metaPixelId"
 import { logMetaResponse } from "./metaResponseLog"
 import { PACKS } from "../../../src/lib/packs"
@@ -132,7 +132,11 @@ export async function sendMetaFunnelEvent(params: MetaCapiFunnelEvent): Promise<
   try {
     const userData: Record<string, string[]> = {}
     if (params.whatsapp) {
-      userData.ph = [await sha256Hex(normalizePhoneForHash(params.whatsapp))]
+      // Mismo criterio que metaCapi.ts: si el número no se puede leer como
+      // un teléfono real, no se manda `ph`. Este endpoint es público, así
+      // que acá llega lo que sea que haya en el body (ver metaUserData.ts).
+      const ph = normalizePhoneForMeta(params.whatsapp)
+      if (ph) userData.ph = [await sha256Hex(ph)]
     }
     if (params.nombre) {
       // Misma partición que metaCapi.ts: la última palabra es el apellido,

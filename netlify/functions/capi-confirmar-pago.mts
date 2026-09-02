@@ -136,7 +136,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   // mandó mp-webhook.mts. Sin alerta: señal blanda, la Compra ya avisa si falla.
   const schedulePromise = sendConfirmedBookingScheduleEvent({
     idempotencyKey: body.idempotencyKey,
-    value: Number(body.monto) || 0,
+    value: Number(body.monto),
     contentName: body.plan,
     whatsapp: body.whatsapp,
     nombre: body.nombre,
@@ -159,7 +159,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     eventId: body.idempotencyKey,
     source,
     actionSource: "website",
-    value: Number(body.monto) || 0,
+    value: Number(body.monto),
     contentName: body.plan,
     whatsapp: body.whatsapp,
     nombre: body.nombre,

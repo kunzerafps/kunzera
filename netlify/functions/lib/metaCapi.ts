@@ -26,7 +26,7 @@ const PARTNER_AGENT = "kunzera-web"
 // `normalizePhoneForHash` se re-exporta porque capi-venta-manual.mts lo
 // importa desde aca para armar el event_id determinista de las ventas
 // manuales.
-import { normalizePhoneForHash, sha256Hex, stripAccents } from "./metaUserData"
+import { normalizePhoneForHash, normalizePhoneForMeta, sha256Hex, stripAccents } from "./metaUserData"
 export { normalizePhoneForHash }
 
 // Meta rechaza el evento entero si event_time queda fuera de esta ventana
@@ -46,7 +46,10 @@ export type MetaCapiPurchase = {
   // el sitio — categoría específica de Meta para esto, mejor matcheada que
   // "website" para atribuir campañas de click-to-WhatsApp.
   actionSource: "website" | "business_messaging"
-  value: number
+  // Monto de la venta. Opcional a propósito: si llega roto (undefined, "",
+  // NaN, 0) se manda el evento SIN `value` en vez de con `value: 0` — ver el
+  // filtro adentro de sendMetaPurchaseEvent.
+  value?: number
   contentName?: string
   whatsapp?: string
   nombre?: string
@@ -159,7 +162,13 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
   try {
     const userData: Record<string, string[]> = {}
     if (params.whatsapp) {
-      userData.ph = [await sha256Hex(normalizePhoneForHash(params.whatsapp))]
+      // normalizePhoneForMeta (NO normalizePhoneForHash, que arma claves y
+      // está congelada) devuelve undefined si el número no se puede leer
+      // como un teléfono real. En ese caso no se manda `ph`: un hash que no
+      // coincide con nadie es peor que el campo ausente, porque Meta lo
+      // cuenta igual como dato provisto.
+      const ph = normalizePhoneForMeta(params.whatsapp)
+      if (ph) userData.ph = [await sha256Hex(ph)]
     }
     if (params.email) {
       // minúsculas + trim antes de hashear (ver comentario en el tipo).
@@ -204,6 +213,18 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
     if (params.clientIpAddress) rawUserData.client_ip_address = params.clientIpAddress
     if (params.clientUserAgent) rawUserData.client_user_agent = params.clientUserAgent
 
+    // Un Purchase con `value: 0` no es "menos señal": para Meta es una venta
+    // que valió nada, y arrastra hacia abajo el valor promedio con el que
+    // optimiza. Mejor mandarlo sin monto. Es el mismo criterio que ya usaba
+    // el Schedule de esta misma venta (metaCapiFunnel.ts,
+    // sendConfirmedBookingScheduleEvent) — estaba escrito de un solo lado.
+    // El filtro va acá adentro, y no en cada caller, para que valga también
+    // para cualquier camino nuevo que mande una Compra.
+    const value =
+      typeof params.value === "number" && Number.isFinite(params.value) && params.value > 0
+        ? params.value
+        : undefined
+
     const contentPrettyName = params.contentName
       ? PACKS[params.contentName as Pack]?.name ?? params.contentName
       : undefined
@@ -237,7 +258,7 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
           user_data: { ...userData, ...rawUserData },
           custom_data: {
             currency: "ARS",
-            value: params.value,
+            value,
             // contentName llega de los callers como el slug interno
             // ("platino"/"diamante") — content_name usa el nombre
             // visible del pack para que el reporting de Meta sea
@@ -252,13 +273,22 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
             // items. Ayuda al reporting por producto y a la optimización por
             // valor.
             contents: params.contentName
-              ? [{ id: params.contentName, quantity: 1, item_price: params.value }]
+              ? [{ id: params.contentName, quantity: 1, item_price: value }]
               : undefined,
             order_id: params.eventId,
             num_items: 1,
             // Solo en ventas manuales por WhatsApp: de qué anuncio dice el
             // cliente que vino. Antes se guardaba en el panel y se tiraba.
-            ...(params.campania ? { campania: params.campania } : {}),
+            //
+            // Va adentro de `custom_properties` y no suelto en `custom_data`:
+            // `custom_data` tiene un esquema cerrado (value, currency,
+            // content_ids, contents, order_id, num_items…) y las claves
+            // propias van en `custom_properties` según la spec de Meta.
+            // Suelta arriba, Meta responde 200 y la descarta con una
+            // advertencia — o sea que el único dato de origen que hay para
+            // las ventas cerradas por WhatsApp se seguía tirando igual, sólo
+            // que ahora del lado de Meta en vez del panel.
+            ...(params.campania ? { custom_properties: { campania: params.campania } } : {}),
           },
         },
       ],
@@ -306,7 +336,23 @@ export async function sendMetaPurchaseEvent(params: MetaCapiPurchase): Promise<M
           // El cuerpo se lee ACÁ, con el timer del intento todavía armado:
           // si Meta responde 200 pero el stream del cuerpo se cuelga, el
           // abort lo corta en vez de dejar la función colgada para siempre.
-          await logMetaResponse(r, "metaCapi:Purchase")
+          const info = await logMetaResponse(r, "metaCapi:Purchase")
+          if (info.eventsReceivedZero) {
+            // Meta aceptó el request pero descartó el evento: para Meta esta
+            // venta NO existe. Antes se marcaba como enviada igual, y quedaba
+            // "ok" en los cuatro lugares que miran ese estado (capi-events-sent,
+            // deliveryLog, markProcessed de Mercado Pago y metaStatus de la
+            // venta manual) — o sea, imposible de reintentar desde el panel y
+            // sin más rastro que un console.warn.
+            //
+            // No se reintenta en el acto: el payload sería idéntico, así que
+            // daría lo mismo y gastaría el presupuesto de tiempo. Se corta y
+            // se devuelve error, que es lo que deja el camino de reintento
+            // abierto (botón "Reintentar aviso a Meta", barrido del panel y,
+            // en Mercado Pago, el reintento del webhook).
+            lastError = "events_received_0"
+            break
+          }
           res = r
           break
         }

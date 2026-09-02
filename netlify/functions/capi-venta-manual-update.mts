@@ -4,6 +4,8 @@ import { sendMetaPurchaseEvent, MAX_EVENT_AGE_DAYS } from "./lib/metaCapi"
 import { sendMetaCancelEvent } from "./lib/metaCapiCancel"
 import { isRateLimited } from "./lib/rateLimit"
 import { getManualSaleByEvent, updateManualSaleByEvent } from "./lib/manualSalesStore"
+import { getPhoneAttribution } from "./lib/attribution"
+import { normalizePhoneForHash, sha256Hex } from "./lib/metaUserData"
 
 // Acciones sobre una venta ya registrada (ver lib/manualSalesStore.ts):
 //   - "cancel"            -> marca la venta como caída (el cliente se
@@ -146,6 +148,16 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       return Response.json({ ok: false, error: "fecha_muy_vieja" }, { status: 400 })
     }
 
+    // Rastro del anuncio, igual que en el alta (capi-venta-manual.mts). Sin
+    // esto el reintento mandaba un evento PEOR que el original: sólo
+    // teléfono/nombre/mail, sin fbc/fbp/IP/geo/external_id ni campaña — o
+    // sea, sin nada que permitiera atribuirle la venta al anuncio que la
+    // trajo. Y es justo el camino que corre cuando el primer envío falló,
+    // así que degradaba exactamente las ventas que más lo necesitaban.
+    const phoneTrail = await getPhoneAttribution(
+      await sha256Hex(normalizePhoneForHash(venta.whatsapp)),
+    ).catch(() => null)
+
     const result = await sendMetaPurchaseEvent({
       eventId: venta.metaEventId,
       source: "venta_manual",
@@ -155,7 +167,18 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       whatsapp: venta.whatsapp,
       nombre: venta.nombre,
       email: venta.email,
-      countryCode: "ar",
+      // El geo real de la visita gana sobre el "ar" fijo, mismo criterio
+      // que el alta.
+      countryCode: phoneTrail?.countryCode || "ar",
+      fbp: phoneTrail?.fbp,
+      fbc: phoneTrail?.fbc,
+      clientIpAddress: phoneTrail?.ip,
+      clientUserAgent: phoneTrail?.userAgent,
+      city: phoneTrail?.city,
+      region: phoneTrail?.region,
+      postalCode: phoneTrail?.postalCode,
+      externalId: phoneTrail?.visitorId,
+      campania: venta.campania,
       eventTime,
       saleDate: venta.saleDate,
     })

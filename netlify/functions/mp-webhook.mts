@@ -259,7 +259,7 @@ async function sendMercadoPagoCapiEvent(
   // pago, sin demora humana.
   const schedulePromise = sendConfirmedBookingScheduleEvent({
     idempotencyKey,
-    value: Number(meta.monto) || 0,
+    value: Number(meta.monto),
     contentName: meta.plan,
     whatsapp: meta.whatsapp,
     nombre: meta.nombre,
@@ -281,7 +281,7 @@ async function sendMercadoPagoCapiEvent(
     eventId: idempotencyKey,
     source: "mercadopago",
     actionSource: "website",
-    value: Number(meta.monto) || 0,
+    value: Number(meta.monto),
     contentName: meta.plan,
     whatsapp: meta.whatsapp,
     nombre: meta.nombre,

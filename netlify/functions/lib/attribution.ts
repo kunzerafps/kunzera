@@ -49,7 +49,42 @@ export type AttributionData = {
 }
 
 export async function saveAttribution(idempotencyKey: string, data: AttributionData): Promise<void> {
-  await getStore(STORE_NAME).setJSON(idempotencyKey, data)
+  const store = getStore(STORE_NAME)
+
+  // No pisar con vacío un rastro que ya estaba completo. Mismo criterio que
+  // savePhoneAttribution de más abajo, que ya tenía este guard; acá faltaba,
+  // y este blob es el que alimenta la Compra de transferencia y de Mercado
+  // Pago (o sea, la mayoría de las ventas del sitio).
+  //
+  // Por qué pasa: PaymentStep.tsx vuelve a capturar CADA vez que se entra a
+  // la pantalla de pago, a propósito, como red de seguridad. Un borrador se
+  // puede retomar hasta 24hs después con el MISMO idempotencyKey. Si en el
+  // medio venció la cookie _fbc, la persona cambió de perfil o entró sin
+  // pasar por el anuncio, la segunda captura llegaba sin fbc/email y
+  // sobrescribía el rastro bueno de la primera.
+  //
+  // Se conserva campo por campo (no se descarta la escritura entera): lo
+  // nuevo gana cuando trae dato, y lo viejo sobrevive sólo donde lo nuevo
+  // viene vacío.
+  let previous: AttributionData | null = null
+  try {
+    previous = (await store.get(idempotencyKey, { type: "json" })) as AttributionData | null
+  } catch {
+    // Lectura falló: se guarda lo nuevo tal cual, como antes de este guard.
+  }
+
+  if (previous) {
+    const merged = { ...previous } as Record<string, unknown>
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined && value !== "") merged[key] = value
+    }
+    // capturedAt siempre es el de esta captura, aunque el resto se conserve.
+    merged.capturedAt = data.capturedAt
+    await store.setJSON(idempotencyKey, merged as AttributionData)
+    return
+  }
+
+  await store.setJSON(idempotencyKey, data)
 }
 
 // Best-effort: si Blobs falla o no hay nada guardado (reserva vieja, de

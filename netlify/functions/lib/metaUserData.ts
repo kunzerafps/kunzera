@@ -52,3 +52,85 @@ export function normalizePhoneForHash(whatsapp: string): string {
   }
   return "549" + digits
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Teléfono que se le manda a META como `ph`.
+//
+// Es DISTINTA de normalizePhoneForHash de arriba, y a propósito:
+//
+//   - normalizePhoneForHash arma CLAVES (el event_id determinístico de las
+//     ventas manuales y la clave del índice attribution-by-phone). Una clave
+//     solo tiene que ser estable, no correcta: si se cambia, una venta ya
+//     cargada pasa a calcular otro event_id y Meta la puede contar DOS
+//     VECES. Por eso queda congelada tal cual está.
+//   - esta función arma el DATO que viaja a Meta, que sí tiene que ser
+//     correcto o no coincide con nadie.
+//
+// Qué arregla respecto de la otra (los tres casos producían un hash con
+// forma válida que Meta contaba como "dato provisto" y que no coincidía con
+// ningún usuario jamás — peor que no mandar nada, porque infla la cobertura
+// de parámetros del dataset con señal muerta):
+//
+//   a) Número de otro país ("+56 9 1234 5678"): se le anteponía "549"
+//      igual, quedando "54956912345678". Ahora se pasa tal cual, que es el
+//      formato internacional que Meta espera.
+//   b) Prefijo internacional a la vieja usanza ("0054 9 11 ..."): no
+//      entraba por la rama del código de país (empieza con "005"), caía en
+//      la del "0" de larga distancia y terminaba en 17 dígitos. Ahora el
+//      "00" se saca ANTES de mirar el código de país.
+//   c) Basura o número incompleto (" ", "12", 8 dígitos sin código de
+//      área): devolvía "549" + lo que hubiera. Ahora devuelve undefined y
+//      el llamador simplemente no manda `ph`.
+//
+// Devuelve undefined cuando no se puede afirmar que sea un teléfono real.
+export function normalizePhoneForMeta(whatsapp: string): string | undefined {
+  let digits = (whatsapp ?? "").replace(/\D/g, "")
+  if (!digits) return undefined
+
+  // (b) "00" = prefijo internacional. Va primero, si no deforma el resto.
+  if (digits.startsWith("00")) digits = digits.slice(2)
+
+  // Forma internacional del número, antes de intentar leerlo como argentino.
+  // Se guarda para el fallback de (a) más abajo.
+  const international = digits
+
+  let hadArCountryCode = false
+  if (digits.startsWith("549")) {
+    digits = digits.slice(3)
+    hadArCountryCode = true
+  } else if (digits.startsWith("54") && digits.length > 10) {
+    digits = digits.slice(2)
+    hadArCountryCode = true
+  }
+
+  // "0" de larga distancia local. Sin condicionar al código de país, igual
+  // que normalizePhoneForHash — hay quien escribe "+54 9 011 ...".
+  if (digits.startsWith("0")) digits = digits.slice(1)
+
+  // "15" pre-unificación, mismo criterio exacto que normalizePhoneForHash
+  // (ver el comentario largo allá arriba): se saca sólo cuando queda un
+  // número argentino de 10 dígitos, para no comerse un "15" legítimo.
+  for (const areaLen of [2, 3, 4]) {
+    if (digits.length === 12 && digits.slice(areaLen, areaLen + 2) === "15") {
+      digits = digits.slice(0, areaLen) + digits.slice(areaLen + 2)
+      break
+    }
+  }
+
+  // Un celular argentino es código de área + número local = 10 dígitos, y
+  // todos los códigos de área del país empiezan con 1, 2 o 3 (11 el AMBA,
+  // 2xx/2xxx y 3xx/3xxx el resto). Ese chequeo es el que evita que un
+  // número extranjero que por casualidad quedó en 10 dígitos se disfrace de
+  // argentino.
+  if (digits.length === 10 && /^[123]/.test(digits)) return "549" + digits
+
+  // (a) No se pudo leer como argentino pero ya trae su propio código de
+  // país: se manda tal cual. Meta pide dígitos en formato internacional, y
+  // así un cliente de Chile o Uruguay al menos tiene chance de coincidir.
+  if (!hadArCountryCode && international.length >= 11 && international.length <= 15) {
+    return international
+  }
+
+  // (c) Ni argentino ni internacional plausible: mejor no mandar nada.
+  return undefined
+}

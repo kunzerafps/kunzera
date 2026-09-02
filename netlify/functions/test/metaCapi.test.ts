@@ -545,7 +545,10 @@ describe("consistencia de la integración con Meta", () => {
     })
 
     const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
-    expect(cd.campania).toBe("REELS AGOSTO")
+    // Dentro de custom_properties, no suelto en custom_data: custom_data
+    // tiene esquema cerrado y Meta descarta las claves que no conoce.
+    expect(cd.custom_properties).toEqual({ campania: "REELS AGOSTO" })
+    expect(cd.campania).toBeUndefined()
   })
 
   it("sin campaña no manda el campo vacío", async () => {
@@ -561,5 +564,112 @@ describe("consistencia de la integración con Meta", () => {
 
     const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
     expect(cd.campania).toBeUndefined()
+    expect(cd.custom_properties).toBeUndefined()
+  })
+
+  // ─── Monto roto: se manda SIN value, nunca con value: 0 ───────────────
+  //
+  // Un Purchase con value 0 no es "menos señal": para Meta es una venta que
+  // valió nada y arrastra el promedio con el que optimiza. Los callers de
+  // transferencia y de Mercado Pago hacían Number(monto), que ante un monto
+  // ausente o roto daba NaN/0.
+  describe("value roto", () => {
+    for (const [etiqueta, valorRoto] of [
+      ["undefined", undefined],
+      ["NaN", Number("")],
+      ["cero", 0],
+      ["negativo", -50000],
+    ] as const) {
+      it(`no manda value cuando el monto es ${etiqueta}`, async () => {
+        const fm = installFetchMock()
+        fm.on("graph.facebook.com", () => jsonResponse({}))
+
+        await sendMetaPurchaseEvent({
+          eventId: `valor-${etiqueta}`,
+          source: "mercadopago",
+          actionSource: "website",
+          value: valorRoto,
+          contentName: "platino",
+        })
+
+        const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0]
+          .custom_data
+        expect(cd.value).toBeUndefined()
+        // El item de `contents` tampoco puede llevar un precio inventado.
+        expect(cd.contents[0].item_price).toBeUndefined()
+        // El resto del evento se manda igual: perder el monto no es motivo
+        // para perder la venta.
+        expect(cd.content_ids).toEqual(["platino"])
+      })
+    }
+
+    it("un monto válido sigue viajando igual", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+
+      await sendMetaPurchaseEvent({
+        eventId: "valor-ok",
+        source: "mercadopago",
+        actionSource: "website",
+        value: 70000,
+        contentName: "diamante",
+      })
+
+      const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0]
+        .custom_data
+      expect(cd.value).toBe(70000)
+      expect(cd.contents[0].item_price).toBe(70000)
+    })
+  })
+
+  // ─── Meta responde 200 pero descarta el evento ────────────────────────
+  //
+  // events_received=0 significa que para Meta esa venta NO existe. Antes se
+  // marcaba como enviada igual y quedaba imposible de reintentar desde el
+  // panel.
+  describe("events_received = 0", () => {
+    it("no lo da por enviado y devuelve error reintentable", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {})
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({ events_received: 0, messages: [] }))
+
+      const r = await sendMetaPurchaseEvent({
+        eventId: "descartado-1",
+        source: "venta_manual",
+        actionSource: "business_messaging",
+        value: 50000,
+      })
+
+      expect(r.ok).toBe(false)
+      expect(r.ok === false && r.error).toBe("events_received_0")
+    })
+
+    it("con events_received=1 sigue dando enviado", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({ events_received: 1, messages: [] }))
+
+      const r = await sendMetaPurchaseEvent({
+        eventId: "recibido-1",
+        source: "venta_manual",
+        actionSource: "business_messaging",
+        value: 50000,
+      })
+
+      expect(r.ok).toBe(true)
+    })
+
+    it("si Meta no informa events_received, se sigue dando por enviado", async () => {
+      const fm = installFetchMock()
+      fm.on("graph.facebook.com", () => jsonResponse({}))
+
+      const r = await sendMetaPurchaseEvent({
+        eventId: "sin-campo-1",
+        source: "venta_manual",
+        actionSource: "business_messaging",
+        value: 50000,
+      })
+
+      expect(r.ok).toBe(true)
+    })
   })
 })

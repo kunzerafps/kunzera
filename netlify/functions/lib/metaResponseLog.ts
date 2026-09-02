@@ -9,9 +9,15 @@
 //     que un evento "aceptado pero degradado" no dejaba ningún rastro.
 //   - `fbtrace_id`: id para pegar en un ticket de soporte de Meta.
 //
-// Es sólo logging: no cambia el valor de retorno de quien llama (una
-// advertencia no es un fallo). Best-effort y a prueba de todo — si el cuerpo
-// no es JSON, o ya se consumió, no pasa nada.
+// Las ADVERTENCIAS siguen siendo sólo logging (una advertencia no es un
+// fallo). Pero `events_received: 0` sí se devuelve al que llama: eso no es
+// una advertencia, es que el evento no existe para Meta, y quien lo mandó
+// tiene que poder decidir no marcarlo como entregado. Best-effort y a prueba
+// de todo — si el cuerpo no es JSON, o ya se consumió, se informa "no sé" y
+// el caller sigue como antes.
+//
+// `eventsReceivedZero` es true SÓLO si Meta dijo explícitamente 0. Si el
+// campo no viene, es false (conservador: no romper un envío que funciona).
 
 type MetaEventsResponse = {
   events_received?: number
@@ -19,15 +25,17 @@ type MetaEventsResponse = {
   fbtrace_id?: string
 }
 
-export async function logMetaResponse(res: Response, context: string): Promise<void> {
+export type MetaResponseInfo = { eventsReceivedZero: boolean }
+
+export async function logMetaResponse(res: Response, context: string): Promise<MetaResponseInfo> {
   try {
     const raw = await res.clone().text()
-    if (!raw) return
+    if (!raw) return { eventsReceivedZero: false }
     let parsed: MetaEventsResponse
     try {
       parsed = JSON.parse(raw) as MetaEventsResponse
     } catch {
-      return
+      return { eventsReceivedZero: false }
     }
 
     const messages = Array.isArray(parsed.messages) ? parsed.messages : []
@@ -43,8 +51,10 @@ export async function logMetaResponse(res: Response, context: string): Promise<v
         `[${context}] Meta respondió 2xx pero events_received=0 — el evento no se contabilizó.`,
         parsed.fbtrace_id ? `(fbtrace_id ${parsed.fbtrace_id})` : "",
       )
+      return { eventsReceivedZero: true }
     }
   } catch {
     // Nunca romper el flujo por un problema al loguear la respuesta.
   }
+  return { eventsReceivedZero: false }
 }

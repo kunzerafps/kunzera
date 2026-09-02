@@ -12,7 +12,7 @@
 // Comparte solo los helpers puros de hash con el resto del proyecto
 // (metaUserData.ts). Store de deduplicación propio.
 import { getStore } from "@netlify/blobs"
-import { sha256Hex, stripAccents, normalizePhoneForHash } from "./metaUserData"
+import { sha256Hex, stripAccents, normalizePhoneForMeta } from "./metaUserData"
 import { metaEventsUrl } from "./metaPixelId"
 
 const ALREADY_SENT_STORE = "capi-cancel-events-sent"
@@ -48,7 +48,11 @@ export async function sendMetaCancelEvent(p: MetaCancelEvent): Promise<MetaCance
   }
 
   const userData: Record<string, string[]> = {}
-  if (p.whatsapp) userData.ph = [await sha256Hex(normalizePhoneForHash(p.whatsapp))]
+  if (p.whatsapp) {
+    // Mismo criterio que metaCapi.ts: sin teléfono legible, sin `ph`.
+    const ph = normalizePhoneForMeta(p.whatsapp)
+    if (ph) userData.ph = [await sha256Hex(ph)]
+  }
   if (p.email) userData.em = [await sha256Hex(p.email.trim().toLowerCase())]
   if (p.nombre) {
     const words = p.nombre.trim().toLowerCase().split(/\s+/)
