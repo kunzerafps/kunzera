@@ -126,4 +126,16 @@ describe("captureAttribution", () => {
     expect(body.fbc).toBeUndefined()
     expect(body.visitorId).toBe("visitante-123")
   })
+
+  it("sesión interna: NO guarda el rastro — una reserva de prueba no puede terminar en una Compra matcheada contra el equipo", async () => {
+    stubBrowser()
+    // Dispositivo con la marca de login al panel (lo que setea useAdminGate).
+    vi.stubGlobal("window", { location: { hash: "", search: "" } })
+    localStorage.setItem("kz_staff", String(Date.now()))
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(await captureAttribution("pedido-de-prueba")).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })

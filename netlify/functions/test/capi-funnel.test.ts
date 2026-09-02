@@ -174,7 +174,7 @@ describe("capi-funnel", () => {
     }
   })
 
-  it("un array gigante de contentIds se recorta a 5", async () => {
+  it("content_ids inventados NO llegan a Meta: sólo pasan los slugs de pack reconocidos", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
     const ctx = { ip: "1.2.3.4" } as any
@@ -183,7 +183,51 @@ describe("capi-funnel", () => {
     await funnelHandler(req({ eventId: "cf-many", event: "AddToCart", contentIds: many }), ctx)
 
     const body = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body))
-    expect(body.data[0].custom_data.content_ids).toHaveLength(5)
+    // Endpoint público sin contraseña: content_ids es lo que agrupa públicos y
+    // catálogo en Meta, así que basura de afuera se descarta entera.
+    expect(body.data[0].custom_data?.content_ids).toBeUndefined()
+  })
+
+  it("de una mezcla de slugs reales y basura sobreviven sólo los packs", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "1.2.3.4" } as any
+
+    await funnelHandler(
+      req({
+        eventId: "cf-mix-1",
+        event: "AddToCart",
+        contentIds: ["diamante", "pack-trucho"],
+        contentName: "Pack Diamante",
+      }),
+      ctx,
+    )
+
+    const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+    expect(cd.content_ids).toEqual(["diamante"])
+  })
+
+  it("si mandó content_ids y ninguno era un pack, tampoco se le cree el content_name", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "1.2.3.4" } as any
+
+    await funnelHandler(
+      req({
+        eventId: "cf-mix-2",
+        event: "AddToCart",
+        contentIds: ["pack-trucho"],
+        contentName: "basura-del-atacante",
+      }),
+      ctx,
+    )
+
+    // metaCapiFunnel tiene una rama de compat que arma content_ids a partir
+    // del content_name cuando no hay ids: sin este corte, la basura entraba
+    // igual por esa ventana.
+    const cd = JSON.parse(String(fm.callsTo("graph.facebook.com")[0].init?.body)).data[0].custom_data
+    expect(cd?.content_ids).toBeUndefined()
+    expect(cd?.content_name).toBeUndefined()
   })
 
   it("acepta el evento Contact (tocó WhatsApp) y le adjunta id de navegador + IP para la atribución", async () => {

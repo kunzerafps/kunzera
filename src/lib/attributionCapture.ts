@@ -1,4 +1,5 @@
 import { getFbc, getFbp } from "./cookies"
+import { isStaffSession } from "./pixel"
 import { getStoredUtm } from "./utm"
 import { getVisitorId } from "./visitorId"
 
@@ -38,6 +39,13 @@ export async function captureAttribution(
   email?: string,
 ): Promise<boolean> {
   if (!idempotencyKey) return false
+  // Corte de sesión interna. Era el ÚNICO envío de tracking del sitio que no
+  // lo tenía (los otros cuatro sí: pixel.ts, useServerPageView.ts,
+  // index.html). Una reserva de prueba hecha con el panel abierto guardaba
+  // las cookies del propio equipo contra ese pedido, y al marcarlo "atendido"
+  // salía una Compra matcheada contra ellos: no infla el conteo de ventas,
+  // pero mete al equipo en el público de compradores de Meta.
+  if (isStaffSession()) return false
 
   const utm = getStoredUtm()
   const body = JSON.stringify({

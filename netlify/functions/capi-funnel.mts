@@ -81,6 +81,15 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   // hay un monto único honesto — mejor sin `value` que con uno inventado.
   const contentIds = strArray(body.contentIds)
   const packSlugs = contentIds?.filter(isPackSlug) ?? []
+  // `content_ids` es lo que agrupa públicos y catálogo en Meta, y este
+  // endpoint es público: se manda SÓLO lo que el servidor reconoce como pack.
+  const safeContentIds = packSlugs.length > 0 ? packSlugs : undefined
+  // Si mandó content_ids y ninguno era un pack, tampoco se le cree el
+  // content_name: la rama de compatibilidad de metaCapiFunnel fabrica
+  // `content_ids = [contentName]` cuando no hay ids, y la basura volvería a
+  // entrar por la ventana. Contact no se toca: ahí el contentName es de DÓNDE
+  // tocaron WhatsApp y nunca se convierte en content_ids.
+  const safeContentName = contentIds && !safeContentIds ? undefined : str(body.contentName)
   const serverValue =
     packSlugs.length === 1 ? (await getServerPackPricesArs())[packSlugs[0]] : undefined
 
@@ -106,8 +115,8 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       // La moneda también se fija acá: si el monto lo pone el servidor, la
       // moneda no puede venir del cliente.
       currency: serverValue !== undefined ? "ARS" : undefined,
-      contentName: str(body.contentName),
-      contentIds,
+      contentName: safeContentName,
+      contentIds: safeContentIds,
       contentType: str(body.contentType),
     })
   } catch (err) {

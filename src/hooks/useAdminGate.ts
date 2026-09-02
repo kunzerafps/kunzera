@@ -52,8 +52,16 @@ export function useAdminGate() {
         try {
           localStorage.setItem("kz_staff", String(Date.now()))
         } catch {
-          // localStorage no disponible — el chequeo de "#admin" igual cubre
-          // la sesión del panel en curso.
+          /* localStorage bloqueado (modo privado) — queda la marca de sesión */
+        }
+        // Respaldo de la marca anterior, acotado a esta sesión del navegador.
+        // Antes este caso lo cubría el hash "#admin", pero ese chequeo se sacó:
+        // no pide contraseña, así que un link compartido con "#admin" dejaba
+        // sin tracking a un cliente real. Ver src/lib/pixel.ts isStaffSession.
+        try {
+          sessionStorage.setItem("kz_admin", "1")
+        } catch {
+          /* noop */
         }
         setPhase("authed")
         return true

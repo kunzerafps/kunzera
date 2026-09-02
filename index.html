@@ -64,7 +64,14 @@
         if (m) {
           var fbclid = decodeURIComponent(m[1]);
           var existing = (document.cookie.match(/(?:^|;\s*)_fbc=([^;]*)/) || [])[1];
-          if (!existing || existing.split('.').pop() !== fbclid) {
+          // El fbclid es todo lo que va DESPUÉS del tercer punto
+          // ('fb.1.<timestamp>.<fbclid>') y el propio fbclid puede traer
+          // puntos. Mismo criterio que src/lib/deeplink.ts (parts.slice(3)):
+          // con split('.').pop() un fbclid con punto nunca coincidía y se
+          // reescribía _fbc con hora nueva en cada carga de la misma visita.
+          var existingParts = existing ? existing.split('.') : [];
+          var existingClid = existingParts.length > 3 ? existingParts.slice(3).join('.') : '';
+          if (!existing || existingClid !== fbclid) {
             var fbc = 'fb.1.' + Date.now() + '.' + fbclid;
             document.cookie = '_fbc=' + fbc + ';path=/;max-age=7776000;samesite=lax';
             window.__kunzeraFbc = fbc;
@@ -101,25 +108,38 @@
     // optimización de Meta (se termina pagando por mostrarle anuncios al
     // propio equipo). Misma lógica que src/lib/pixel.ts isStaffSession —
     // duplicada acá porque este HTML es estático y no puede importar.
-    //   - '?kz_track=1' en la URL: escotilla, borra la marca y trackea normal.
-    //   - '#admin' en la URL: se está abriendo el panel ahora.
     //   - localStorage 'kz_staff': timestamp del último login al panel (lo
     //     setea src/hooks/useAdminGate.ts); vence a los 90 días.
+    //   - sessionStorage 'kz_admin': login al panel en ESTA sesión (respaldo
+    //     para cuando localStorage está bloqueado).
+    //   - '?kz_track=1' en la URL: escotilla POR ESTA VISITA; deja una marca
+    //     en sessionStorage y NO borra 'kz_staff'. Borrarla apagaba la marca
+    //     del dispositivo PARA SIEMPRE y un equipo del staff podía quedar
+    //     emitiendo eventos como si fuera un cliente sin que nadie lo supiera.
+    //   El hash '#admin' SOLO ya no alcanza: no hay contraseña de por medio,
+    //   así que un link compartido con ese hash dejaba sin tracking a un
+    //   cliente real. Costo asumido: la primera carga del panel en un
+    //   dispositivo nuevo, antes de loguearse, cuenta como visita normal.
     var __kzStaff = false;
     try {
       var __KZ_TTL = 7776000000; // 90 días en ms
+      var __kzTrack = false;
       if (/[?&]kz_track=1(?:&|$)/.test(window.location.search)) {
-        try { localStorage.removeItem('kz_staff'); } catch (e2) {}
-        __kzStaff = false;
-      } else if (window.location.hash === '#admin') {
-        __kzStaff = true;
+        try { sessionStorage.setItem('kz_track', '1'); } catch (e2) {}
+        __kzTrack = true;
       } else {
+        try { __kzTrack = sessionStorage.getItem('kz_track') === '1'; } catch (e2) {}
+      }
+      if (!__kzTrack) {
         var __kzRaw = localStorage.getItem('kz_staff');
         if (__kzRaw === '1') {
           __kzStaff = true; // valor viejo pre-timestamp
         } else if (__kzRaw) {
           var __kzTs = Number(__kzRaw);
           __kzStaff = isFinite(__kzTs) && (Date.now() - __kzTs) < __KZ_TTL;
+        }
+        if (!__kzStaff) {
+          try { __kzStaff = sessionStorage.getItem('kz_admin') === '1'; } catch (e2) {}
         }
       }
     } catch (e) { /* localStorage bloqueado: se trata como visitante normal */ }

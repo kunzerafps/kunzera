@@ -24,7 +24,7 @@ El mail del cliente viaja por otro camino: `capture-attribution` → blob `attri
 
 ### 3. Todo `fetch` de tracking cerca de una navegación necesita `keepalive: true`
 
-Sin eso el navegador mata el pedido cuando la página se descarga. Fue la causa raíz de dos agujeros grandes: el guardado del rastro del anuncio (la persona toca "Pagar con Mercado Pago" y se va) y el PageView server-side (arranca a los 400ms y el tráfico de anuncios rebota antes). Ver `src/lib/attributionCapture.ts` y `src/hooks/useServerPageView.ts`.
+Sin eso el navegador mata el pedido cuando la página se descarga. Fue la causa raíz de dos agujeros grandes: el guardado del rastro del anuncio (la persona toca "Pagar con Mercado Pago" y se va) y el PageView server-side (arranca a los 400ms y el tráfico de anuncios rebota antes). Ver `src/lib/attributionCapture.ts`, `src/hooks/useServerPageView.ts` y `src/lib/pixel.ts` (el POST a `/api/capi-funnel`, que era la última excepción y se cerró en la ronda 4).
 
 ### 4. No reconstruir el chequeo diario
 

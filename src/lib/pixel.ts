@@ -8,36 +8,66 @@ type Fbq = (...args: unknown[]) => void
 // ayuda deben generar eventos de Meta: contarlos como "visitas" mete tráfico
 // interno en los públicos de remarketing y en el modelo de optimización, y
 // termina haciendo que se pague por mostrar anuncios al propio equipo.
-//   - `#admin` en la URL: se está abriendo el panel ahora mismo.
 //   - localStorage `kz_staff`: timestamp del último login al panel en este
 //     dispositivo (lo setea useAdminGate) — cubre navegar el sitio normal
 //     después. Vence a los STAFF_TTL_MS para que abrir el panel una vez en la
 //     PC de un cliente no la deje sin tracking para siempre.
-//   - `?kz_track=1` en la URL: escotilla — borra la marca de este dispositivo
-//     y fuerza tracking normal (para volver a testear el sitio real).
+//   - sessionStorage `kz_admin`: login al panel en ESTA sesión. Respaldo para
+//     cuando localStorage está bloqueado (modo privado) — antes ese caso lo
+//     cubría el hash `#admin`.
+//   - `?kz_track=1` en la URL: escotilla POR ESTA VISITA (sessionStorage
+//     `kz_track`). NO borra la marca del dispositivo: borrarla la apagaba
+//     PARA SIEMPRE, así que un equipo del staff podía quedar emitiendo eventos
+//     como si fuera un cliente sin que nadie se enterara.
+//
+// El hash `#admin` SOLO ya NO alcanza para dar por interna la sesión: no hay
+// contraseña de por medio, así que pasar un link con ese hash por WhatsApp
+// dejaba sin tracking a un cliente real. Costo asumido: la PRIMERA carga del
+// panel en un dispositivo nuevo (antes de loguearse) cuenta como visita
+// normal — un PageView por dispositivo, una sola vez.
+//
 // La MISMA lógica está duplicada, más chica, en el script inline de
 // index.html (ese HTML es estático y no puede importar de acá).
 const STAFF_TTL_MS = 90 * 24 * 60 * 60 * 1000
+const TRACK_KEY = "kz_track"
+const ADMIN_KEY = "kz_admin"
+
+// sessionStorage puede no existir (tests en node) o tirar excepción (modo
+// privado). Se aísla en su propio try para que un fallo suyo no tape el
+// chequeo de localStorage que viene después.
+function sessionGet(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function sessionSet(key: string, value: string): void {
+  try {
+    sessionStorage.setItem(key, value)
+  } catch {
+    /* noop */
+  }
+}
 
 export function isStaffSession(): boolean {
   try {
     if (typeof window === "undefined") return false
     if (/[?&]kz_track=1(?:&|$)/.test(window.location.search)) {
-      try {
-        localStorage.removeItem("kz_staff")
-      } catch {
-        /* noop */
-      }
+      sessionSet(TRACK_KEY, "1")
       return false
     }
-    if (window.location.hash === "#admin") return true
+    if (sessionGet(TRACK_KEY) === "1") return false
     const raw = localStorage.getItem("kz_staff")
-    if (!raw) return false
     // Compat con el valor viejo "1" (pre-timestamp): sigue valiendo hasta que
     // el próximo login lo reescriba como timestamp.
     if (raw === "1") return true
-    const ts = Number(raw)
-    return Number.isFinite(ts) && Date.now() - ts < STAFF_TTL_MS
+    if (raw) {
+      const ts = Number(raw)
+      if (Number.isFinite(ts) && Date.now() - ts < STAFF_TTL_MS) return true
+    }
+    return sessionGet(ADMIN_KEY) === "1"
   } catch {
     return false
   }
@@ -159,5 +189,10 @@ export function trackServerBackedEvent(
       contentIds: contentIds && contentIds.length > 0 ? contentIds : undefined,
       contentType: typeof params?.content_type === "string" ? params.content_type : undefined,
     }),
+    // Muchos de estos eventos salen justo antes de una navegación (tocar
+    // "Pagar con Mercado Pago", abrir WhatsApp): sin keepalive el navegador
+    // mata el pedido en vuelo cuando la página se descarga. Misma regla que
+    // attributionCapture.ts y metaCapiPageView.
+    keepalive: true,
   }).catch(() => {})
 }
