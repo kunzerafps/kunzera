@@ -33,6 +33,31 @@ describe("capi-funnel", () => {
     expect(userData.ph[0]).toHaveLength(64)
   })
 
+  // El emisor compartido (metaCapiFunnel) SÍ sabe mandar `em` — lo usa el
+  // Schedule server-side. Pero este endpoint es público y sin contraseña:
+  // si le creyera el mail al cliente, cualquiera podría atar el mail de otra
+  // persona a un evento inventado y ensuciarle a Meta el emparejamiento.
+  // Mismo criterio que el `value`, que tampoco se toma del navegador.
+  it("IGNORA un `email` mandado por el cliente — el endpoint es público", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "201.201.201.201" } as any
+
+    await funnelHandler(
+      req({
+        eventId: "cf-email-1",
+        event: "Lead",
+        whatsapp: "1123456789",
+        email: "victima@gmail.com",
+      }),
+      ctx,
+    )
+
+    const body = String(fm.callsTo("graph.facebook.com")[0].init?.body)
+    expect(JSON.parse(body).data[0].user_data.em).toBeUndefined()
+    expect(body).not.toContain("victima@gmail.com")
+  })
+
   it("pasa la geo de ctx.geo a Meta (nombre de provincia, no código)", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))

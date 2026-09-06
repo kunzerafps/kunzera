@@ -263,6 +263,9 @@ async function sendMercadoPagoCapiEvent(
     contentName: meta.plan,
     whatsapp: meta.whatsapp,
     nombre: meta.nombre,
+    // Mismo mail que el Purchase de abajo: el del chat si lo dejó, si no el
+    // del pagador de Mercado Pago (ver payerEmail más arriba).
+    email: payerEmail,
     fbp: attribution?.fbp,
     fbc: attribution?.fbc,
     clientIpAddress: attribution?.ip,

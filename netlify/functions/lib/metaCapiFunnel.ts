@@ -63,6 +63,17 @@ export type MetaCapiFunnelEvent = {
   // PII — se hashean acá antes de salir a Meta (nunca viajan en texto plano).
   whatsapp?: string
   nombre?: string
+  // Email del comprador. Mismo criterio exacto que metaCapi.ts (Purchase):
+  // SHA-256 sobre minúsculas + trim, y NO se le sacan acentos (un email es
+  // ASCII; "normalizar de más" solo rompería el match).
+  //
+  // ⚠️ Sólo lo pasan los callers SERVER-ONLY que ya tienen la venta
+  // confirmada (hoy: Schedule, desde mp-webhook.mts y capi-confirmar-pago.mts).
+  // El endpoint público /api/capi-funnel NO lo lee del body a propósito:
+  // cualquiera podría postear el mail de otra persona contra un evento
+  // inventado y ensuciarle a Meta el emparejamiento. Mismo criterio que el
+  // `value`, que tampoco se le cree al cliente.
+  email?: string
   // ID propio y estable del navegador (ver src/lib/visitorId.ts) — Meta lo
   // espera hasheado igual que el teléfono. Deja que Meta reconozca que la
   // visita anónima y una compra posterior son la misma persona.
@@ -137,6 +148,10 @@ export async function sendMetaFunnelEvent(params: MetaCapiFunnelEvent): Promise<
       // que acá llega lo que sea que haya en el body (ver metaUserData.ts).
       const ph = normalizePhoneForMeta(params.whatsapp)
       if (ph) userData.ph = [await sha256Hex(ph)]
+    }
+    if (params.email) {
+      // minúsculas + trim antes de hashear (ver comentario en el tipo).
+      userData.em = [await sha256Hex(params.email.trim().toLowerCase())]
     }
     if (params.nombre) {
       // Misma partición que metaCapi.ts: la última palabra es el apellido,
@@ -281,6 +296,12 @@ export async function sendConfirmedBookingScheduleEvent(p: {
   contentName?: string
   whatsapp?: string
   nombre?: string
+  // El mismo mail que ya se le manda al Purchase de esta misma venta. Antes
+  // no se pasaba —ni existía el parámetro— y eso dejaba a Schedule sin la
+  // señal que más pesa en el emparejamiento: medido el 6/09/2026, Purchase
+  // llegaba a Meta con `em` al 80% y Schedule al 0%, con calidad 9,0 contra
+  // 7,8, siendo la misma persona, la misma venta y el mismo segundo.
+  email?: string
   fbp?: string
   fbc?: string
   clientIpAddress?: string
@@ -297,6 +318,7 @@ export async function sendConfirmedBookingScheduleEvent(p: {
     eventName: "Schedule",
     whatsapp: p.whatsapp,
     nombre: p.nombre,
+    email: p.email,
     externalId: p.externalId,
     fbp: p.fbp,
     fbc: p.fbc,

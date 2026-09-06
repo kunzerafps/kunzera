@@ -136,6 +136,37 @@ describe("mp-webhook: Purchase solo con pago approved", () => {
     expect(metaEvent(fm, "Purchase").user_data.em).toBeUndefined()
   })
 
+  // Misma venta, misma llamada, mismo segundo: si el Purchase lleva el mail,
+  // el Schedule tiene que llevarlo también. Antes no lo llevaba (el parámetro
+  // no existía) y eso dejaba a Schedule en 0% de `em` contra 80% del Purchase.
+  it("Schedule sale con el MISMO `em` hasheado que el Purchase de esa venta", async () => {
+    const fm = installFetchMock()
+    fm.on("api.mercadopago.com", () =>
+      jsonResponse(
+        mpPaymentPayload({
+          status: "approved",
+          idempotencyKey: "key-sched-email",
+          monto: 70000,
+          payer: { email: "Comprador@Gmail.com  " },
+        }),
+      ),
+    )
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    vi.mocked(submitOrder).mockResolvedValue({ ok: true, fileUrl: "-", timestamp: new Date().toISOString() })
+    vi.mocked(updateOrderStatus).mockResolvedValue({ ok: true, row: 1, estado: "confirmado" })
+
+    await mpWebhookHandler(mpNotification("sched-email-1"), FAKE_CTX)
+
+    const purchaseEm = metaEvent(fm, "Purchase").user_data.em
+    const scheduleEm = metaEvent(fm, "Schedule").user_data.em
+    expect(Array.isArray(scheduleEm)).toBe(true)
+    expect(scheduleEm[0]).toMatch(/^[a-f0-9]{64}$/)
+    expect(scheduleEm).toEqual(purchaseEm)
+    for (const c of fm.callsTo("graph.facebook.com")) {
+      expect(String(c.init?.body)).not.toContain("Comprador@Gmail.com")
+    }
+  })
+
   it("pago pending: NO genera Purchase", async () => {
     const fm = installFetchMock()
     fm.on("api.mercadopago.com", () =>

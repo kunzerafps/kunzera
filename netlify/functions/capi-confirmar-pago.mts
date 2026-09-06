@@ -140,6 +140,9 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     contentName: body.plan,
     whatsapp: body.whatsapp,
     nombre: body.nombre,
+    // Mismo mail que el Purchase de abajo (blob de atribución, lo dejó la
+    // persona en el paso opcional del chat).
+    email: attribution?.email,
     fbp: attribution?.fbp,
     fbc: attribution?.fbc,
     clientIpAddress: attribution?.ip,

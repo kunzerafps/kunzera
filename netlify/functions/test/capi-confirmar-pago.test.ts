@@ -272,6 +272,52 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
     expect(metaEvent(fm, "Purchase").user_data.em).toBeUndefined()
   })
 
+  // Schedule y Purchase son la MISMA venta, salen de la misma llamada y en el
+  // mismo segundo. Antes el mail se le pasaba sólo al Purchase (Schedule ni
+  // siquiera aceptaba el parámetro): medido el 6/09/2026, `em` llegaba al 80%
+  // en Purchase y al 0% en Schedule, con calidad 9,0 contra 7,8. Este test es
+  // el que impide que se vuelva a ir sin el dato.
+  it("Schedule sale con el MISMO `em` hasheado que el Purchase de esa venta", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await saveAttribution("mail-schedule-1", {
+      email: "  Comprador@Gmail.com ",
+      capturedAt: Date.now(),
+    })
+
+    await confirmarPagoHandler(
+      req({ token, idempotencyKey: "mail-schedule-1", nombre: "Cliente", monto: 50000 }),
+      FAKE_CTX,
+    )
+
+    const purchaseEm = metaEvent(fm, "Purchase").user_data.em
+    const scheduleEm = metaEvent(fm, "Schedule").user_data.em
+    expect(Array.isArray(scheduleEm)).toBe(true)
+    expect(scheduleEm[0]).toMatch(/^[a-f0-9]{64}$/)
+    // Misma normalización (trim + minúsculas) ⇒ mismo hash exacto en los dos.
+    expect(scheduleEm).toEqual(purchaseEm)
+    // Y en texto plano no viaja en ninguno de los dos.
+    for (const c of fm.callsTo("graph.facebook.com")) {
+      expect(String(c.init?.body)).not.toContain("Comprador@Gmail.com")
+    }
+  })
+
+  it("sin mail, el Schedule sale igual, sin `em`", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await saveAttribution("sin-mail-sched-1", { fbp: "fb.1.1.2", capturedAt: Date.now() })
+
+    await confirmarPagoHandler(
+      req({ token, idempotencyKey: "sin-mail-sched-1", nombre: "Cliente", monto: 50000 }),
+      FAKE_CTX,
+    )
+
+    expect(metaEventCount(fm, "Schedule")).toBe(1)
+    expect(metaEvent(fm, "Schedule").user_data.em).toBeUndefined()
+  })
+
   it("markAtendido:true marca la reserva como atendido en la planilla y avisa a Meta en una sola llamada", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
