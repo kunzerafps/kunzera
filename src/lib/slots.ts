@@ -1,4 +1,5 @@
 import {
+  SLOT_CLOSED_WEEKDAYS,
   SLOT_END_HOUR,
   SLOT_START_HOUR,
   SLOT_STEP_MIN,
@@ -34,6 +35,20 @@ function addDays(dayKey: string, n: number): string {
   const d = new Date(`${dayKey}T12:00:00-03:00`)
   d.setUTCDate(d.getUTCDate() + n)
   return getDayKeyAR(d)
+}
+
+/**
+ * Día de la semana (0 = domingo … 6 = sábado) de un "YYYY-MM-DD" en hora AR.
+ * Al mediodía AR (-03:00) son las 15:00 UTC del mismo día, así que
+ * getUTCDay() devuelve el día correcto sin depender del tz del navegador.
+ */
+function weekdayAR(dayKey: string): number {
+  return new Date(`${dayKey}T12:00:00-03:00`).getUTCDay()
+}
+
+/** true si ese día no se atiende (ver SLOT_CLOSED_WEEKDAYS en constants). */
+function isClosedDay(dayKey: string): boolean {
+  return SLOT_CLOSED_WEEKDAYS.includes(weekdayAR(dayKey))
 }
 
 type DayBlock = {
@@ -102,7 +117,10 @@ export function generateSlots(
   // Ventana de reserva: desde hoy hasta 30 días en el futuro (inclusive).
   const lastDayKey = addDays(todayKey, RESERVATION_HORIZON_DAYS)
 
-  const blockFor = (dayKey: string) => generateDayBlock(dayKey)
+  // Los días cerrados (domingo) no generan bloque: quedan sin turnos y no
+  // aparecen como pastilla en el selector.
+  const blockFor = (dayKey: string): DayBlock =>
+    isClosedDay(dayKey) ? { dayKey, slots: [] } : generateDayBlock(dayKey)
 
   const blocks: DayBlock[] = [blockFor(yesterdayKey)]
   for (let i = 0; i <= RESERVATION_HORIZON_DAYS; i++) {

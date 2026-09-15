@@ -41,7 +41,7 @@ const faqs = [
   },
   {
     q: "¿Qué días trabajás?",
-    a: "Todos los días, incluidos fines de semana, con turnos de 13 a 21hs que elegís vos mismo en la web. Si necesitás algo fuera de ese horario, escribime por WhatsApp y lo vemos.",
+    a: "De lunes a sábado, con turnos de 14 a 20hs que elegís vos mismo en la web. Si necesitás algo fuera de ese horario, escribime por WhatsApp y lo vemos.",
   },
   {
     q: "¿Qué métodos de pago aceptás?",
@@ -49,7 +49,7 @@ const faqs = [
   },
   {
     q: "¿Incluye soporte después?",
-    a: "Sí, quedás con mi WhatsApp de 13 a 21hs por si te surge cualquier duda o detalle después de la optimización — y muchas veces contesto fuera de ese horario también, tratando de ayudar.",
+    a: "Sí, quedás con mi WhatsApp de 14 a 20hs por si te surge cualquier duda o detalle después de la optimización — y muchas veces contesto fuera de ese horario también, tratando de ayudar.",
   },
   {
     q: "¿Qué pasa con mis datos durante la sesión remota?",

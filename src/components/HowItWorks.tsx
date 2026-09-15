@@ -7,7 +7,7 @@ const steps = [
     n: "01",
     icon: CalendarCheck,
     title: "Reservás el turno",
-    desc: "Elegís día y hora directo en la web, turnos de 13 a 21hs, sin tener que escribirme antes.",
+    desc: "Elegís día y hora directo en la web, turnos de lunes a sábado de 14 a 20hs, sin tener que escribirme antes.",
   },
   {
     n: "02",

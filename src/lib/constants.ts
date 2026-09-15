@@ -18,7 +18,7 @@ export const WHATSAPP_MESSAGE_GENERAL =
 // los convierte. OJO: WhatsApp NO autoenvía — la persona toca "enviar".
 export const WHATSAPP_FLOAT_MESSAGE = [
   "» ¡Hola! *No hace falta que te conteste para reservar* — lo hacés solo en kunzera.com en 2 minutos: elegís pack, día y hora, pagás y subís el comprobante. Queda confirmado al toque.",
-  "» Turnos todos los días de *13 a 21h*.",
+  "» Turnos de lunes a sábado de *14 a 20h*.",
   "",
   "» *PLATINO $50.000* → optimización completa de Windows: limpieza, procesos, CPU/placa de video/RAM al máximo, mouse y teclado sin demora y conexión estable. Más FPS y menos input lag.",
   "» *DIAMANTE $70.000* → todo eso de Windows (lo que hace el plan Platino) + entro al BIOS, algo que Windows ni te deja tocar y que hace una diferencia enorme: es donde tu PC pega el salto de FPS más grande. Es el que más eligen.",
@@ -56,8 +56,12 @@ export const BINANCE_EMAIL = "ezepalmero@gmail.com"
 export const SLOT_SESSION_MIN = 20
 export const SLOT_BREAK_MIN = 0
 export const SLOT_STEP_MIN = SLOT_SESSION_MIN + SLOT_BREAK_MIN // 20
-export const SLOT_START_HOUR = 13 // 13:00 (primer turno)
-export const SLOT_END_HOUR = 21 // 21:00 exclusivo → último turno 20:40
+export const SLOT_START_HOUR = 14 // 14:00 (primer turno)
+export const SLOT_END_HOUR = 20 // 20:00 exclusivo → último turno 19:40
+// Días de la semana SIN turnos (0 = domingo … 6 = sábado, en hora AR).
+// Se atiende de lunes a sábado. Los bloqueos puntuales (viaje, feriado)
+// se siguen cargando desde el panel admin, no acá.
+export const SLOT_CLOSED_WEEKDAYS: number[] = [0]
 export const TIMEZONE = "America/Argentina/Buenos_Aires"
 
 // ────────────────────────────────────────────────────────────
