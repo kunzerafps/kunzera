@@ -4,7 +4,7 @@ import { sendMetaPurchaseEvent, MAX_EVENT_AGE_DAYS } from "./lib/metaCapi"
 import { sendConfirmedBookingScheduleEvent } from "./lib/metaCapiFunnel"
 import { notifyDiscord } from "./lib/discordAlert"
 import { isRateLimited } from "./lib/rateLimit"
-import { getAttribution } from "./lib/attribution"
+import { getAttribution, getPhoneFbc } from "./lib/attribution"
 import { getPaymentMethod } from "./lib/facturacion"
 import { updateOrderStatus } from "../../src/lib/appsScript"
 
@@ -84,6 +84,12 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     return Response.json({ ok: false, error: "missing_field" }, { status: 400 })
   }
 
+  // El teléfono viene de la planilla, que puede devolver una celda de sólo
+  // dígitos como número. La normalización espera texto: con un número tiraba
+  // excepción y la Compra y la Reserva NO salían. Medido el 29/09/2026: 0
+  // fallas en 203 compras, o sea que hoy llega como texto — esto es blindaje.
+  if (typeof body.whatsapp === "number") body.whatsapp = String(body.whatsapp)
+
   // Marcar "atendido" en la planilla ANTES del aviso a Meta y desde acá (no
   // desde el navegador). Es lo que le importa al admin ("marcar atendido"
   // siempre tiene que funcionar); el aviso a Meta va después y si falla lo
@@ -118,7 +124,13 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   // afecta lo que le llega a Meta.
   const metodo = await getPaymentMethod(body.idempotencyKey)
   const source = metodo === "mercadopago" ? "mercadopago" : "transferencia_binance"
-  const attribution = await getAttribution(body.idempotencyKey)
+  // Clic del anuncio: el del navegador donde pagó; si no lo trae, el que quedó
+  // guardado por teléfono (entró desde Instagram, compró desde Chrome).
+  const [attribution, phoneFbc] = await Promise.all([
+    getAttribution(body.idempotencyKey),
+    getPhoneFbc(body.whatsapp),
+  ])
+  const fbc = attribution?.fbc || phoneFbc
 
   // event_time real de la venta: el momento en que se creó la reserva (cliente
   // subió el comprobante), NO cuando el admin aprieta "Confirmar pago", que
@@ -144,7 +156,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     // persona en el paso opcional del chat).
     email: attribution?.email,
     fbp: attribution?.fbp,
-    fbc: attribution?.fbc,
+    fbc,
     clientIpAddress: attribution?.ip,
     clientUserAgent: attribution?.userAgent,
     city: attribution?.city,
@@ -174,7 +186,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
     // en ninguna.
     email: attribution?.email,
     fbp: attribution?.fbp,
-    fbc: attribution?.fbc,
+    fbc,
     clientIpAddress: attribution?.ip,
     clientUserAgent: attribution?.userAgent,
     city: attribution?.city,

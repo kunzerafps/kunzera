@@ -6,7 +6,7 @@ import type { Pack } from "../../src/types/order"
 import { sendMetaPurchaseEvent } from "./lib/metaCapi"
 import { sendConfirmedBookingScheduleEvent } from "./lib/metaCapiFunnel"
 import { notifyDiscord } from "./lib/discordAlert"
-import { getAttribution } from "./lib/attribution"
+import { getAttribution, getPhoneFbc } from "./lib/attribution"
 
 const PROCESSED_STORE = "mp-webhook-processed"
 // Mismo store que usa tag-payment-method.mts para transferencia/binance —
@@ -229,7 +229,14 @@ async function sendMercadoPagoCapiEvent(
   // Mercado Pago, que se dispara en el momento real en que el pago se
   // aprueba (no hay demora humana de por medio, a diferencia de
   // transferencia/binance).
-  const attribution = await getAttribution(idempotencyKey)
+  // Clic del anuncio: el del navegador donde pagó; si no lo trae, el que quedó
+  // guardado por teléfono (entró desde Instagram, compró desde Chrome). Las
+  // dos lecturas en paralelo: no suman tiempo a esta función.
+  const [attribution, phoneFbc] = await Promise.all([
+    getAttribution(idempotencyKey),
+    getPhoneFbc(meta.whatsapp),
+  ])
+  const fbc = attribution?.fbc || phoneFbc
 
   // Mail de la cuenta que pagó, que la propia respuesta del pago de Mercado
   // Pago ya trae — no se le pide nada al cliente. Es la señal más valiosa que
@@ -267,7 +274,7 @@ async function sendMercadoPagoCapiEvent(
     // del pagador de Mercado Pago (ver payerEmail más arriba).
     email: payerEmail,
     fbp: attribution?.fbp,
-    fbc: attribution?.fbc,
+    fbc,
     clientIpAddress: attribution?.ip,
     clientUserAgent: attribution?.userAgent,
     city: attribution?.city,
@@ -290,7 +297,7 @@ async function sendMercadoPagoCapiEvent(
     nombre: meta.nombre,
     email: payerEmail,
     fbp: attribution?.fbp,
-    fbc: attribution?.fbc,
+    fbc,
     clientIpAddress: attribution?.ip,
     clientUserAgent: attribution?.userAgent,
     city: attribution?.city,

@@ -67,12 +67,11 @@ export type MetaCapiFunnelEvent = {
   // SHA-256 sobre minúsculas + trim, y NO se le sacan acentos (un email es
   // ASCII; "normalizar de más" solo rompería el match).
   //
-  // ⚠️ Sólo lo pasan los callers SERVER-ONLY que ya tienen la venta
-  // confirmada (hoy: Schedule, desde mp-webhook.mts y capi-confirmar-pago.mts).
-  // El endpoint público /api/capi-funnel NO lo lee del body a propósito:
-  // cualquiera podría postear el mail de otra persona contra un evento
-  // inventado y ensuciarle a Meta el emparejamiento. Mismo criterio que el
-  // `value`, que tampoco se le cree al cliente.
+  // Lo pasan Schedule (server-only, desde mp-webhook.mts y
+  // capi-confirmar-pago.mts) y, desde el 29/09/2026, el endpoint público
+  // /api/capi-funnel SÓLO para InitiateCheckout y turno_seleccionado, con
+  // formato validado (ver EMAIL_EVENTS en capi-funnel.mts y el riesgo asumido
+  // que se explica ahí).
   email?: string
   // ID propio y estable del navegador (ver src/lib/visitorId.ts) — Meta lo
   // espera hasheado igual que el teléfono. Deja que Meta reconozca que la

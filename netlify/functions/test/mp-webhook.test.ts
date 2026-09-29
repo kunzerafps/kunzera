@@ -11,6 +11,8 @@ vi.mock("../../../src/lib/appsScript", () => ({
 
 const { submitOrder, updateOrderStatus } = await import("../../../src/lib/appsScript")
 const { default: mpWebhookHandler } = await import("../mp-webhook.mts")
+const { saveAttribution, savePhoneAttribution } = await import("../lib/attribution")
+const { normalizePhoneForHash, sha256Hex } = await import("../lib/metaUserData")
 
 const FAKE_CTX = {} as any
 
@@ -119,6 +121,31 @@ describe("mp-webhook: Purchase solo con pago approved", () => {
     // el mail no aparece en texto plano en NINGUNA de las llamadas a Meta
     for (const c of fm.callsTo("graph.facebook.com")) {
       expect(String(c.init?.body)).not.toContain("Comprador@Gmail.com")
+    }
+  })
+
+  it("sin fbc en el checkout, Purchase y Schedule usan el guardado por teléfono", async () => {
+    const fm = installFetchMock()
+    fm.on("api.mercadopago.com", () =>
+      jsonResponse(mpPaymentPayload({ status: "approved", idempotencyKey: "key-fbc-tel", monto: 70000 })),
+    )
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    vi.mocked(submitOrder).mockResolvedValue({ ok: true, fileUrl: "-", timestamp: new Date().toISOString() })
+    vi.mocked(updateOrderStatus).mockResolvedValue({ ok: true, row: 1, estado: "confirmado" })
+
+    await saveAttribution("key-fbc-tel", { fbp: "fb.1.1.chrome", capturedAt: Date.now() })
+    // mismo teléfono que mpPaymentPayload.metadata.whatsapp
+    await savePhoneAttribution(await sha256Hex(normalizePhoneForHash("1123456789")), {
+      fbc: "fb.1.1700000000000.CLICK-IG",
+      capturedAt: Date.now(),
+    })
+
+    await mpWebhookHandler(mpNotification("fbc-tel-1"), FAKE_CTX)
+
+    for (const name of ["Purchase", "Schedule"]) {
+      const ud = metaEvent(fm, name).user_data
+      expect(ud.fbc).toBe("fb.1.1700000000000.CLICK-IG")
+      expect(ud.fbp).toBe("fb.1.1.chrome")
     }
   })
 

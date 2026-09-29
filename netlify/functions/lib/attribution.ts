@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs"
+import { normalizePhoneForHash, sha256Hex } from "./metaUserData"
 
 const STORE_NAME = "attribution-data"
 
@@ -162,6 +163,33 @@ export async function savePhoneAttribution(
   } catch (err) {
     // Nunca romper el envío del evento por esto — es un índice de apoyo.
     console.error("[attribution] no se pudo guardar el índice por teléfono:", err)
+  }
+}
+
+// Respaldo del clic del anuncio (fbc) para la Compra/Reserva de una venta del
+// SITIO. El rastro principal es el de attribution-data, capturado en el
+// navegador donde la persona entró a pagar. Pero es común entrar desde el
+// anuncio en el navegador de Instagram (ahí el fbc está el 99% de las veces)
+// y terminar comprando en Chrome, donde no hay cookie del anuncio. Medido el
+// 29/09/2026: en navegador normal sólo 36 de 186 checkouts traían fbc, y de
+// 78 compras sin fbc, al menos 13 lo tenían guardado en este índice (cota
+// baja: el cruce se hizo por id de visitante, no por teléfono).
+//
+// SÓLO el fbc, y el caller lo usa sólo si el principal no lo trae
+// (`attribution?.fbc || phoneFbc`): fbp/IP/geo son del navegador donde se
+// compró y ahí el principal es el dato correcto. Se lee EN PARALELO con
+// getAttribution para no sumarle tiempo a mp-webhook, que corre cerca del
+// límite de 10s de Netlify.
+// Best-effort: cualquier falla devuelve undefined y la venta sale igual.
+// `whatsapp` puede llegar como número si viene de la planilla (Sheets
+// convierte celdas de sólo dígitos): se pasa a texto antes de normalizar.
+export async function getPhoneFbc(whatsapp: unknown): Promise<string | undefined> {
+  if ((typeof whatsapp !== "string" && typeof whatsapp !== "number") || whatsapp === "") return undefined
+  try {
+    const trail = await getPhoneAttribution(await sha256Hex(normalizePhoneForHash(String(whatsapp))))
+    return trail?.fbc || undefined
+  } catch {
+    return undefined
   }
 }
 

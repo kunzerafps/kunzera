@@ -33,12 +33,10 @@ describe("capi-funnel", () => {
     expect(userData.ph[0]).toHaveLength(64)
   })
 
-  // El emisor compartido (metaCapiFunnel) SÍ sabe mandar `em` — lo usa el
-  // Schedule server-side. Pero este endpoint es público y sin contraseña:
-  // si le creyera el mail al cliente, cualquiera podría atar el mail de otra
-  // persona a un evento inventado y ensuciarle a Meta el emparejamiento.
-  // Mismo criterio que el `value`, que tampoco se toma del navegador.
-  it("IGNORA un `email` mandado por el cliente — el endpoint es público", async () => {
+  // El mail sólo se acepta en InitiateCheckout y turno_seleccionado (salen
+  // después del paso askEmail del chat). Lead dispara ANTES de que la persona
+  // deje el mail, así que un `email` en un Lead no es legítimo y se ignora.
+  it("IGNORA un `email` en eventos que no son InitiateCheckout/turno_seleccionado", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
     const ctx = { ip: "201.201.201.201" } as any
@@ -56,6 +54,49 @@ describe("capi-funnel", () => {
     const body = String(fm.callsTo("graph.facebook.com")[0].init?.body)
     expect(JSON.parse(body).data[0].user_data.em).toBeUndefined()
     expect(body).not.toContain("victima@gmail.com")
+  })
+
+  it("InitiateCheckout y turno_seleccionado llevan el mail del chat hasheado (em)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "201.201.201.201" } as any
+
+    await funnelHandler(
+      req({ eventId: "cf-em-ic", event: "InitiateCheckout", whatsapp: "1123456789", email: "  Cliente@Gmail.com " }),
+      ctx,
+    )
+    await funnelHandler(
+      req({ eventId: "cf-em-ts", event: "turno_seleccionado", whatsapp: "1123456789", email: "cliente@gmail.com" }),
+      ctx,
+    )
+
+    const calls = fm.callsTo("graph.facebook.com").map((c) => String(c.init?.body))
+    expect(calls).toHaveLength(2)
+    const em0 = JSON.parse(calls[0]).data[0].user_data.em
+    const em1 = JSON.parse(calls[1]).data[0].user_data.em
+    expect(em0[0]).toHaveLength(64)
+    // Normalizado igual (minúsculas + trim) → mismo hash que el Purchase.
+    expect(em0[0]).toBe(em1[0])
+    // Nunca en texto plano.
+    expect(calls[0]).not.toContain("cliente@gmail.com")
+    expect(calls[0].toLowerCase()).not.toContain("cliente@gmail.com")
+  })
+
+  it("un mail mal formado no se manda (ni en InitiateCheckout)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "201.201.201.201" } as any
+
+    await funnelHandler(req({ eventId: "cf-em-bad1", event: "InitiateCheckout", email: "no-es-un-mail" }), ctx)
+    await funnelHandler(req({ eventId: "cf-em-bad2", event: "InitiateCheckout", email: 12345 }), ctx)
+    await funnelHandler(
+      req({ eventId: "cf-em-bad3", event: "InitiateCheckout", email: `${"a".repeat(120)}@x.com` }),
+      ctx,
+    )
+
+    const calls = fm.callsTo("graph.facebook.com").map((c) => JSON.parse(String(c.init?.body)))
+    expect(calls).toHaveLength(3)
+    for (const b of calls) expect(b.data[0].user_data.em).toBeUndefined()
   })
 
   it("pasa la geo de ctx.geo a Meta (nombre de provincia, no código)", async () => {

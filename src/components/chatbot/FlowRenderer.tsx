@@ -155,7 +155,7 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
               markTurnoSelFired()
               trackServerBackedEvent(
                 "turno_seleccionado",
-                { whatsapp: ctx.draft.whatsapp, nombre: ctx.draft.nombre },
+                { whatsapp: ctx.draft.whatsapp, nombre: ctx.draft.nombre, email: ctx.draft.email },
                 packEventParams(ctx.draft.pack),
               )
             }

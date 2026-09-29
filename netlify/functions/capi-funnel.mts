@@ -19,6 +19,7 @@ type Body = {
   event?: string
   whatsapp?: string
   nombre?: string
+  email?: string
   externalId?: string
   fbp?: string
   fbc?: string
@@ -27,6 +28,27 @@ type Body = {
   contentName?: string
   contentIds?: unknown
   contentType?: string
+}
+
+// Eventos que pueden llevar el mail que la persona dejó en el chat. Sólo los
+// que salen DESPUÉS del paso askEmail (chatFlow.ts: askEmail va antes de
+// pickSlot y del pago). Medido el 29/09/2026: 315 de 382 checkouts dejaron
+// mail, y el mismo arreglo en Schedule le subió un punto entero de calidad
+// de coincidencia (7,8 → 8,8).
+//
+// Riesgo asumido: este endpoint es público, así que alguien podría atar el
+// mail de otra persona a un evento inventado. Es el mismo nivel de riesgo
+// que ya tiene el teléfono (que se acepta del body desde siempre), y se
+// acota a estos dos eventos + formato válido. Lead y el resto lo ignoran.
+const EMAIL_EVENTS: readonly FunnelEventName[] = ["InitiateCheckout", "turno_seleccionado"]
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function safeEmail(eventName: FunnelEventName, v: unknown): string | undefined {
+  if (!EMAIL_EVENTS.includes(eventName)) return undefined
+  if (typeof v !== "string") return undefined
+  const e = v.trim()
+  if (!e || e.length > 120 || !EMAIL_RE.test(e)) return undefined
+  return e
 }
 
 function str(v: unknown): string | undefined {
@@ -99,6 +121,7 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
       eventName: body.event as FunnelEventName,
       whatsapp: str(body.whatsapp),
       nombre: str(body.nombre),
+      email: safeEmail(body.event as FunnelEventName, body.email),
       externalId: str(body.externalId),
       fbp: str(body.fbp),
       fbc: str(body.fbc),

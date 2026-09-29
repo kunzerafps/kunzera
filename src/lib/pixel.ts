@@ -120,6 +120,10 @@ export function trackPixelEvent(
 type Identity = {
   whatsapp?: string
   nombre?: string
+  // Mail que la persona dejó en el chat (paso opcional askEmail). Sólo lo
+  // toman InitiateCheckout y turno_seleccionado del lado del servidor (ver
+  // capi-funnel.mts); en cualquier otro evento se ignora.
+  email?: string
 }
 
 // Eventos de mitad de embudo que también se mandan desde el servidor. Todo
@@ -180,6 +184,7 @@ export function trackServerBackedEvent(
       event: eventName,
       whatsapp: identity.whatsapp,
       nombre: identity.nombre,
+      email: identity.email,
       externalId: getVisitorId(),
       fbp: getFbp(),
       fbc: getFbc(),

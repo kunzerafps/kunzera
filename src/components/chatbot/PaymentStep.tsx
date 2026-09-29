@@ -107,7 +107,7 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     const packBasePrice = typeof packParams.value === "number" ? packParams.value : undefined
     trackServerBackedEvent(
       "InitiateCheckout",
-      { whatsapp: draft.whatsapp, nombre: draft.nombre },
+      { whatsapp: draft.whatsapp, nombre: draft.nombre, email: draft.email },
       {
         ...packParams,
         // El monto real que va a pagar manda sobre el precio base del pack.

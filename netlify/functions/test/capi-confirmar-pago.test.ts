@@ -5,7 +5,8 @@ import { installFetchMock, jsonResponse } from "./helpers/fetchMock"
 vi.mock("@netlify/blobs", () => ({ getStore: (name: string) => fakeGetStore(name) }))
 
 const { createSessionToken } = await import("../lib/adminSession")
-const { saveAttribution } = await import("../lib/attribution")
+const { saveAttribution, savePhoneAttribution } = await import("../lib/attribution")
+const { normalizePhoneForHash, sha256Hex } = await import("../lib/metaUserData")
 const { listRecentDeliveries } = await import("../lib/deliveryLog")
 const { default: confirmarPagoHandler } = await import("../capi-confirmar-pago.mts")
 
@@ -316,6 +317,81 @@ describe("capi-confirmar-pago (transferencia/binance)", () => {
 
     expect(metaEventCount(fm, "Schedule")).toBe(1)
     expect(metaEvent(fm, "Schedule").user_data.em).toBeUndefined()
+  })
+
+  // Entró desde el anuncio en el navegador de Instagram (dejó el teléfono →
+  // quedó indexado con su fbc) y terminó pagando en Chrome, sin cookie del
+  // anuncio. La Compra y la Reserva recuperan el fbc por teléfono.
+  it("si el rastro del checkout no trae fbc, usa el guardado por teléfono (Purchase y Schedule)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await saveAttribution("fbc-tel-1", { fbp: "fb.1.1.chrome", capturedAt: Date.now() })
+    await savePhoneAttribution(await sha256Hex(normalizePhoneForHash("1155554444")), {
+      fbc: "fb.1.1700000000000.CLICK-IG",
+      fbp: "fb.1.1.instagram",
+      capturedAt: Date.now(),
+    })
+
+    await confirmarPagoHandler(
+      req({ token, idempotencyKey: "fbc-tel-1", nombre: "Cliente", whatsapp: "1155554444", monto: 50000 }),
+      FAKE_CTX,
+    )
+
+    for (const name of ["Purchase", "Schedule"]) {
+      const ud = metaEvent(fm, name).user_data
+      expect(ud.fbc).toBe("fb.1.1700000000000.CLICK-IG")
+      // Sólo el fbc: el fbp sigue siendo el del navegador donde se compró.
+      expect(ud.fbp).toBe("fb.1.1.chrome")
+    }
+  })
+
+  it("si el rastro del checkout YA trae fbc, gana ése (no se pisa con el del teléfono)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await saveAttribution("fbc-tel-2", { fbc: "fb.1.2.PROPIO", capturedAt: Date.now() })
+    await savePhoneAttribution(await sha256Hex(normalizePhoneForHash("1155554444")), {
+      fbc: "fb.1.1.VIEJO",
+      capturedAt: Date.now(),
+    })
+
+    await confirmarPagoHandler(
+      req({ token, idempotencyKey: "fbc-tel-2", nombre: "Cliente", whatsapp: "1155554444", monto: 50000 }),
+      FAKE_CTX,
+    )
+
+    expect(metaEvent(fm, "Purchase").user_data.fbc).toBe("fb.1.2.PROPIO")
+  })
+
+  it("recupera el fbc aunque la planilla devuelva el teléfono como número", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await savePhoneAttribution(await sha256Hex(normalizePhoneForHash("1155554444")), {
+      fbc: "fb.1.1.NUM",
+      capturedAt: Date.now(),
+    })
+
+    await confirmarPagoHandler(
+      req({ token, idempotencyKey: "fbc-tel-num", nombre: "Cliente", whatsapp: 1155554444, monto: 50000 }),
+      FAKE_CTX,
+    )
+
+    expect(metaEvent(fm, "Purchase").user_data.fbc).toBe("fb.1.1.NUM")
+  })
+
+  it("sin fbc en ningún lado, la Compra sale igual sin fbc", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+
+    await confirmarPagoHandler(
+      req({ token, idempotencyKey: "fbc-tel-3", nombre: "Cliente", whatsapp: "1199998888", monto: 50000 }),
+      FAKE_CTX,
+    )
+
+    expect(metaEventCount(fm, "Purchase")).toBe(1)
+    expect(metaEvent(fm, "Purchase").user_data.fbc).toBeUndefined()
   })
 
   it("markAtendido:true marca la reserva como atendido en la planilla y avisa a Meta en una sola llamada", async () => {
