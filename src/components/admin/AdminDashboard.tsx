@@ -43,8 +43,10 @@ const SALE_STATES = new Set(["confirmado", "atendido"])
 // vieja reenviada llegaría a Meta mal fechada (fuera de la ventana de 7
 // días) y no vale la pena.
 const META_RECENT_DAYS = 21
-// Tope de reintentos por apertura del panel — si faltan más, algo raro pasa
-// y no conviene bombardear a Meta.
+// Tope de reintentos por apertura del panel, para no bombardear a Meta. Si
+// faltan más, se mandan las más recientes y el resto queda para la próxima
+// apertura (antes no se mandaba NINGUNA: cuanto peor el problema, menos
+// reparaba).
 const META_SWEEP_MAX = 15
 
 function orderAgeDays(o: Order): number {
@@ -119,13 +121,17 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
         map.get(String(o.idempotencykey)) !== "enviado",
     )
     if (stuck.length === 0) return
-    if (stuck.length > META_SWEEP_MAX) {
+    // Las más recientes primero: son las que todavía caen en la ventana de
+    // 7 días de Meta con su fecha real.
+    const batch = [...stuck]
+      .sort((a, b) => orderAgeDays(a) - orderAgeDays(b))
+      .slice(0, META_SWEEP_MAX)
+    if (stuck.length > batch.length) {
       console.warn(
-        `[meta-sweep] ${stuck.length} ventas sin aviso a Meta — demasiadas, no se reintenta en masa`,
+        `[meta-sweep] ${stuck.length} ventas sin aviso a Meta — se reintentan las ${batch.length} más recientes, el resto en la próxima apertura`,
       )
-      return
     }
-    for (const o of stuck) {
+    for (const o of batch) {
       try {
         await fetch("/api/capi-confirmar-pago", {
           method: "POST",
