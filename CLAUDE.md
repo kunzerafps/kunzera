@@ -59,7 +59,7 @@ Tests en `netlify/functions/test/` y `src/lib/*.test.ts`. Entorno `node`, sin DO
 
 **Transferencia al alias + Mercado Pago.** Binance se dio de baja (Eze: *"JAMÁS vendo por Binance"*, commit `d4f6dd9`) — se sacó de `METHODS` en `PaymentStep.tsx` y de los textos, pero la maquinaria de atrás quedó intacta por las reservas viejas etiquetadas así. Para reactivarlo: devolver una línea al array `METHODS`.
 
-Mercado Pago cobra **+7,77%** (`mpTotal` en `src/lib/pricing.ts`). A Meta se le informa el precio **base**, a AFIP el **total** — decisión deliberada, documentada en `mp-webhook.mts`.
+Mercado Pago cobra **+10,78%** (medido 15/10/2026; antes 7,77%) (`mpTotal` en `src/lib/pricing.ts`). A Meta se le informa el precio **base**, a AFIP el **total** — decisión deliberada, documentada en `mp-webhook.mts`.
 
 ## Cómo trabaja Eze
 

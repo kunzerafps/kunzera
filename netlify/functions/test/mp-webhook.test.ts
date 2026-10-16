@@ -85,7 +85,7 @@ describe("mp-webhook: Purchase solo con pago approved", () => {
 
     expect(metaEventCount(fm, "Purchase")).toBe(1)
     const purchase = metaEvent(fm, "Purchase")
-    expect(purchase.custom_data.value).toBe(70000) // precio base, no 75.900 con comisión
+    expect(purchase.custom_data.value).toBe(70000) // precio base, no 79.000 con comisión
     expect(purchase.event_id).toBe("key-approved-1")
 
     // Schedule (reserva confirmada) sale junto con la Compra, server-side,

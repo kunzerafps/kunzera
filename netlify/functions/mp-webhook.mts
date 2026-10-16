@@ -217,7 +217,7 @@ async function sendMercadoPagoCapiEvent(
   // Política de valor (decisión explícita, no accidente de implementación):
   // se manda el precio BASE del pack ($50.000/$70.000), no lo que el
   // cliente terminó pagando con la comisión de Mercado Pago sumada
-  // (~+7.77%, ver mpTotal en src/lib/pricing.ts). meta.monto ya viaja como
+  // (~+10.78%, ver mpTotal en src/lib/pricing.ts). meta.monto ya viaja como
   // precio base desde mp-create-preference.mts. Es un criterio distinto al
   // de facturación AFIP (que sí factura el total con comisión, por regla
   // del contador) a propósito: acá el objetivo es que Meta optimice sobre
