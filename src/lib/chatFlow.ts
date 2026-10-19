@@ -141,7 +141,7 @@ function askWhatsappMessages(): ChatMessage[] {
 // compra hace abandonar.
 function askEmailMessages(): ChatMessage[] {
   return [
-    bot("¿Me dejás tu *mail*? Lo necesitamos para la factura."),
+    bot("¿Me dejás tu *mail*?"),
   ]
 }
 
