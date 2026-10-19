@@ -92,7 +92,8 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
         />
       )
 
-    // Paso opcional. El mail es la señal que más sube la precisión con la que
+    // Paso OBLIGATORIO (antes se podía saltear; Eze lo pidió obligatorio el
+    // 19/10 — lo dejaba ~8 de cada 10). El mail es la señal que más sube la precisión con la que
     // Meta reconoce al comprador, y hoy solo llega en el 40% de las compras
     // (Mercado Pago lo trae solo, las ventas manuales lo piden; transferencia
     // y Binance —la mayoría— no lo pedían nunca).
@@ -106,13 +107,11 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
       return (
         <FormField
           key="askEmail"
-          label="Mail (opcional)"
+          label="Mail"
           placeholder="juan@gmail.com"
           type="email"
           autoComplete="email"
           initialValue={ctx.draft.email || ""}
-          skipLabel="Prefiero no dejarlo"
-          onSkip={() => dispatch({ type: "SKIP_EMAIL" })}
           onSubmit={(v) => {
             const err = validateEmail(v)
             if (err) return err

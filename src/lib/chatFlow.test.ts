@@ -51,8 +51,8 @@ describe("chatFlow reducer — happy path", () => {
 // ─────────── Paso del mail (opcional) ───────────
 // Es la señal que más sube la precisión con la que Meta reconoce al comprador
 // y la que más faltaba: llegaba solo en el 40% de las compras. Tiene que
-// sumar cobertura SIN frenar a nadie, por eso es salteable.
-describe("chatFlow reducer — paso del mail (opcional)", () => {
+// Era salteable; desde el 19/10 es obligatorio (lo dejaba ~8 de cada 10).
+describe("chatFlow reducer — paso del mail (obligatorio)", () => {
   const hastaElMail = [
     { type: "OPEN" } as const,
     { type: "SELECT_CHIP", payload: "platino", label: "Quiero Platino" } as const,
@@ -72,27 +72,17 @@ describe("chatFlow reducer — paso del mail (opcional)", () => {
     expect(ctx.draft.email).toBe("ana@gmail.com")
   })
 
-  it("saltearlo sigue al calendario igual, sin mail y sin costar un paso extra", () => {
-    const ctx = run([...hastaElMail, { type: "SKIP_EMAIL" }])
-    expect(ctx.state).toBe("pickSlot")
-    expect(ctx.draft.email).toBeUndefined()
-  })
-
-  it("saltearlo después de haber escrito uno no deja pegado el mail viejo", () => {
-    const conMail = run([...hastaElMail, { type: "SET_EMAIL", value: "viejo@gmail.com" }])
-    // vuelve atrás y esta vez lo saltea
-    const volvio = reduce(conMail, { type: "BACK" })
-    expect(volvio.state).toBe("askEmail")
-    const ctx = reduce(volvio, { type: "SKIP_EMAIL" })
-    expect(ctx.state).toBe("pickSlot")
-    expect(ctx.draft.email).toBeUndefined()
+  it("sin mail no avanza: elegir turno desde el paso del mail no hace nada", () => {
+    const ctx = run([...hastaElMail, { type: "PICK_SLOT", slotIso: SLOT }])
+    expect(ctx.state).toBe("askEmail")
+    expect(ctx.draft.turno).toBeUndefined()
   })
 
   it("BACK desde el mail vuelve al WhatsApp, y desde el calendario vuelve al mail", () => {
     const enMail = run([...hastaElMail])
     expect(reduce(enMail, { type: "BACK" }).state).toBe("askWhatsapp")
 
-    const enSlot = run([...hastaElMail, { type: "SKIP_EMAIL" }])
+    const enSlot = run([...hastaElMail, { type: "SET_EMAIL", value: "ana@gmail.com" }])
     expect(reduce(enSlot, { type: "BACK" }).state).toBe("askEmail")
   })
 
@@ -151,7 +141,7 @@ describe("chatFlow reducer — RESET (bug: chat muerto tras 'Descartar')", () =>
       { type: "SELECT_CHIP", payload: "reservar", label: "Sí, reservar" },
       { type: "SET_NAME", value: "Ana Gomez" },
       { type: "SET_WHATSAPP", value: "3511234567" },
-      { type: "SKIP_EMAIL" },
+      { type: "SET_EMAIL", value: "ana@gmail.com" },
       { type: "PICK_SLOT", slotIso: SLOT },
       { type: "CONFIRM_REVIEW" },
       { type: "CONFIRM_PAYMENT" },
@@ -352,7 +342,7 @@ describe("chatFlow reducer — regresiones", () => {
       { type: "SELECT_CHIP", payload: "reservar", label: "Sí, reservar" },
       { type: "SET_NAME", value: "Juan" },
       { type: "SET_WHATSAPP", value: "3511234567" },
-      { type: "SKIP_EMAIL" },
+      { type: "SET_EMAIL", value: "ana@gmail.com" },
       { type: "PICK_SLOT", slotIso: SLOT },
       { type: "CONFIRM_REVIEW" },
       { type: "CONFIRM_PAYMENT" },

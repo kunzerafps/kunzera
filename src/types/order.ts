@@ -100,7 +100,6 @@ export type FlowEvent =
   | { type: "SET_NAME"; value: string }
   | { type: "SET_WHATSAPP"; value: string }
   | { type: "SET_EMAIL"; value: string }
-  | { type: "SKIP_EMAIL" }
   | { type: "SET_DISCORD"; value: string }
   | { type: "PICK_SLOT"; slotIso: string }
   | { type: "CONFIRM_REVIEW" }

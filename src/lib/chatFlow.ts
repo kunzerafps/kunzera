@@ -136,12 +136,12 @@ function askWhatsappMessages(): ChatMessage[] {
   ]
 }
 
-// Paso opcional. Se puede saltear con el botón "Prefiero no dejarlo" del
-// FormField (ver FlowRenderer). El texto dice para qué es, porque pedir un
-// mail sin motivo en la mitad de una compra hace abandonar.
+// Paso OBLIGATORIO (19/10, antes tenía el botón "Prefiero no dejarlo"). El
+// texto dice para qué es, porque pedir un mail sin motivo en la mitad de una
+// compra hace abandonar.
 function askEmailMessages(): ChatMessage[] {
   return [
-    bot("¿Me dejás tu *mail* para la factura?\nSi no querés, lo podés saltear — la reserva sale igual."),
+    bot("¿Me dejás tu *mail*? Lo necesitamos para la factura."),
   ]
 }
 
@@ -478,24 +478,13 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
       if (ev.type === "BACK") return back(ctx, "askName")
       break
 
-    // Paso OPCIONAL: los dos caminos (dejar el mail o saltearlo) terminan en
-    // pickSlot, así que saltearlo no cuesta ni un paso extra.
+    // Paso OBLIGATORIO: la única salida hacia pickSlot es dejar el mail.
     case "askEmail":
       if (ev.type === "SET_EMAIL") {
         const withUser = pushUser(ctx, ev.value)
         const withBot = pushMessages(withUser, pickSlotMessages())
         return transition(
           { ...withBot, draft: { ...ctx.draft, email: ev.value }, error: undefined },
-          "pickSlot",
-        )
-      }
-      if (ev.type === "SKIP_EMAIL") {
-        const withUser = pushUser(ctx, "Prefiero no dejarlo")
-        const withBot = pushMessages(withUser, pickSlotMessages())
-        // `email` se limpia por si venía de un draft retomado: si ahora eligió
-        // saltearlo, no queda pegado el mail viejo.
-        return transition(
-          { ...withBot, draft: { ...ctx.draft, email: undefined }, error: undefined },
           "pickSlot",
         )
       }

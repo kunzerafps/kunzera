@@ -24,9 +24,9 @@ describe("validateEmail", () => {
     }
   })
 
-  it("vacío no reta: apunta al botón de saltear", () => {
-    expect(validateEmail("")).toContain("Prefiero no dejarlo")
-    expect(validateEmail("   ")).toContain("Prefiero no dejarlo")
+  it("vacío no pasa: el mail es obligatorio", () => {
+    expect(validateEmail("")).not.toBeNull()
+    expect(validateEmail("   ")).not.toBeNull()
   })
 
   it("corta los demasiado largos", () => {
