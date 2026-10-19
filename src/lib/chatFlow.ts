@@ -132,7 +132,7 @@ function askNameMessages(): ChatMessage[] {
 
 function askWhatsappMessages(): ChatMessage[] {
   return [
-    bot("Genial. ¿Cuál es tu número de *WhatsApp*?\nSolo el código de área + número, sin el 54 9 (ej: 3382677871)."),
+    bot("Genial. ¿Cuál es tu número de *WhatsApp*?\nSolo el código de área + número, sin el 54 9 (ej: 3382677871).\nSi sos de otro país, poné el código de tu país adelante (ej: +56 9 1234 5678)."),
   ]
 }
 

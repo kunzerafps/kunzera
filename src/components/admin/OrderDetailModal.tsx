@@ -24,6 +24,7 @@ import { formatARS, formatDateAR, formatSlotLabel } from "../../lib/formatters"
 import { deleteOrder } from "../../lib/appsScript"
 import { comprobanteUrl } from "../../lib/comprobante"
 import { applyTemplate } from "../../lib/waMessages"
+import { whatsappLinkNumber } from "../../lib/validators"
 import { useSiteConfig } from "../../hooks/useWaMessages"
 import { getAdminToken } from "../../lib/storage"
 
@@ -51,12 +52,9 @@ function isBrokenWhatsapp(value: unknown): boolean {
 
 function buildWhatsAppLink(order: Order, template: string): string | null {
   if (isBrokenWhatsapp(order.whatsapp)) return null
-  const digits = String(order.whatsapp ?? "").replace(/\D/g, "")
-  let waFull = digits
-  if (!waFull.startsWith("549")) {
-    if (waFull.startsWith("54") && waFull.length > 10) waFull = "549" + waFull.slice(2)
-    else waFull = "549" + waFull
-  }
+  // Antes le anteponía 549 a todo, y a un cliente de otro país le armaba un
+  // link a un número que no existe.
+  const waFull = whatsappLinkNumber(String(order.whatsapp ?? ""))
   const mensaje = applyTemplate(template, {
     nombre: String(order.nombre ?? "").split(" ")[0] || "",
     pack: order.plan === "diamante" ? "Diamante" : "Platino",

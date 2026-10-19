@@ -9,18 +9,54 @@ export function validateName(value: string): string | null {
   return null
 }
 
+// Tope de 15 = el máximo de un número internacional (E.164). Antes era 11 y
+// rebotaba a la gente de otros países: con su código de país casi todos
+// pasan de 11 (México/Brasil 13, Colombia/Venezuela 12).
 export function validateWhatsapp(value: string): string | null {
   const v = value.replace(/\D/g, "")
   if (!v) return "Ingresá tu número"
   if (v.length < 8) return "Número muy corto"
-  if (v.length > 11) return "Demasiados dígitos"
+  if (v.length > 15) return "Demasiados dígitos"
   return null
 }
 
 export function normalizeWhatsapp(value: string): string {
-  // Guardamos solo los dígitos del área + número (sin +54 9).
-  // El Apps Script agrega 549 al generar el hipervínculo.
+  // Guardamos solo dígitos: área + número si es argentino (sin +54 9), o
+  // código de país + número si es de afuera. Nunca con "+": en la planilla
+  // un "+..." se lee como fórmula.
   return value.replace(/\D/g, "")
+}
+
+// Número para armar el link wa.me del panel. Espejo de normalizePhoneForMeta
+// (netlify/functions/lib/metaUserData.ts): si se lee como celular argentino
+// va con 549; si trae su propio código de país (11 a 15 dígitos) va tal cual;
+// si no, se cae al criterio viejo de anteponer 549.
+export function whatsappLinkNumber(whatsapp: string): string {
+  let digits = String(whatsapp ?? "").replace(/\D/g, "")
+  if (digits.startsWith("00")) digits = digits.slice(2)
+  const international = digits
+
+  let hadArCountryCode = false
+  if (digits.startsWith("549")) {
+    digits = digits.slice(3)
+    hadArCountryCode = true
+  } else if (digits.startsWith("54") && digits.length > 10) {
+    digits = digits.slice(2)
+    hadArCountryCode = true
+  }
+  if (digits.startsWith("0")) digits = digits.slice(1)
+  for (const areaLen of [2, 3, 4]) {
+    if (digits.length === 12 && digits.slice(areaLen, areaLen + 2) === "15") {
+      digits = digits.slice(0, areaLen) + digits.slice(areaLen + 2)
+      break
+    }
+  }
+
+  if (digits.length === 10 && /^[123]/.test(digits)) return "549" + digits
+  if (!hadArCountryCode && international.length >= 11 && international.length <= 15) {
+    return international
+  }
+  return "549" + digits
 }
 
 // Mail del comprador — OBLIGATORIO desde el 19/10 (ver askEmail en
