@@ -437,13 +437,13 @@ function TabButton({
 function computeMetrics(orders: Order[]): AdminMetrics {
   let totalARS = 0
   let todayCount = 0
-  const byPlan: Record<Pack, number> = { platino: 0, diamante: 0 }
+  const byPlan: Record<Pack, number> = { platino: 0, diamante: 0, formateo: 0 }
 
   for (const o of orders) {
     const monto = Number(o.monto) || 0
     totalARS += monto
     if (isToday(o.turno)) todayCount++
-    if (o.plan === "platino" || o.plan === "diamante") {
+    if (o.plan === "platino" || o.plan === "diamante" || o.plan === "formateo") {
       byPlan[o.plan] = (byPlan[o.plan] || 0) + 1
     }
   }

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { Check, Gem, Zap, ArrowRight, Crown, Layers, ShieldCheck, PiggyBank } from "lucide-react"
+import { Check, Gem, Zap, ArrowRight, Crown, Layers, ShieldCheck, PiggyBank, RefreshCw } from "lucide-react"
 import { useMemo } from "react"
 import { PACKS } from "../lib/packs"
 import { openChat } from "../lib/chatBus"
@@ -7,6 +7,11 @@ import type { Pack } from "../types/order"
 import { useSiteConfig } from "../hooks/useWaMessages"
 import { trackServerBackedEvent } from "../lib/pixel"
 import { firedOnceInSession, markFiredOnceInSession } from "../lib/storage"
+
+// Van primero en cada pack: es lo que más preguntan los clientes.
+const ACTIVACION = "Activación de Windows incluida"
+const SECURE_BOOT = "Configuro el Secure Boot, que piden varios anti-cheat para dejarte jugar"
+const FORMATEO = "Instalación de Windows desde cero: tu PC arranca limpia, como recién comprada"
 
 const PLATINO_FEATURES = [
   "Limpio tu PC de archivos y basura que la hacen más lenta",
@@ -28,18 +33,22 @@ const DIAMANTE_ONLY_FEATURES = [
 const PACK_FEATURES = {
   platino: {
     headline: "+FPS · -Input Lag",
-    features: PLATINO_FEATURES,
+    features: [ACTIVACION, ...PLATINO_FEATURES],
   },
   diamante: {
     headline: "Máximo rendimiento",
-    features: [...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
+    features: [ACTIVACION, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
+  },
+  formateo: {
+    headline: "PC como nueva + Máximo rendimiento",
+    features: [FORMATEO, ACTIVACION, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
   },
 } as const
 
 const TRUST_MINI = [
   {
     icon: Layers,
-    title: "Ambos packs incluyen:",
+    title: "Todos los packs incluyen:",
     desc: "procesador, placa de video, RAM, mouse, teclado y cualquier otro periférico. Nada se cobra aparte.",
   },
   {
@@ -81,6 +90,17 @@ export default function Pricing() {
         headline: PACK_FEATURES.diamante.headline,
         features: PACK_FEATURES.diamante.features,
       },
+      {
+        name: PACKS.formateo.name,
+        tier: PACKS.formateo.id,
+        priceArs: prices.formateo.ars,
+        priceUsd: prices.formateo.usd,
+        icon: RefreshCw,
+        highlight: false,
+        tagline: PACKS.formateo.tagline,
+        headline: PACK_FEATURES.formateo.headline,
+        features: PACK_FEATURES.formateo.features,
+      },
     ],
     [prices],
   )
@@ -110,7 +130,7 @@ export default function Pricing() {
             trackServerBackedEvent("ViewContent", undefined, {
               content_name: "pricing_section",
               content_type: "product_group",
-              content_ids: ["platino", "diamante"],
+              content_ids: ["platino", "diamante", "formateo"],
             })
           }}
           className="text-center max-w-2xl mx-auto mb-16"
@@ -141,7 +161,7 @@ export default function Pricing() {
           ))}
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+        <div className="grid lg:grid-cols-3 gap-6 max-w-5xl lg:max-w-7xl mx-auto">
           {packs.map((pack, i) => {
             const Icon = pack.icon
             return (
@@ -167,8 +187,13 @@ export default function Pricing() {
                     <div className="absolute -top-40 -right-40 w-[400px] h-[400px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(239,19,19,0.18) 0%, transparent 65%)" }} />
                   </>
                 )}
+                {pack.tier === "formateo" && (
+                  <div className="absolute top-0 right-0 px-4 py-1.5 rounded-bl-xl bg-white/10 border-l border-b border-brand-300/30 text-brand-300 text-xs font-bold uppercase tracking-widest">
+                    Nuevo
+                  </div>
+                )}
 
-                <div className="relative p-8 md:p-10 flex flex-col flex-1">
+                <div className="relative p-8 md:p-10 lg:p-8 flex flex-col flex-1">
                   {/* Header */}
                   <div className="flex items-start justify-between mb-6">
                     <div>
@@ -203,7 +228,7 @@ export default function Pricing() {
                   {/* Price */}
                   <div className="mb-8">
                     <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="font-display font-black text-5xl md:text-6xl text-white">
+                      <span className="font-display font-black text-5xl md:text-6xl lg:text-5xl text-white">
                         ${pack.priceArs.toLocaleString("es-AR")}
                       </span>
                       <span className="text-white/40 text-sm">ARS</span>
@@ -221,22 +246,38 @@ export default function Pricing() {
 
                   {/* Features */}
                   <ul className="space-y-3 mb-8 flex-1">
-                    {pack.features.map((feat) => (
-                      <li key={feat} className="flex items-start gap-3">
+                    {pack.features.map((feat, idx) => {
+                      // En Diamante + Formateo se resalta el primer ítem: es lo
+                      // único que lo diferencia del Diamante.
+                      const destacado = pack.tier === "formateo" && idx === 0
+                      return (
+                      <li
+                        key={feat}
+                        className={`flex items-start gap-3 ${
+                          destacado
+                            ? "-mx-3 px-3 py-2.5 rounded-xl bg-brand-500/10 border border-brand-500/40"
+                            : ""
+                        }`}
+                      >
                         <div
                           className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            pack.highlight
+                            pack.highlight || destacado
                               ? "bg-brand-500"
                               : "bg-white/10"
                           }`}
                         >
                           <Check className="w-3 h-3 text-white" strokeWidth={3} />
                         </div>
-                        <span className="text-white/80 text-sm leading-relaxed">
+                        <span
+                          className={`text-sm leading-relaxed ${
+                            destacado ? "text-white font-semibold" : "text-white/80"
+                          }`}
+                        >
                           {feat}
                         </span>
                       </li>
-                    ))}
+                      )
+                    })}
                   </ul>
 
                   {/* CTA */}

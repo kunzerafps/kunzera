@@ -101,6 +101,7 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
           const allDone = count > 0 && atendidos === count
           const hasDiamante = dayOrders.some((o) => o.plan === "diamante")
           const hasPlatino = dayOrders.some((o) => o.plan === "platino")
+          const hasFormateo = dayOrders.some((o) => o.plan === "formateo")
 
           return (
             <motion.button
@@ -154,7 +155,7 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
                         {allDone && <span className="mr-0.5">✓</span>}
                         {count} turno{count !== 1 ? "s" : ""}
                       </div>
-                      {(hasPlatino || hasDiamante) && (
+                      {(hasPlatino || hasDiamante || hasFormateo) && (
                         <div className="flex items-center gap-1">
                           {hasPlatino && (
                             <span
@@ -166,6 +167,12 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
                             <span
                               className="w-1.5 h-1.5 rounded-full bg-blue-400"
                               title="Diamante"
+                            />
+                          )}
+                          {hasFormateo && (
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-purple-400"
+                              title="Diamante + Formateo"
                             />
                           )}
                           {atendidos > 0 && !allDone && (
@@ -191,6 +198,9 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Diamante
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> Diamante + Formateo
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-sm bg-green-500/40 border border-green-500/60" /> Todos atendidos

@@ -107,6 +107,11 @@ export default function Hero() {
                 <span className="font-mono font-bold text-white">
                   ${prices.diamante.ars.toLocaleString("es-AR")}
                 </span>
+                <span className="text-white/30">·</span>
+                <span className="text-brand-300 font-semibold">Diamante + Formateo</span>
+                <span className="font-mono font-bold text-white">
+                  ${prices.formateo.ars.toLocaleString("es-AR")}
+                </span>
                 <span className="text-white/40 text-xs">— pago único, sin mensualidades</span>
               </p>
               <span className="text-xs font-mono text-white/40 flex items-center gap-1.5">

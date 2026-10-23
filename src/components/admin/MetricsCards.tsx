@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { Calendar, DollarSign, Gem, TrendingUp, Zap } from "lucide-react"
+import { Calendar, DollarSign, Gem, RefreshCw, TrendingUp, Zap } from "lucide-react"
 import type { AdminMetrics } from "../../types/order"
 import { formatARS } from "../../lib/formatters"
 import { PACKS } from "../../lib/packs"
@@ -11,7 +11,7 @@ type Props = {
 
 export default function MetricsCards({ metrics, totalOrders }: Props) {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
       <Card
         icon={<DollarSign className="w-4 h-4" />}
         label="Total vendido"
@@ -35,6 +35,12 @@ export default function MetricsCards({ metrics, totalOrders }: Props) {
         label="Diamante"
         value={String(metrics.byPlan.diamante || 0)}
         sub={formatARS((metrics.byPlan.diamante || 0) * PACKS.diamante.price)}
+      />
+      <Card
+        icon={<RefreshCw className="w-4 h-4" />}
+        label="Diamante + Formateo"
+        value={String(metrics.byPlan.formateo || 0)}
+        sub={formatARS((metrics.byPlan.formateo || 0) * PACKS.formateo.price)}
       />
     </div>
   )

@@ -11,7 +11,7 @@ type Props = {
   onRowClick?: (order: Order) => void
 }
 
-type Filter = "all" | "today" | "platino" | "diamante"
+type Filter = "all" | "today" | "platino" | "diamante" | "formateo"
 
 export default function OrdersTable({ orders, highlightToday = true, onRowClick }: Props) {
   const [query, setQuery] = useState("")
@@ -24,6 +24,7 @@ export default function OrdersTable({ orders, highlightToday = true, onRowClick 
         if (filter === "today" && !isToday(o.turno)) return false
         if (filter === "platino" && o.plan !== "platino") return false
         if (filter === "diamante" && o.plan !== "diamante") return false
+        if (filter === "formateo" && o.plan !== "formateo") return false
         if (!q) return true
         return (
           String(o.nombre ?? "").toLowerCase().includes(q) ||
@@ -47,7 +48,7 @@ export default function OrdersTable({ orders, highlightToday = true, onRowClick 
           />
         </div>
         <div className="flex gap-1.5 overflow-x-auto">
-          {(["all", "today", "platino", "diamante"] as Filter[]).map((f) => (
+          {(["all", "today", "platino", "diamante", "formateo"] as Filter[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -115,6 +116,8 @@ export default function OrdersTable({ orders, highlightToday = true, onRowClick 
                         className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-mono uppercase ${
                           o.plan === "diamante"
                             ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                            : o.plan === "formateo"
+                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
                             : "bg-brand-500/20 text-brand-300 border border-brand-500/30"
                         }`}
                       >
@@ -190,5 +193,7 @@ function labelFor(f: Filter): string {
       return "Platino"
     case "diamante":
       return "Diamante"
+    case "formateo":
+      return "Diamante + Formateo"
   }
 }

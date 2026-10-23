@@ -57,7 +57,7 @@ function buildWhatsAppLink(order: Order, template: string): string | null {
   const waFull = whatsappLinkNumber(String(order.whatsapp ?? ""))
   const mensaje = applyTemplate(template, {
     nombre: String(order.nombre ?? "").split(" ")[0] || "",
-    pack: order.plan === "diamante" ? "Diamante" : "Platino",
+    pack: PACKS[order.plan]?.name ?? "Platino",
     turno: order.turno ? formatSlotLabel(order.turno) : "",
   })
   return `https://wa.me/${waFull}?text=${encodeURIComponent(mensaje)}`

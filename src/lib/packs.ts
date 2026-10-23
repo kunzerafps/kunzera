@@ -17,6 +17,14 @@ export const PACKS: Record<Pack, PackInfo> = {
     tagline: "Todo Platino + entro directo al hardware (BIOS)",
     emoji: "💎",
   },
+  formateo: {
+    id: "formateo",
+    name: "Diamante + Formateo",
+    price: 100000,
+    usdPrice: 90,
+    tagline: "Windows instalado desde cero + todo Diamante",
+    emoji: "🔄",
+  },
 }
 
-export const PACK_LIST: PackInfo[] = [PACKS.platino, PACKS.diamante]
+export const PACK_LIST: PackInfo[] = [PACKS.platino, PACKS.diamante, PACKS.formateo]

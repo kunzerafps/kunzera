@@ -22,7 +22,7 @@ type SaveState =
 
 const PLACEHOLDERS = [
   { key: "nombre", desc: "Primer nombre del cliente" },
-  { key: "pack", desc: "Platino o Diamante" },
+  { key: "pack", desc: "Platino, Diamante o Diamante + Formateo" },
   { key: "turno", desc: 'Ej: "Hoy 22:00"' },
 ]
 
@@ -45,6 +45,8 @@ export default function WaMessagesEditor() {
     "platino-usd": String(DEFAULT_SITE_CONFIG.prices.platino.usd),
     "diamante-ars": String(DEFAULT_SITE_CONFIG.prices.diamante.ars),
     "diamante-usd": String(DEFAULT_SITE_CONFIG.prices.diamante.usd),
+    "formateo-ars": String(DEFAULT_SITE_CONFIG.prices.formateo.ars),
+    "formateo-usd": String(DEFAULT_SITE_CONFIG.prices.formateo.usd),
   })
   const [savedHash, setSavedHash] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -72,6 +74,8 @@ export default function WaMessagesEditor() {
         "platino-usd": String(c.prices.platino.usd),
         "diamante-ars": String(c.prices.diamante.ars),
         "diamante-usd": String(c.prices.diamante.usd),
+        "formateo-ars": String(c.prices.formateo.ars),
+        "formateo-usd": String(c.prices.formateo.usd),
       })
       setSavedHash(c.adminPasswordHash)
       setBlockedWindows(c.blockedWindows)
@@ -95,10 +99,14 @@ export default function WaMessagesEditor() {
       ars: parsePrice(priceText["diamante-ars"], prices.diamante.ars),
       usd: parsePrice(priceText["diamante-usd"], prices.diamante.usd),
     },
+    formateo: {
+      ars: parsePrice(priceText["formateo-ars"], prices.formateo.ars),
+      usd: parsePrice(priceText["formateo-usd"], prices.formateo.usd),
+    },
   }
 
   const anyPriceInvalid = (
-    ["platino-ars", "platino-usd", "diamante-ars", "diamante-usd"] as PriceField[]
+    ["platino-ars", "platino-usd", "diamante-ars", "diamante-usd", "formateo-ars", "formateo-usd"] as PriceField[]
   ).some((k) => !isValidPrice(priceText[k]))
 
   const passwordTouched = newPassword.length > 0 || confirmPassword.length > 0
@@ -206,6 +214,8 @@ export default function WaMessagesEditor() {
       "platino-usd": String(DEFAULT_SITE_CONFIG.prices.platino.usd),
       "diamante-ars": String(DEFAULT_SITE_CONFIG.prices.diamante.ars),
       "diamante-usd": String(DEFAULT_SITE_CONFIG.prices.diamante.usd),
+      "formateo-ars": String(DEFAULT_SITE_CONFIG.prices.formateo.ars),
+      "formateo-usd": String(DEFAULT_SITE_CONFIG.prices.formateo.usd),
     })
     setSaveState({ kind: "idle" })
   }
@@ -358,6 +368,13 @@ export default function WaMessagesEditor() {
                 usdValue={priceText["diamante-usd"]}
                 onArsChange={(v) => updatePrice("diamante-ars", v)}
                 onUsdChange={(v) => updatePrice("diamante-usd", v)}
+              />
+              <PriceRow
+                label="🔄 Diamante + Formateo"
+                arsValue={priceText["formateo-ars"]}
+                usdValue={priceText["formateo-usd"]}
+                onArsChange={(v) => updatePrice("formateo-ars", v)}
+                onUsdChange={(v) => updatePrice("formateo-usd", v)}
               />
             </tbody>
           </table>

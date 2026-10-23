@@ -13,7 +13,7 @@ const faqs = [
   },
   {
     q: "¿Tengo que formatear?",
-    a: "No hace falta. Trabajo sobre tu Windows actual sin borrar nada: tus programas, juegos y archivos quedan intactos.",
+    a: "No hace falta. Trabajo sobre tu Windows actual sin borrar nada: tus programas, juegos y archivos quedan intactos. Si igual querés arrancar de cero, está el pack Diamante + Formateo.",
   },
   {
     q: "¿Sirve para todos los juegos?",

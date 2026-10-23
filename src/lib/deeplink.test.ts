@@ -295,6 +295,7 @@ describe("DEEP_LINKS (referencia para pegar en los anuncios)", () => {
       reservar: "https://kunzera.com/reservar",
       reservarPlatino: "https://kunzera.com/reservar/platino",
       reservarDiamante: "https://kunzera.com/reservar/diamante",
+      reservarFormateo: "https://kunzera.com/reservar/formateo",
     })
   })
 })

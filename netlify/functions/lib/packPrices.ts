@@ -25,15 +25,16 @@ import { PACKS } from "../../../src/lib/packs"
 const STORE_NAME = "site-config"
 const KEY = "site-config"
 
-export type PackSlug = "platino" | "diamante"
+export type PackSlug = "platino" | "diamante" | "formateo"
 
 const DEFAULT_ARS: Record<PackSlug, number> = {
   platino: PACKS.platino.price,
   diamante: PACKS.diamante.price,
+  formateo: PACKS.formateo.price,
 }
 
 export function isPackSlug(v: unknown): v is PackSlug {
-  return v === "platino" || v === "diamante"
+  return v === "platino" || v === "diamante" || v === "formateo"
 }
 
 function readArs(raw: unknown, fallback: number): number {
@@ -48,12 +49,13 @@ function readArs(raw: unknown, fallback: number): number {
 export async function getServerPackPricesArs(): Promise<Record<PackSlug, number>> {
   try {
     const raw = (await getStore(STORE_NAME).get(KEY, { type: "json" })) as
-      | { prices?: { platino?: unknown; diamante?: unknown } }
+      | { prices?: { platino?: unknown; diamante?: unknown; formateo?: unknown } }
       | null
     if (!raw?.prices) return DEFAULT_ARS
     return {
       platino: readArs(raw.prices.platino, DEFAULT_ARS.platino),
       diamante: readArs(raw.prices.diamante, DEFAULT_ARS.diamante),
+      formateo: readArs(raw.prices.formateo, DEFAULT_ARS.formateo),
     }
   } catch {
     return DEFAULT_ARS

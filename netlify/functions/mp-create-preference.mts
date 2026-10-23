@@ -6,7 +6,7 @@ import { mpTotal } from "../../src/lib/pricing"
 const SITE_CONFIG_STORE = "site-config"
 const SITE_CONFIG_KEY = "site-config"
 
-type Pack = "platino" | "diamante"
+type Pack = "platino" | "diamante" | "formateo"
 
 // Este endpoint solo lo llama el propio front, siempre same-origin (fetch a
 // "/api/..."), así que no necesita headers CORS permisivos — evita que
@@ -60,7 +60,7 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     idempotencyKey?: unknown
   }
 
-  if (pack !== "platino" && pack !== "diamante") {
+  if (pack !== "platino" && pack !== "diamante" && pack !== "formateo") {
     return Response.json({ ok: false, error: "invalid_pack" }, { status: 400, headers })
   }
   if (typeof idempotencyKey !== "string" || idempotencyKey.length < 6) {

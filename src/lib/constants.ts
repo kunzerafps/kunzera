@@ -22,6 +22,7 @@ export const WHATSAPP_FLOAT_MESSAGE = [
   "",
   "» *PLATINO $50.000* → optimización completa de Windows: limpieza, procesos, CPU/placa de video/RAM al máximo, mouse y teclado sin demora y conexión estable. Más FPS y menos input lag.",
   "» *DIAMANTE $70.000* → todo eso de Windows (lo que hace el plan Platino) + entro al BIOS, algo que Windows ni te deja tocar y que hace una diferencia enorme: es donde tu PC pega el salto de FPS más grande. Es el que más eligen.",
+  "» *DIAMANTE + FORMATEO $100.000* → lo mismo que Diamante, pero con Windows instalado desde cero.",
   "",
   "» El día del turno te escribo unos minutos antes y arrancamos. Me conecto por AnyDesk, ves todo lo que hago en tu pantalla en vivo, hago un punto de restauración antes de tocar nada y no abro nada personal tuyo. Dura 20 minutos más o menos.",
   "",

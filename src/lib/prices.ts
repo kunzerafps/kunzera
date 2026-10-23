@@ -7,6 +7,7 @@ export type Prices = Record<Pack, PackPrices>
 export const DEFAULT_PRICES: Prices = {
   platino: { ars: PACKS.platino.price, usd: PACKS.platino.usdPrice },
   diamante: { ars: PACKS.diamante.price, usd: PACKS.diamante.usdPrice },
+  formateo: { ars: PACKS.formateo.price, usd: PACKS.formateo.usdPrice },
 }
 
 let current: Prices = DEFAULT_PRICES
@@ -15,6 +16,7 @@ export function setCurrentPrices(p: Prices) {
   current = {
     platino: { ars: p.platino.ars, usd: p.platino.usd },
     diamante: { ars: p.diamante.ars, usd: p.diamante.usd },
+    formateo: { ars: p.formateo.ars, usd: p.formateo.usd },
   }
 }
 
@@ -38,7 +40,7 @@ export function getUsd(pack: Pack): number {
 // slug como `content_ids` (identificador estable para agrupar) y el nombre
 // visible como `content_name`.
 export function packEventParams(pack: Pack | string | undefined): Record<string, unknown> {
-  if (pack !== "platino" && pack !== "diamante") return {}
+  if (pack !== "platino" && pack !== "diamante" && pack !== "formateo") return {}
   return {
     value: getArs(pack),
     currency: "ARS",

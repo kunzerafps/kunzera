@@ -47,6 +47,11 @@ export default function Footer() {
                 </a>
               </li>
               <li>
+                <a href="#pricing" className="hover:text-brand-400 transition">
+                  Pack Diamante + Formateo
+                </a>
+              </li>
+              <li>
                 <a href="#features" className="hover:text-brand-400 transition">
                   Tweaks
                 </a>

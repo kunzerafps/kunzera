@@ -119,6 +119,7 @@ function sanitize(o: unknown): SiteConfig {
   const prices: Record<Pack, PackPrices> = {
     platino: sanitizePackPrices(pricesIn.platino, DEFAULT_SITE_CONFIG.prices.platino),
     diamante: sanitizePackPrices(pricesIn.diamante, DEFAULT_SITE_CONFIG.prices.diamante),
+    formateo: sanitizePackPrices(pricesIn.formateo, DEFAULT_SITE_CONFIG.prices.formateo),
   }
   const adminPasswordHash = sanitizeHash(obj.adminPasswordHash)
   const blockedWindows = sanitizeBlockedWindows(obj.blockedWindows)

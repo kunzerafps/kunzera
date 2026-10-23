@@ -22,6 +22,7 @@ const DEFAULTS = {
   prices: {
     platino: { ars: PACKS.platino.price, usd: PACKS.platino.usdPrice } as PackPrices,
     diamante: { ars: PACKS.diamante.price, usd: PACKS.diamante.usdPrice } as PackPrices,
+    formateo: { ars: PACKS.formateo.price, usd: PACKS.formateo.usdPrice } as PackPrices,
   },
   adminPasswordHash: "",
   blockedWindows: [] as BlockedWindow[],
@@ -110,6 +111,7 @@ function sanitize(input: unknown): Config {
   const prices = {
     platino: sanitizePack(pricesIn.platino, DEFAULTS.prices.platino),
     diamante: sanitizePack(pricesIn.diamante, DEFAULTS.prices.diamante),
+    formateo: sanitizePack(pricesIn.formateo, DEFAULTS.prices.formateo),
   }
   const adminPasswordHash = sanitizeHash(o.adminPasswordHash)
   const blockedWindows = sanitizeBlockedWindows(o.blockedWindows)
