@@ -119,7 +119,19 @@ export function useChatFlow(): FlowReturn {
     window.history.replaceState(null, "", window.location.pathname)
 
     const stored = loadDraft()
-    if (!stored || !stored.draft.idempotencyKey || stored.draft.idempotencyKey !== ref) return
+    if (!stored || !stored.draft.idempotencyKey || stored.draft.idempotencyKey !== ref) {
+      // Volvió con el pago aprobado a un navegador que no tiene el pedido
+      // (típico en iPhone: entró desde Instagram y MP lo devuelve a Safari).
+      // Antes no se mostraba nada y el cliente no sabía si había quedado
+      // reservado. La reserva igual la crea el webhook; acá solo mostramos el
+      // mismo "¡Listo!" de siempre con el turno que viene en la URL.
+      const turno = params.get("turno")
+      if (mp !== "success" || !ref || !turno || Number.isNaN(new Date(turno).getTime())) return
+      rawDispatch({ type: "MP_RETURN", status: "success", draft: { turno, idempotencyKey: ref } })
+      setOpen(true)
+      setForceExpanded(true)
+      return
+    }
 
     clearDraft()
     setResumable(null)

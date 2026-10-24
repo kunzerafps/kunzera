@@ -292,6 +292,17 @@ describe("chatFlow reducer — regresiones", () => {
     expect(ctx.state).toBe("confirmed")
   })
 
+  it("MP_RETURN success sin pedido guardado (solo turno) → confirmed con el ¡Listo! de siempre", () => {
+    const ctx = reduce(initialContext(), {
+      type: "MP_RETURN",
+      status: "success",
+      draft: { turno: SLOT, idempotencyKey: "abc123" },
+    })
+    expect(ctx.state).toBe("confirmed")
+    const last = ctx.messages[ctx.messages.length - 1]
+    expect(JSON.stringify(last)).toContain("Tu turno quedó reservado")
+  })
+
   it("MP_RETURN failure → payment", () => {
     const ctx = reduce(initialContext(), {
       type: "MP_RETURN",

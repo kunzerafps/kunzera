@@ -110,7 +110,10 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     },
     external_reference: idempotencyKey,
     back_urls: {
-      success: `${origin}/?mp=success&ref=${encodeURIComponent(idempotencyKey)}`,
+      // El turno viaja en la URL de regreso para poder mostrar el "¡Listo!"
+      // aunque el navegador al que vuelve no tenga el pedido guardado
+      // (iPhone: entró por el navegador de Instagram y MP lo devuelve a Safari).
+      success: `${origin}/?mp=success&ref=${encodeURIComponent(idempotencyKey)}&turno=${encodeURIComponent(turno)}`,
       pending: `${origin}/?mp=pending&ref=${encodeURIComponent(idempotencyKey)}`,
       failure: `${origin}/?mp=failure&ref=${encodeURIComponent(idempotencyKey)}`,
     },
