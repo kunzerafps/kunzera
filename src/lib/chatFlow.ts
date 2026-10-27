@@ -181,7 +181,7 @@ function submittingMessages(): ChatMessage[] {
 function confirmedMessages(draft: OrderDraft, _fileUrl: string): ChatMessage[] {
   return [
     bot(
-      `¡Listo! 🎉 Tu turno quedó reservado para *${formatSlotLabel(draft.turno!)}*.\n\nTe escribo al WhatsApp 10 minutos antes de la hora pactada. Mientras tanto, descargá AnyDesk desde anydesk.com. Si tu pack incluye optimización de BIOS, también te voy a mandar un link de Google Meet para que puedas enfocarme el monitor y configurarla juntos.`,
+      `¡Listo! 🎉 Tu turno quedó reservado para *${formatSlotLabel(draft.turno!)}*.\n\nTe escribo al WhatsApp 10 minutos antes de la hora pactada. Mientras tanto, descargá AnyDesk desde anydesk.com. Si tu pack incluye optimización de BIOS, al momento de configurarla te hago una videollamada por WhatsApp para que puedas enfocarme el monitor y la hacemos juntos.`,
       { variant: "success" },
     ),
   ]
