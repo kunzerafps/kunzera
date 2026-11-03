@@ -40,7 +40,10 @@ const METHODS: {
   icon: typeof CreditCard
 }[] = [
   { id: "transferencia", label: "Transferencia", icon: CreditCard },
-  { id: "mercadopago", label: "Mercado Pago", icon: Landmark },
+  // 2026-11-03: checkout de MP APAGADO a pedido de Eze hasta pasar el cobro
+  // de la cuenta juanmarquez2026.mp a kunzera.mp (cambiar MP_ACCESS_TOKEN en
+  // Netlify). Para reactivarlo, descomentar esta linea.
+  // { id: "mercadopago", label: "Mercado Pago", icon: Landmark },
 ]
 
 const ALIAS_METHODS: Record<
