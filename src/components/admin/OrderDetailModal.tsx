@@ -27,6 +27,7 @@ import { applyTemplate } from "../../lib/waMessages"
 import { whatsappLinkNumber } from "../../lib/validators"
 import { useSiteConfig } from "../../hooks/useWaMessages"
 import { getAdminToken } from "../../lib/storage"
+import { FACTURACION_WEB_ACTIVA } from "../../lib/constants"
 
 // Estado del aviso de Compra a Meta para esta reserva, calculado por
 // AdminDashboard a partir del log de entregas (capi-delivery-log):
@@ -587,6 +588,7 @@ function StatusActions({
       }
       const messages: Record<string, string> = {
         unauthorized: "Token admin inválido",
+        facturacion_desactivada: "La facturación desde la web está desactivada",
         missing_field: "Faltan datos de la reserva para facturar",
         binance_no_facturable: "Este pago fue por Binance — no se factura",
         not_configured: "La facturación electrónica todavía no está configurada",
@@ -612,7 +614,8 @@ function StatusActions({
           100% manual — no depende del estado de la reserva, el admin decide
           cuándo. Si ya se facturó antes, el backend devuelve el mismo CAE
           en vez de duplicar. */}
-      {hasKey &&
+      {FACTURACION_WEB_ACTIVA &&
+        hasKey &&
         (factura ? (
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-violet-300 text-sm">
             <Receipt className="w-4 h-4 shrink-0" />

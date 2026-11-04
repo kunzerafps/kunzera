@@ -41,6 +41,12 @@ export const waLink = (message: string) =>
 export const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbzV4aBgPzLgRKnecqmisEhJ77l_yGWiFgqip-rE1kXdesYjMKkuB-70ahsV58eXf7-KWA/exec"
 
+// 2026-11-04: facturación desde la web DESACTIVADA a pedido de Eze. Factura la
+// contadora, a consumidor final, con las fotos de Mercado Pago que él le pasa
+// los domingos. En false se esconde el botón "Generar factura" del panel y
+// /api/generar-factura rechaza todo. Para reactivar: poner true.
+export const FACTURACION_WEB_ACTIVA: boolean = false
+
 // Alias de Mercado Pago donde el cliente transfiere
 export const MP_ALIAS = "kunzera.mp"
 // Titular de la cuenta — se muestra junto al alias en el paso de pago para

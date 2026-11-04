@@ -1,6 +1,7 @@
 import type { Config, Context } from "@netlify/functions"
 import { verifySessionToken } from "./lib/adminSession"
 import { invoiceOrderNow } from "./lib/facturacion"
+import { FACTURACION_WEB_ACTIVA } from "../../src/lib/constants"
 import type { Pack } from "../../src/types/order"
 
 type Body = {
@@ -30,6 +31,12 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
 
   if (!verifySessionToken(body.token)) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 })
+  }
+
+  // Se corta también acá, no solo escondiendo el botón, para que no se pueda
+  // emitir desde un panel que quedó abierto con la versión vieja.
+  if (!FACTURACION_WEB_ACTIVA) {
+    return Response.json({ ok: false, error: "facturacion_desactivada" }, { status: 403 })
   }
 
   if (!body.idempotencyKey || !body.nombre || !body.plan || !body.turno || body.monto === undefined) {
