@@ -102,6 +102,7 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
           const hasDiamante = dayOrders.some((o) => o.plan === "diamante")
           const hasPlatino = dayOrders.some((o) => o.plan === "platino")
           const hasFormateo = dayOrders.some((o) => o.plan === "formateo")
+          const hasNotebooks = dayOrders.some((o) => o.plan === "notebooks")
 
           return (
             <motion.button
@@ -155,7 +156,7 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
                         {allDone && <span className="mr-0.5">✓</span>}
                         {count} turno{count !== 1 ? "s" : ""}
                       </div>
-                      {(hasPlatino || hasDiamante || hasFormateo) && (
+                      {(hasPlatino || hasDiamante || hasFormateo || hasNotebooks) && (
                         <div className="flex items-center gap-1">
                           {hasPlatino && (
                             <span
@@ -173,6 +174,12 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
                             <span
                               className="w-1.5 h-1.5 rounded-full bg-purple-400"
                               title="Diamante + Formateo"
+                            />
+                          )}
+                          {hasNotebooks && (
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-cyan-400"
+                              title="Notebooks"
                             />
                           )}
                           {atendidos > 0 && !allDone && (
@@ -201,6 +208,9 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> Diamante + Formateo
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> Notebooks
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-sm bg-green-500/40 border border-green-500/60" /> Todos atendidos

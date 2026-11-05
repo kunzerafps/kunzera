@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { Check, Gem, Zap, ArrowRight, Crown, Layers, ShieldCheck, PiggyBank, RefreshCw } from "lucide-react"
+import { Check, Gem, Zap, ArrowRight, Crown, Layers, ShieldCheck, PiggyBank, RefreshCw, Laptop } from "lucide-react"
 import { useMemo } from "react"
 import { PACKS } from "../lib/packs"
 import { openChat } from "../lib/chatBus"
@@ -42,6 +42,25 @@ const PACK_FEATURES = {
   formateo: {
     headline: "PC como nueva + Máximo rendimiento",
     features: [FORMATEO, ACTIVACION, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
+  },
+  notebooks: {
+    headline: "Optimización profunda para notebooks",
+    features: [
+      ACTIVACION,
+      "Configuración completa de Windows, a un nivel que no encontrás en ningún menú: queda ágil y enfocado en tus juegos o lo que sea que hagas en tu notebook",
+      "Limpieza profunda de archivos y basura que la hacen más lenta",
+      "Apago procesos y servicios de Windows que corren de fondo sin que los uses",
+      "Bloqueo el rastreo de Microsoft que te consume recursos",
+      "Elimino las apps que vienen de fábrica y no usás, y las sugerencias y publicidad de Windows",
+      "Apago la telemetría de Windows, que trabaja de fondo sin que la pidas",
+      "Saco animaciones y efectos visuales para que Windows responda al instante",
+      "Si jugás, tus juegos pasan a tener prioridad máxima por encima de Steam, Epic y otros launchers",
+      "Optimizo cómo se reparte la energía: sin forzar el procesador, la placa de video aprovecha mejor los watts para darte su máximo rendimiento",
+      "Si jugás, hago que tus juegos usen siempre la placa de video dedicada, no la integrada",
+      "Mouse y teclado con respuesta más rápida, sin demora",
+      "Ajustes internos avanzados para que tu notebook no se trabe ni tironee",
+      "Respeto las apps de tu marca (Armoury Crate, Vantage, Omen) y no toco voltajes: máximo rendimiento sin riesgos",
+    ],
   },
 } as const
 
@@ -101,6 +120,17 @@ export default function Pricing() {
         headline: PACK_FEATURES.formateo.headline,
         features: PACK_FEATURES.formateo.features,
       },
+      {
+        name: PACKS.notebooks.name,
+        tier: PACKS.notebooks.id,
+        priceArs: prices.notebooks.ars,
+        priceUsd: prices.notebooks.usd,
+        icon: Laptop,
+        highlight: false,
+        tagline: PACKS.notebooks.tagline,
+        headline: PACK_FEATURES.notebooks.headline,
+        features: PACK_FEATURES.notebooks.features,
+      },
     ],
     [prices],
   )
@@ -130,7 +160,7 @@ export default function Pricing() {
             trackServerBackedEvent("ViewContent", undefined, {
               content_name: "pricing_section",
               content_type: "product_group",
-              content_ids: ["platino", "diamante", "formateo"],
+              content_ids: ["platino", "diamante", "formateo", "notebooks"],
             })
           }}
           className="text-center max-w-2xl mx-auto mb-16"
@@ -161,7 +191,7 @@ export default function Pricing() {
           ))}
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6 max-w-5xl lg:max-w-7xl mx-auto">
+        <div className="grid lg:grid-cols-2 2xl:grid-cols-4 gap-6 max-w-5xl lg:max-w-7xl 2xl:max-w-[1500px] mx-auto">
           {packs.map((pack, i) => {
             const Icon = pack.icon
             return (
@@ -187,7 +217,7 @@ export default function Pricing() {
                     <div className="absolute -top-40 -right-40 w-[400px] h-[400px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(239,19,19,0.18) 0%, transparent 65%)" }} />
                   </>
                 )}
-                {pack.tier === "formateo" && (
+                {(pack.tier === "formateo" || pack.tier === "notebooks") && (
                   <div className="absolute top-0 right-0 px-4 py-1.5 rounded-bl-xl bg-white/10 border-l border-b border-brand-300/30 text-brand-300 text-xs font-bold uppercase tracking-widest">
                     Nuevo
                   </div>

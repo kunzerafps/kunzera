@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { Calendar, DollarSign, Gem, RefreshCw, TrendingUp, Zap } from "lucide-react"
+import { Calendar, DollarSign, Gem, RefreshCw, Laptop, TrendingUp, Zap } from "lucide-react"
 import type { AdminMetrics } from "../../types/order"
 import { formatARS } from "../../lib/formatters"
 import { PACKS } from "../../lib/packs"
@@ -41,6 +41,12 @@ export default function MetricsCards({ metrics, totalOrders }: Props) {
         label="Diamante + Formateo"
         value={String(metrics.byPlan.formateo || 0)}
         sub={formatARS((metrics.byPlan.formateo || 0) * PACKS.formateo.price)}
+      />
+      <Card
+        icon={<Laptop className="w-4 h-4" />}
+        label="Notebooks"
+        value={String(metrics.byPlan.notebooks || 0)}
+        sub={formatARS((metrics.byPlan.notebooks || 0) * PACKS.notebooks.price)}
       />
     </div>
   )

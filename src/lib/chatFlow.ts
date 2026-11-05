@@ -76,12 +76,13 @@ export const GREETING: ChatMessage[] = [
 const BOT_INFO: Record<string, ChatMessage[]> = {
   packs: [
     bot(
-      `Tenemos 3 packs:\n\n⚡ *Platino* — ${formatARS(getArs("platino"))}\n${PACKS.platino.tagline}\n\n💎 *Diamante* — ${formatARS(getArs("diamante"))}\n${PACKS.diamante.tagline}\n\n🔄 *Diamante + Formateo* — ${formatARS(getArs("formateo"))}\n${PACKS.formateo.tagline}`,
+      `Tenemos 4 packs:\n\n⚡ *Platino* — ${formatARS(getArs("platino"))}\n${PACKS.platino.tagline}\n\n💎 *Diamante* — ${formatARS(getArs("diamante"))}\n${PACKS.diamante.tagline}\n\n🔄 *Diamante + Formateo* — ${formatARS(getArs("formateo"))}\n${PACKS.formateo.tagline}\n\n💻 *Notebooks* — ${formatARS(getArs("notebooks"))}\n${PACKS.notebooks.tagline}`,
       {
         chips: [
           { label: "Quiero Platino", payload: "platino" },
           { label: "Quiero Diamante", payload: "diamante" },
           { label: "Quiero Diamante + Formateo", payload: "formateo" },
+          { label: "Quiero Notebooks", payload: "notebooks" },
         ],
       },
     ),
@@ -270,6 +271,7 @@ function resumeMessages(state: FlowState, draft: OrderDraft): ChatMessage[] {
 export function detectPayload(text: string): string {
   const t = text.toLowerCase()
   if (/(platino)/.test(t)) return "platino"
+  if (/(notebook|laptop|port[aá]til)/.test(t)) return "notebooks"
   // Antes que "diamante": "diamante + formateo" también matchea /diamante/.
   if (/(format)/.test(t)) return "formateo"
   if (/(diamante)/.test(t)) return "diamante"
@@ -380,7 +382,7 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
     case "exploring":
       if (ev.type === "SELECT_CHIP") {
         const { payload, label } = ev
-        if (payload === "platino" || payload === "diamante" || payload === "formateo") {
+        if (payload === "platino" || payload === "diamante" || payload === "formateo" || payload === "notebooks") {
           const pack = payload as Pack
           const withUser = pushUser(ctx, label)
           const withBot = pushMessages(withUser, planPickedMessages(pack))
@@ -405,7 +407,7 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
       if (ev.type === "FREE_TEXT") {
         const withUser = pushUser(ctx, ev.text)
         const payload = detectPayload(ev.text)
-        if (payload === "platino" || payload === "diamante" || payload === "formateo") {
+        if (payload === "platino" || payload === "diamante" || payload === "formateo" || payload === "notebooks") {
           const pack = payload as Pack
           const withBot = pushMessages(withUser, planPickedMessages(pack))
           return transition(
@@ -442,7 +444,7 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
         if (payload === "reservar") {
           return startReservation(pushUser(ctx, label))
         }
-        if (payload === "packs" || payload === "platino" || payload === "diamante" || payload === "formateo") {
+        if (payload === "packs" || payload === "platino" || payload === "diamante" || payload === "formateo" || payload === "notebooks") {
           return reduce(transition(ctx, "exploring"), ev)
         }
       }
@@ -599,6 +601,7 @@ function startReservation(ctx: FlowContext): FlowContext {
           { label: `Platino (${formatARS(getArs("platino"))})`, payload: "platino" },
           { label: `Diamante (${formatARS(getArs("diamante"))})`, payload: "diamante" },
           { label: `Diamante + Formateo (${formatARS(getArs("formateo"))})`, payload: "formateo" },
+          { label: `Notebooks (${formatARS(getArs("notebooks"))})`, payload: "notebooks" },
         ],
       }),
     ])

@@ -22,7 +22,7 @@ type SaveState =
 
 const PLACEHOLDERS = [
   { key: "nombre", desc: "Primer nombre del cliente" },
-  { key: "pack", desc: "Platino, Diamante o Diamante + Formateo" },
+  { key: "pack", desc: "Platino, Diamante, Diamante + Formateo o Notebooks" },
   { key: "turno", desc: 'Ej: "Hoy 22:00"' },
 ]
 
@@ -47,6 +47,8 @@ export default function WaMessagesEditor() {
     "diamante-usd": String(DEFAULT_SITE_CONFIG.prices.diamante.usd),
     "formateo-ars": String(DEFAULT_SITE_CONFIG.prices.formateo.ars),
     "formateo-usd": String(DEFAULT_SITE_CONFIG.prices.formateo.usd),
+    "notebooks-ars": String(DEFAULT_SITE_CONFIG.prices.notebooks.ars),
+    "notebooks-usd": String(DEFAULT_SITE_CONFIG.prices.notebooks.usd),
   })
   const [hasCustomPassword, setHasCustomPassword] = useState(false)
   const [newPassword, setNewPassword] = useState("")
@@ -76,6 +78,8 @@ export default function WaMessagesEditor() {
         "diamante-usd": String(c.prices.diamante.usd),
         "formateo-ars": String(c.prices.formateo.ars),
         "formateo-usd": String(c.prices.formateo.usd),
+        "notebooks-ars": String(c.prices.notebooks.ars),
+        "notebooks-usd": String(c.prices.notebooks.usd),
       })
       setHasCustomPassword(c.hasCustomPassword)
       setBlockedWindows(c.blockedWindows)
@@ -103,10 +107,14 @@ export default function WaMessagesEditor() {
       ars: parsePrice(priceText["formateo-ars"], prices.formateo.ars),
       usd: parsePrice(priceText["formateo-usd"], prices.formateo.usd),
     },
+    notebooks: {
+      ars: parsePrice(priceText["notebooks-ars"], prices.notebooks.ars),
+      usd: parsePrice(priceText["notebooks-usd"], prices.notebooks.usd),
+    },
   }
 
   const anyPriceInvalid = (
-    ["platino-ars", "platino-usd", "diamante-ars", "diamante-usd", "formateo-ars", "formateo-usd"] as PriceField[]
+    ["platino-ars", "platino-usd", "diamante-ars", "diamante-usd", "formateo-ars", "formateo-usd", "notebooks-ars", "notebooks-usd"] as PriceField[]
   ).some((k) => !isValidPrice(priceText[k]))
 
   const passwordTouched = newPassword.length > 0 || confirmPassword.length > 0
@@ -219,6 +227,8 @@ export default function WaMessagesEditor() {
       "diamante-usd": String(DEFAULT_SITE_CONFIG.prices.diamante.usd),
       "formateo-ars": String(DEFAULT_SITE_CONFIG.prices.formateo.ars),
       "formateo-usd": String(DEFAULT_SITE_CONFIG.prices.formateo.usd),
+      "notebooks-ars": String(DEFAULT_SITE_CONFIG.prices.notebooks.ars),
+      "notebooks-usd": String(DEFAULT_SITE_CONFIG.prices.notebooks.usd),
     })
     setSaveState({ kind: "idle" })
   }
@@ -371,6 +381,13 @@ export default function WaMessagesEditor() {
                 usdValue={priceText["formateo-usd"]}
                 onArsChange={(v) => updatePrice("formateo-ars", v)}
                 onUsdChange={(v) => updatePrice("formateo-usd", v)}
+              />
+              <PriceRow
+                label="💻 Notebooks"
+                arsValue={priceText["notebooks-ars"]}
+                usdValue={priceText["notebooks-usd"]}
+                onArsChange={(v) => updatePrice("notebooks-ars", v)}
+                onUsdChange={(v) => updatePrice("notebooks-usd", v)}
               />
             </tbody>
           </table>

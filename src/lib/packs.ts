@@ -25,6 +25,14 @@ export const PACKS: Record<Pack, PackInfo> = {
     tagline: "Windows instalado desde cero + todo Diamante",
     emoji: "🔄",
   },
+  notebooks: {
+    id: "notebooks",
+    name: "Notebooks",
+    price: 60000,
+    usdPrice: 55,
+    tagline: "Máximo rendimiento para tu notebook, sin forzar el procesador",
+    emoji: "💻",
+  },
 }
 
-export const PACK_LIST: PackInfo[] = [PACKS.platino, PACKS.diamante, PACKS.formateo]
+export const PACK_LIST: PackInfo[] = [PACKS.platino, PACKS.diamante, PACKS.formateo, PACKS.notebooks]

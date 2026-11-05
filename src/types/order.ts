@@ -1,4 +1,4 @@
-export type Pack = "platino" | "diamante" | "formateo"
+export type Pack = "platino" | "diamante" | "formateo" | "notebooks"
 
 export type PackInfo = {
   id: Pack
