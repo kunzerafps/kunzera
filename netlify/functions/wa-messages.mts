@@ -24,7 +24,6 @@ const DEFAULTS = {
     diamante: { ars: PACKS.diamante.price, usd: PACKS.diamante.usdPrice } as PackPrices,
     formateo: { ars: PACKS.formateo.price, usd: PACKS.formateo.usdPrice } as PackPrices,
   },
-  adminPasswordHash: "",
   blockedWindows: [] as BlockedWindow[],
   campaigns: [] as string[],
 }
@@ -39,6 +38,7 @@ function sanitizeHash(o: unknown): string {
 }
 
 type Config = typeof DEFAULTS
+type StoredConfig = Partial<Record<keyof Config, unknown>> & { adminPasswordHash?: unknown }
 
 function clampPrice(n: unknown, fallback: number): number {
   const v = typeof n === "number" ? n : Number(n)
@@ -113,10 +113,18 @@ function sanitize(input: unknown): Config {
     diamante: sanitizePack(pricesIn.diamante, DEFAULTS.prices.diamante),
     formateo: sanitizePack(pricesIn.formateo, DEFAULTS.prices.formateo),
   }
-  const adminPasswordHash = sanitizeHash(o.adminPasswordHash)
   const blockedWindows = sanitizeBlockedWindows(o.blockedWindows)
   const campaigns = sanitizeCampaigns(o.campaigns)
-  return { clientTemplate, prices, adminPasswordHash, blockedWindows, campaigns }
+  return { clientTemplate, prices, blockedWindows, campaigns }
+}
+
+// El hash de la contraseña del panel NUNCA sale de este archivo hacia afuera:
+// /api/admin-login compara contra el hash tal cual llega, así que quien lo ve
+// entra al panel sin saber la contraseña. Antes viajaba en este GET público.
+// Lo único que se expone es si hay una contraseña propia cargada, para el
+// texto del panel.
+function publicConfig(config: Config, storedHash: string) {
+  return { ...config, hasCustomPassword: storedHash !== "" }
 }
 
 function corsHeaders(): HeadersInit {
@@ -138,8 +146,11 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
   const store = getStore(STORE_NAME)
 
   if (req.method === "GET") {
-    const data = await store.get(KEY, { type: "json" })
-    return Response.json({ ok: true, config: sanitize(data) }, { headers })
+    const data = (await store.get(KEY, { type: "json" })) as StoredConfig | null
+    return Response.json(
+      { ok: true, config: publicConfig(sanitize(data), sanitizeHash(data?.adminPasswordHash)) },
+      { headers },
+    )
   }
 
   if (req.method === "POST") {
@@ -161,9 +172,33 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
       )
     }
 
+    // La contraseña solo cambia si llega newPasswordHash. Cualquier otro
+    // guardado (precios, mensajes, bloqueos) conserva la que está: el panel ya
+    // no conoce el hash, y lo que venga adentro de `config` se ignora a
+    // propósito para que una pestaña vieja no pueda pisar la contraseña.
+    const sentHash = (body as { newPasswordHash?: unknown })?.newPasswordHash
+    const newHash = sanitizeHash(sentHash)
+    if (sentHash !== undefined && !newHash) {
+      return Response.json(
+        { ok: false, error: "invalid_password_hash" },
+        { status: 400, headers },
+      )
+    }
+
+    // Lectura fuerte: una copia atrasada acá volvería a escribir una contraseña
+    // vieja. Si esta lectura falla, la función corta sin escribir nada.
+    const stored = (await store.get(KEY, {
+      type: "json",
+      consistency: "strong",
+    })) as StoredConfig | null
+    const adminPasswordHash = newHash || sanitizeHash(stored?.adminPasswordHash)
+
     const config = sanitize((body as { config?: unknown })?.config)
-    await store.setJSON(KEY, config)
-    return Response.json({ ok: true, config }, { headers })
+    await store.setJSON(KEY, { ...config, adminPasswordHash })
+    return Response.json(
+      { ok: true, config: publicConfig(config, adminPasswordHash) },
+      { headers },
+    )
   }
 
   return Response.json(

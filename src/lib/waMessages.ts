@@ -14,20 +14,13 @@ export type BlockedWindow = {
 export type SiteConfig = {
   clientTemplate: string
   prices: Record<Pack, PackPrices>
-  adminPasswordHash: string
+  // El hash de la contraseña no llega al navegador (ver wa-messages.mts): solo
+  // se sabe si hay una contraseña propia cargada.
+  hasCustomPassword: boolean
   blockedWindows: BlockedWindow[]
   // Nombres de campañas de Meta para el menú del campo "campaña" en Venta
   // manual (evita que se escriba a mano con variantes distintas).
   campaigns: string[]
-}
-
-const HEX_64_RE = /^[a-f0-9]{64}$/i
-
-function sanitizeHash(o: unknown): string {
-  if (typeof o !== "string") return ""
-  const trimmed = o.trim().toLowerCase()
-  if (!trimmed) return ""
-  return HEX_64_RE.test(trimmed) ? trimmed : ""
 }
 
 export const DEFAULT_CLIENT_TEMPLATE =
@@ -36,7 +29,7 @@ export const DEFAULT_CLIENT_TEMPLATE =
 export const DEFAULT_SITE_CONFIG: SiteConfig = {
   clientTemplate: DEFAULT_CLIENT_TEMPLATE,
   prices: DEFAULT_PRICES,
-  adminPasswordHash: "",
+  hasCustomPassword: false,
   blockedWindows: [],
   campaigns: [],
 }
@@ -121,10 +114,10 @@ function sanitize(o: unknown): SiteConfig {
     diamante: sanitizePackPrices(pricesIn.diamante, DEFAULT_SITE_CONFIG.prices.diamante),
     formateo: sanitizePackPrices(pricesIn.formateo, DEFAULT_SITE_CONFIG.prices.formateo),
   }
-  const adminPasswordHash = sanitizeHash(obj.adminPasswordHash)
+  const hasCustomPassword = obj.hasCustomPassword === true
   const blockedWindows = sanitizeBlockedWindows(obj.blockedWindows)
   const campaigns = sanitizeCampaigns(obj.campaigns)
-  return { clientTemplate, prices, adminPasswordHash, blockedWindows, campaigns }
+  return { clientTemplate, prices, hasCustomPassword, blockedWindows, campaigns }
 }
 
 export function applyTemplate(
@@ -203,13 +196,14 @@ export async function fetchSiteConfig(force = false): Promise<SiteConfig> {
 
 export async function saveSiteConfig(
   config: SiteConfig,
+  newPasswordHash?: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sanitized = sanitize(config)
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: getAdminToken(), config: sanitized }),
+      body: JSON.stringify({ token: getAdminToken(), config: sanitized, newPasswordHash }),
     })
     const data = (await res.json().catch(() => null)) as
       | { ok: true; config: SiteConfig }
@@ -219,9 +213,10 @@ export async function saveSiteConfig(
       const error = (data && !data.ok && data.error) || `http_${res.status}`
       return { ok: false, error }
     }
-    memo = { config: sanitized, ts: Date.now() }
+    const saved = sanitize(data.config)
+    memo = { config: saved, ts: Date.now() }
     writeLocal(memo)
-    publish(sanitized)
+    publish(saved)
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "network" }

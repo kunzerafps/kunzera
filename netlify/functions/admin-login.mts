@@ -74,17 +74,21 @@ export default async (req: Request, ctx: Context): Promise<Response> => {
   // guardado en la config del sitio manda si existe, si no se usa el
   // default hardcodeado — para que el panel siga funcionando incluso si
   // nunca se guardó una config custom.
+  //
+  // Ese default está en el repo público: si no se puede leer la config, se
+  // rechaza el login en vez de caer en él, porque cualquiera podría usarlo
+  // para entrar justo en ese momento.
   let saved = ""
   try {
     const store = getStore(CONFIG_STORE)
-    const data = (await store.get(CONFIG_KEY, { type: "json" })) as
+    const data = (await store.get(CONFIG_KEY, { type: "json", consistency: "strong" })) as
       | { adminPasswordHash?: unknown }
       | null
     if (typeof data?.adminPasswordHash === "string" && HEX_64_RE.test(data.adminPasswordHash)) {
       saved = data.adminPasswordHash.toLowerCase()
     }
   } catch {
-    // sigue con el fallback de abajo
+    return Response.json({ ok: false, error: "config_unavailable" }, { status: 503 })
   }
   const expected = saved || ADMIN_PASSWORD_HASH
 

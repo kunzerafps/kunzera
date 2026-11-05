@@ -48,7 +48,7 @@ export default function WaMessagesEditor() {
     "formateo-ars": String(DEFAULT_SITE_CONFIG.prices.formateo.ars),
     "formateo-usd": String(DEFAULT_SITE_CONFIG.prices.formateo.usd),
   })
-  const [savedHash, setSavedHash] = useState("")
+  const [hasCustomPassword, setHasCustomPassword] = useState(false)
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -77,7 +77,7 @@ export default function WaMessagesEditor() {
         "formateo-ars": String(c.prices.formateo.ars),
         "formateo-usd": String(c.prices.formateo.usd),
       })
-      setSavedHash(c.adminPasswordHash)
+      setHasCustomPassword(c.hasCustomPassword)
       setBlockedWindows(c.blockedWindows)
       setCampaigns(c.campaigns)
       setLoading(false)
@@ -122,24 +122,27 @@ export default function WaMessagesEditor() {
     trimmed !== DEFAULT_SITE_CONFIG.clientTemplate ||
     JSON.stringify(parsedPrices) !== JSON.stringify(DEFAULT_SITE_CONFIG.prices) ||
     passwordTouched ||
-    savedHash !== "" ||
+    hasCustomPassword ||
     blockedWindows.length > 0 ||
     campaigns.length > 0
 
   const onSave = async () => {
     if (!trimmed || tooLong || anyPriceInvalid || !passwordValid) return
     setSaveState({ kind: "saving" })
-    const nextHash = passwordTouched ? await sha256(newPassword) : savedHash
-    const result = await saveSiteConfig({
-      clientTemplate: trimmed,
-      prices: parsedPrices,
-      adminPasswordHash: nextHash,
-      blockedWindows,
-      campaigns,
-    })
+    const newPasswordHash = passwordTouched ? await sha256(newPassword) : undefined
+    const result = await saveSiteConfig(
+      {
+        clientTemplate: trimmed,
+        prices: parsedPrices,
+        hasCustomPassword,
+        blockedWindows,
+        campaigns,
+      },
+      newPasswordHash,
+    )
     if (result.ok) {
       setPrices(parsedPrices)
-      setSavedHash(nextHash)
+      if (newPasswordHash) setHasCustomPassword(true)
       setNewPassword("")
       setConfirmPassword("")
       setSaveState({ kind: "saved" })
@@ -217,13 +220,6 @@ export default function WaMessagesEditor() {
       "formateo-ars": String(DEFAULT_SITE_CONFIG.prices.formateo.ars),
       "formateo-usd": String(DEFAULT_SITE_CONFIG.prices.formateo.usd),
     })
-    setSaveState({ kind: "idle" })
-  }
-
-  const onRestorePassword = () => {
-    setSavedHash("")
-    setNewPassword("")
-    setConfirmPassword("")
     setSaveState({ kind: "idle" })
   }
 
@@ -387,27 +383,19 @@ export default function WaMessagesEditor() {
       </div>
 
       <div className="glass-card rounded-2xl p-4 md:p-6">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-display font-bold text-lg text-white mb-1">
-              Contraseña admin
-            </h2>
-            <p className="text-xs text-white/50">
-              Cambiá la contraseña de acceso al panel. Dejá los campos vacíos
-              para mantener la actual. Mínimo {MIN_PASSWORD} caracteres.
-              {savedHash
-                ? " Hay una contraseña personalizada activa."
-                : " Está usando la contraseña por defecto."}
-            </p>
-          </div>
-          <button
-            onClick={onRestorePassword}
-            disabled={!savedHash && !newPassword && !confirmPassword}
-            className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 text-[11px] transition disabled:opacity-40"
-            title="Volver a la contraseña por defecto"
-          >
-            <RotateCcw className="w-3 h-3" /> Default
-          </button>
+        {/* Sin botón "Default" a propósito: la contraseña por defecto está en
+            el repo público, volver a ella dejaría el panel abierto. */}
+        <div className="mb-4">
+          <h2 className="font-display font-bold text-lg text-white mb-1">
+            Contraseña admin
+          </h2>
+          <p className="text-xs text-white/50">
+            Cambiá la contraseña de acceso al panel. Dejá los campos vacíos
+            para mantener la actual. Mínimo {MIN_PASSWORD} caracteres.
+            {hasCustomPassword
+              ? " Hay una contraseña personalizada activa."
+              : " Está usando la contraseña por defecto."}
+          </p>
         </div>
 
         <div className="grid sm:grid-cols-2 gap-3">
