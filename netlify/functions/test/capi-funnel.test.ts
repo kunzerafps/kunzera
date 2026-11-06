@@ -33,10 +33,10 @@ describe("capi-funnel", () => {
     expect(userData.ph[0]).toHaveLength(64)
   })
 
-  // El mail sólo se acepta en InitiateCheckout y turno_seleccionado (salen
-  // después del paso askEmail del chat). Lead dispara ANTES de que la persona
-  // deje el mail, así que un `email` en un Lead no es legítimo y se ignora.
-  it("IGNORA un `email` en eventos que no son InitiateCheckout/turno_seleccionado", async () => {
+  // El mail sólo se acepta en Lead, InitiateCheckout y turno_seleccionado (salen
+  // después del paso askEmail del chat). AddToCart dispara ANTES de que la
+  // persona deje el mail, así que un `email` ahí no es legítimo y se ignora.
+  it("IGNORA un `email` en eventos anteriores al paso del mail", async () => {
     const fm = installFetchMock()
     fm.on("graph.facebook.com", () => jsonResponse({}))
     const ctx = { ip: "201.201.201.201" } as any
@@ -44,7 +44,7 @@ describe("capi-funnel", () => {
     await funnelHandler(
       req({
         eventId: "cf-email-1",
-        event: "Lead",
+        event: "AddToCart",
         whatsapp: "1123456789",
         email: "victima@gmail.com",
       }),
@@ -54,6 +54,21 @@ describe("capi-funnel", () => {
     const body = String(fm.callsTo("graph.facebook.com")[0].init?.body)
     expect(JSON.parse(body).data[0].user_data.em).toBeUndefined()
     expect(body).not.toContain("victima@gmail.com")
+  })
+
+  it("Lead lleva el mail del chat hasheado (em)", async () => {
+    const fm = installFetchMock()
+    fm.on("graph.facebook.com", () => jsonResponse({}))
+    const ctx = { ip: "201.201.201.201" } as any
+
+    await funnelHandler(
+      req({ eventId: "cf-em-lead", event: "Lead", whatsapp: "1123456789", email: "juan@gmail.com" }),
+      ctx,
+    )
+
+    const body = String(fm.callsTo("graph.facebook.com")[0].init?.body)
+    expect(JSON.parse(body).data[0].user_data.em).toBeDefined()
+    expect(body).not.toContain("juan@gmail.com")
   })
 
   it("InitiateCheckout y turno_seleccionado llevan el mail del chat hasheado (em)", async () => {

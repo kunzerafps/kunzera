@@ -71,21 +71,6 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
             const err = validateWhatsapp(v)
             if (err) return err
             const whatsapp = normalizeWhatsapp(v)
-            // Lead: la señal más fuerte de "interés real" del embudo. Se
-            // manda por el píxel Y por el servidor (con teléfono/nombre
-            // hasheados, que ya tenemos acá) — ver trackServerBackedEvent.
-            // Lleva el precio del pack como `value` para que Meta pueda
-            // optimizar por plata en este paso, no solo por "dejó los datos".
-            // Una sola vez por sesión: si vuelve atrás y reescribe el
-            // teléfono no se cuenta de nuevo.
-            if (!firedOnceInSession("lead")) {
-              markFiredOnceInSession("lead")
-              trackServerBackedEvent(
-                "Lead",
-                { whatsapp, nombre: ctx.draft.nombre },
-                packEventParams(ctx.draft.pack),
-              )
-            }
             dispatch({ type: "SET_WHATSAPP", value: whatsapp })
             return null
           }}
@@ -115,7 +100,22 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
           onSubmit={(v) => {
             const err = validateEmail(v)
             if (err) return err
-            dispatch({ type: "SET_EMAIL", value: normalizeEmail(v) })
+            const email = normalizeEmail(v)
+            // Lead: la señal más fuerte de "interés real" del embudo. Sale ACÁ
+            // y no al dejar el WhatsApp (cambio del 6/11): Meta marcaba Lead
+            // sin mail. Se manda por el píxel Y por el servidor, con teléfono,
+            // nombre y mail hasheados — ver trackServerBackedEvent. Lleva el
+            // precio del pack como `value`. Una sola vez por sesión: si vuelve
+            // atrás y reescribe el mail no se cuenta de nuevo.
+            if (!firedOnceInSession("lead")) {
+              markFiredOnceInSession("lead")
+              trackServerBackedEvent(
+                "Lead",
+                { whatsapp: ctx.draft.whatsapp, nombre: ctx.draft.nombre, email },
+                packEventParams(ctx.draft.pack),
+              )
+            }
+            dispatch({ type: "SET_EMAIL", value: email })
             return null
           }}
         />

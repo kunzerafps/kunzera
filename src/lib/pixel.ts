@@ -121,7 +121,7 @@ type Identity = {
   whatsapp?: string
   nombre?: string
   // Mail que la persona dejó en el chat (paso opcional askEmail). Sólo lo
-  // toman InitiateCheckout y turno_seleccionado del lado del servidor (ver
+  // toman Lead, InitiateCheckout y turno_seleccionado del lado del servidor (ver
   // capi-funnel.mts); en cualquier otro evento se ignora.
   email?: string
 }

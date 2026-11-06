@@ -39,8 +39,8 @@ type Body = {
 // Riesgo asumido: este endpoint es público, así que alguien podría atar el
 // mail de otra persona a un evento inventado. Es el mismo nivel de riesgo
 // que ya tiene el teléfono (que se acepta del body desde siempre), y se
-// acota a estos dos eventos + formato válido. Lead y el resto lo ignoran.
-const EMAIL_EVENTS: readonly FunnelEventName[] = ["InitiateCheckout", "turno_seleccionado"]
+// acota a estos tres eventos + formato válido. El resto lo ignora.
+const EMAIL_EVENTS: readonly FunnelEventName[] = ["Lead", "InitiateCheckout", "turno_seleccionado"]
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function safeEmail(eventName: FunnelEventName, v: unknown): string | undefined {
