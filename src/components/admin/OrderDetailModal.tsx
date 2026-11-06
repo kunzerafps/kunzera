@@ -1,3 +1,4 @@
+import TransferBadge from "./TransferBadge"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   AlertTriangle,
@@ -93,6 +94,7 @@ export default function OrderDetailModal({ order, onClose, onStatusChanged, onDe
               <div className="p-5 md:p-6 space-y-4">
                 <Section icon={<User className="w-4 h-4" />} label="Cliente">
                   <div className="font-display text-white text-lg">{order.nombre || "—"}</div>
+                  <TransferBadge orderKey={order.idempotencykey} />
                 </Section>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

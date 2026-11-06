@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import type { Order, Pack } from "../../types/order"
 import { PACKS } from "../../lib/packs"
 import { formatARS, getDayKey } from "../../lib/formatters"
+import TransferBadge from "./TransferBadge"
 
 type Props = {
   dayKey: string | null
@@ -210,6 +211,7 @@ function SlotRow({ order, onClick }: { order: Order; onClick: () => void }) {
           <span className="font-display font-bold text-white truncate">
             {order.nombre || "Sin nombre"}
           </span>
+          <TransferBadge orderKey={order.idempotencykey} />
           {atendido && (
             <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
           )}

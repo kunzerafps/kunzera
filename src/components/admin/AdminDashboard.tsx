@@ -18,6 +18,11 @@ import { getDayKey, isToday } from "../../lib/formatters"
 import type { MetaDeliveryStatus } from "./OrderDetailModal"
 import MetricsCards from "./MetricsCards"
 import OrdersTable from "./OrdersTable"
+import {
+  EMPTY_TRANSFER_STATUS,
+  TransferStatusContext,
+  fetchTransferStatus,
+} from "./TransferBadge"
 import SalesChart from "./SalesChart"
 import CalendarView from "./CalendarView"
 import OrderDetailModal from "./OrderDetailModal"
@@ -95,6 +100,7 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
   // Estado del aviso de Compra a Meta por reserva (idempotencyKey).
   const [metaMap, setMetaMap] = useState<Map<string, MetaDeliveryStatus>>(new Map())
   const [metaLoaded, setMetaLoaded] = useState(false)
+  const [transferStatus, setTransferStatus] = useState(EMPTY_TRANSFER_STATUS)
   const sweptRef = useRef(false)
 
   const refreshMetaMap = async () => {
@@ -157,8 +163,9 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
   const load = async () => {
     setLoading(true)
     try {
-      const data = await getOrders()
+      const [data, status] = await Promise.all([getOrders(), fetchTransferStatus()])
       setOrders(data)
+      setTransferStatus(status)
       setLastUpdate(new Date())
       const map = await refreshMetaMap()
       if (!sweptRef.current) {
@@ -186,6 +193,7 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
   const metrics: AdminMetrics = useMemo(() => computeMetrics(orders), [orders])
 
   return (
+    <TransferStatusContext.Provider value={transferStatus}>
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -392,6 +400,7 @@ export default function AdminDashboard({ onLogout, onClose }: Props) {
         onSaved={() => setManualSalesRefresh((n) => n + 1)}
       />
     </motion.div>
+    </TransferStatusContext.Provider>
   )
 }
 

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import type { Order } from "../../types/order"
 import { formatARS, formatDateAR, formatSlotLabel, isToday } from "../../lib/formatters"
 import { comprobanteUrl } from "../../lib/comprobante"
+import TransferBadge from "./TransferBadge"
 
 type Props = {
   orders: Order[]
@@ -107,7 +108,10 @@ export default function OrdersTable({ orders, highlightToday = true, onRowClick 
                         {formatDateAR(o.timestamp)}
                       </div>
                     </td>
-                    <td className="py-3 px-2 text-white font-medium">{o.nombre}</td>
+                    <td className="py-3 px-2 text-white font-medium">
+                      <div>{o.nombre}</div>
+                      <TransferBadge orderKey={o.idempotencykey} />
+                    </td>
                     <td className="py-3 px-2 text-white/70 hidden sm:table-cell text-xs">
                       <div>{o.whatsapp}</div>
                       <div className="text-white/40">{o.discord}</div>

@@ -43,6 +43,7 @@ const NOTIFY_OK = true
 
 type State = {
   verdicts: Record<string, { result: "ok" | "sospechosa"; at: number }>
+  repeats?: Record<string, number>
   backfillDone?: boolean
 }
 
@@ -169,6 +170,7 @@ async function checkRepeatedFiles(orders: Order[], state: State, now: number): P
       pair.sort((x, y) => orderTime(y) - orderTime(x))
       const [newer, older] = pair
       if (!newer || now - orderTime(newer) > ALERT_REPEAT_MAX_AGE_MS) continue
+      state.repeats = { ...state.repeats, [String(newer.idempotencykey)]: now }
       await notifyDiscord(
         `comprobante-repetido-${newer.idempotencykey}`,
         `🔁 **Comprobante repetido**: ${describe(newer)}\nEs el mismo archivo que ${older ? describe(older) : "el de una reserva vieja que ya no está en la planilla"}.`,
@@ -213,6 +215,9 @@ export default async (): Promise<Response> => {
 
     for (const [key, v] of Object.entries(state.verdicts)) {
       if (now - v.at > VERDICT_KEEP_MS) delete state.verdicts[key]
+    }
+    for (const [key, at] of Object.entries(state.repeats ?? {})) {
+      if (now - at > VERDICT_KEEP_MS) delete state.repeats?.[key]
     }
     await store.setJSON(STATE_KEY, state)
   } catch (err) {

@@ -6,6 +6,7 @@ import type { Order } from "../../../src/types/order"
 vi.mock("@netlify/blobs", () => ({ getStore: fakeGetStore }))
 
 const sheet = vi.hoisted(() => ({ orders: [] as unknown[] }))
+vi.mock("../lib/adminSession", () => ({ verifySessionToken: (t: unknown) => t === "bueno" }))
 vi.mock("../lib/sheetOrders", () => ({ getSheetOrders: async () => sheet.orders }))
 
 const discord = vi.hoisted(() => ({ sent: [] as string[], keys: new Set<string>() }))
@@ -18,6 +19,7 @@ vi.mock("../lib/discordAlert", () => ({
 }))
 
 import handler from "../transfer-check.mts"
+import statusHandler from "../transfer-status.mts"
 
 const MIN = 60000
 const NOW = Date.now()
@@ -179,5 +181,22 @@ describe("transfer-check", () => {
     sheet.orders = [order("a", 3), order("b", 1)]
     await handler()
     expect(said("repetido")).toHaveLength(0)
+  })
+
+  it("el panel recibe el resultado y el repetido, solo con la sesión válida", async () => {
+    const file = new TextEncoder().encode("foto").buffer
+    const files = fakeGetStore("comprobantes")
+    await files.set("uno", file)
+    await files.set("dos", file)
+    sheet.orders = [order("uno", 30, 70000, "atendido"), order("dos", 6)]
+    await handler()
+
+    const denied = await statusHandler(new Request("https://x/api/transfer-status?token=malo"))
+    expect(denied.status).toBe(401)
+    const res = await statusHandler(new Request("https://x/api/transfer-status?token=bueno"))
+    const body = await res.json()
+    expect(body.verdicts).toEqual({ dos: "sospechosa" })
+    expect(body.repeats).toEqual(["dos"])
+    expect(JSON.stringify(body)).not.toContain("Cliente")
   })
 })
