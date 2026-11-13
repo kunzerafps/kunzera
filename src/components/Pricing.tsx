@@ -10,6 +10,9 @@ import { firedOnceInSession, markFiredOnceInSession } from "../lib/storage"
 
 // Van primero en cada pack: es lo que más preguntan los clientes.
 const ACTIVACION = "Activación de Windows incluida"
+// Va resaltado en los cuatro packs: los clientes pedían soporte un mes
+// después del trabajo, así que el plazo tiene que verse antes de pagar.
+const SOPORTE = "Soporte por WhatsApp durante 10 días después de la optimización"
 const SECURE_BOOT = "Configuro el Secure Boot, que piden varios anti-cheat para dejarte jugar"
 const FORMATEO = "Instalación de Windows desde cero: tu PC arranca limpia, como recién comprada"
 
@@ -33,20 +36,21 @@ const DIAMANTE_ONLY_FEATURES = [
 const PACK_FEATURES = {
   platino: {
     headline: "+FPS · -Input Lag",
-    features: [ACTIVACION, ...PLATINO_FEATURES],
+    features: [ACTIVACION, SOPORTE, ...PLATINO_FEATURES],
   },
   diamante: {
     headline: "Máximo rendimiento",
-    features: [ACTIVACION, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
+    features: [ACTIVACION, SOPORTE, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
   },
   formateo: {
     headline: "PC como nueva + Máximo rendimiento",
-    features: [FORMATEO, ACTIVACION, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
+    features: [FORMATEO, ACTIVACION, SOPORTE, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
   },
   notebooks: {
     headline: "Optimización profunda para notebooks",
     features: [
       ACTIVACION,
+      SOPORTE,
       "Configuración completa de Windows, a un nivel que no encontrás en ningún menú: queda ágil y enfocado en tus juegos o lo que sea que hagas en tu notebook",
       "Limpieza profunda de archivos y basura que la hacen más lenta",
       "Apago procesos y servicios de Windows que corren de fondo sin que los uses",
@@ -279,7 +283,8 @@ export default function Pricing() {
                     {pack.features.map((feat, idx) => {
                       // En Diamante + Formateo se resalta el primer ítem: es lo
                       // único que lo diferencia del Diamante.
-                      const destacado = pack.tier === "formateo" && idx === 0
+                      const destacado =
+                        (pack.tier === "formateo" && idx === 0) || feat === SOPORTE
                       return (
                       <li
                         key={feat}

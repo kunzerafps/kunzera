@@ -104,6 +104,10 @@ export default function SlotPicker({ slots, loading, error, onPick, onRefresh }:
           ))}
         </div>
       </div>
+
+      <div className="px-3 py-2 text-[13px] leading-snug rounded-xl bg-brand-500/10 border border-brand-500/40 text-white/80">
+        ⚠️ Elegí bien: el turno se puede cambiar una sola vez, avisando 24 hs antes.
+      </div>
     </div>
   )
 }

@@ -44,12 +44,16 @@ const faqs = [
     a: "De lunes a sábado, con turnos de 14 a 20hs que elegís vos mismo en la web. Si necesitás algo fuera de ese horario, escribime por WhatsApp y lo vemos.",
   },
   {
+    q: "¿Puedo cambiar el turno después de reservar?",
+    a: "Una sola vez, avisando por WhatsApp con al menos 24 horas de anticipación.",
+  },
+  {
     q: "¿Qué métodos de pago aceptás?",
     a: "Te acepto transferencia bancaria o Mercado Pago (dinero en cuenta o tarjeta). El pago se hace antes de arrancar la sesión.",
   },
   {
     q: "¿Incluye soporte después?",
-    a: "Sí, quedás con mi WhatsApp de 14 a 20hs por si te surge cualquier duda o detalle después de la optimización — y muchas veces contesto fuera de ese horario también, tratando de ayudar.",
+    a: "Sí: 10 días de soporte por WhatsApp (de 14 a 20hs) desde el día de la optimización, para cualquier duda o detalle. Pasado ese plazo, el trabajo se vuelve a cobrar.",
   },
   {
     q: "¿Qué pasa con mis datos durante la sesión remota?",
@@ -65,7 +69,7 @@ const faqs = [
   },
   {
     q: "Si más adelante actualizo Windows o los drivers, ¿se pierde la optimización?",
-    a: "Una actualización grande puede tocar alguna config puntual, pero no se pierde todo el trabajo. Si notás que algo cambió después de actualizar, escribime y lo vemos.",
+    a: "Una actualización grande puede tocar alguna config puntual, pero no se pierde todo el trabajo. Si pasa dentro de los 10 días de soporte, escribime y lo vemos.",
   },
 ]
 

@@ -156,7 +156,7 @@ function pickSlotMessages(): ChatMessage[] {
 function reviewMessages(draft: OrderDraft): ChatMessage[] {
   return [
     bot(
-      `Revisá tu pedido:\n\n${PACKS[draft.pack!].emoji} *${PACKS[draft.pack!].name}* — ${formatARS(draft.monto || 0)}\n👤 ${draft.nombre}\n📱 ${draft.whatsapp}\n📅 ${formatSlotLabel(draft.turno!)}\n\n¿Confirmás?`,
+      `Revisá tu pedido:\n\n${PACKS[draft.pack!].emoji} *${PACKS[draft.pack!].name}* — ${formatARS(draft.monto || 0)}\n👤 ${draft.nombre}\n📱 ${draft.whatsapp}\n📅 ${formatSlotLabel(draft.turno!)}\n\n📌 El turno se cambia una sola vez, avisando 24 hs antes.\n🛟 Incluye 10 días de soporte desde el día de la optimización. Pasado ese plazo, el trabajo se vuelve a cobrar.\n\n¿Confirmás?`,
     ),
   ]
 }
@@ -182,7 +182,7 @@ function submittingMessages(): ChatMessage[] {
 function confirmedMessages(draft: OrderDraft, _fileUrl: string): ChatMessage[] {
   return [
     bot(
-      `¡Listo! 🎉 Tu turno quedó reservado para *${formatSlotLabel(draft.turno!)}*.\n\nTe escribo al WhatsApp 10 minutos antes de la hora pactada. Mientras tanto, descargá AnyDesk desde anydesk.com. Si tu pack incluye optimización de BIOS, al momento de configurarla te hago una videollamada por WhatsApp para que puedas enfocarme el monitor y la hacemos juntos.`,
+      `¡Listo! 🎉 Tu turno quedó reservado para *${formatSlotLabel(draft.turno!)}*.\n\nTe escribo al WhatsApp 10 minutos antes de la hora pactada. Mientras tanto, descargá AnyDesk desde anydesk.com. Si tu pack incluye optimización de BIOS, al momento de configurarla te hago una videollamada por WhatsApp para que puedas enfocarme el monitor y la hacemos juntos.\n\nPodés cambiar el turno una sola vez, avisando por WhatsApp con al menos 24 horas de anticipación. Tenés 10 días de soporte por WhatsApp desde el día de la optimización.`,
       { variant: "success" },
     ),
   ]
