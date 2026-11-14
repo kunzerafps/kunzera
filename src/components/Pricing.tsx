@@ -12,6 +12,8 @@ import { firedOnceInSession, markFiredOnceInSession } from "../lib/storage"
 const ACTIVACION = "Activación de Windows incluida"
 // Va resaltado en los cuatro packs: los clientes pedían soporte un mes
 // después del trabajo, así que el plazo tiene que verse antes de pagar.
+// Se dibuja aparte, DEBAJO de la lista y pegado al botón de reservar (pedido
+// de Eze, 14/11): es lo último que se lee antes de tocar.
 const SOPORTE = "Soporte por WhatsApp durante 10 días después de la optimización"
 const SECURE_BOOT = "Configuro el Secure Boot, que piden varios anti-cheat para dejarte jugar"
 const FORMATEO = "Instalación de Windows desde cero: tu PC arranca limpia, como recién comprada"
@@ -36,21 +38,20 @@ const DIAMANTE_ONLY_FEATURES = [
 const PACK_FEATURES = {
   platino: {
     headline: "+FPS · -Input Lag",
-    features: [ACTIVACION, SOPORTE, ...PLATINO_FEATURES],
+    features: [ACTIVACION, ...PLATINO_FEATURES],
   },
   diamante: {
     headline: "Máximo rendimiento",
-    features: [ACTIVACION, SOPORTE, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
+    features: [ACTIVACION, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
   },
   formateo: {
     headline: "PC como nueva + Máximo rendimiento",
-    features: [FORMATEO, ACTIVACION, SOPORTE, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
+    features: [FORMATEO, ACTIVACION, SECURE_BOOT, ...PLATINO_FEATURES, ...DIAMANTE_ONLY_FEATURES],
   },
   notebooks: {
     headline: "Optimización profunda para notebooks",
     features: [
       ACTIVACION,
-      SOPORTE,
       "Configuración completa de Windows, a un nivel que no encontrás en ningún menú: queda ágil y enfocado en tus juegos o lo que sea que hagas en tu notebook",
       "Limpieza profunda de archivos y basura que la hacen más lenta",
       "Apago procesos y servicios de Windows que corren de fondo sin que los uses",
@@ -287,12 +288,11 @@ export default function Pricing() {
                   </div>
 
                   {/* Features */}
-                  <ul className="space-y-3 mb-8 flex-1">
+                  <ul className="space-y-3 mb-5 flex-1">
                     {pack.features.map((feat, idx) => {
                       // En Diamante + Formateo se resalta el primer ítem: es lo
                       // único que lo diferencia del Diamante.
-                      const destacado =
-                        (pack.tier === "formateo" && idx === 0) || feat === SOPORTE
+                      const destacado = pack.tier === "formateo" && idx === 0
                       return (
                       <li
                         key={feat}
@@ -322,6 +322,14 @@ export default function Pricing() {
                       )
                     })}
                   </ul>
+
+                  {/* Soporte: al final, pegado al botón */}
+                  <div className="-mx-3 mb-5 px-3 py-2.5 rounded-xl bg-brand-500/10 border border-brand-500/40 flex items-start gap-3">
+                    <div className="mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 bg-brand-500">
+                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                    </div>
+                    <span className="text-sm leading-relaxed text-white font-semibold">{SOPORTE}</span>
+                  </div>
 
                   {/* CTA */}
                   <button
