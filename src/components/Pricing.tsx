@@ -150,7 +150,7 @@ export default function Pricing() {
 
   return (
     <section id="pricing" className="relative py-24 md:py-32 section-padding scroll-mt-24">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl 2xl:max-w-[1500px] mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -204,7 +204,10 @@ export default function Pricing() {
           ))}
         </div>
 
-        <div className="grid lg:grid-cols-2 2xl:grid-cols-4 gap-6 max-w-5xl lg:max-w-7xl 2xl:max-w-[1500px] mx-auto">
+        {/* En pantallas anchas (2xl) van las 5 tarjetas en una fila, Armado de PC
+            incluida (pedido de Eze, 14/11). Más angosto, cada una cambia de lado a
+            lado y en el celular se apilan como siempre. */}
+        <div className="grid lg:grid-cols-2 2xl:grid-cols-5 gap-6 2xl:gap-5 max-w-5xl lg:max-w-7xl 2xl:max-w-[1500px] mx-auto">
           {packs.map((pack, i) => {
             const Icon = pack.icon
             return (
@@ -236,7 +239,7 @@ export default function Pricing() {
                   </div>
                 )}
 
-                <div className="relative p-8 md:p-10 lg:p-8 flex flex-col flex-1">
+                <div className="relative p-8 md:p-10 lg:p-8 2xl:p-6 flex flex-col flex-1">
                   {/* Header */}
                   <div className="flex items-start justify-between mb-6">
                     <div>
@@ -250,7 +253,7 @@ export default function Pricing() {
                         >
                           <Icon className="w-6 h-6 text-white" />
                         </div>
-                        <h3 className="font-display font-black text-3xl">
+                        <h3 className="font-display font-black text-3xl 2xl:text-2xl">
                           {pack.name}
                         </h3>
                       </div>
@@ -271,7 +274,7 @@ export default function Pricing() {
                   {/* Price */}
                   <div className="mb-8">
                     <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="font-display font-black text-5xl md:text-6xl lg:text-5xl text-white">
+                      <span className="font-display font-black text-5xl md:text-6xl lg:text-5xl 2xl:text-4xl text-white">
                         ${pack.priceArs.toLocaleString("es-AR")}
                       </span>
                       <span className="text-white/40 text-sm">ARS</span>
@@ -334,7 +337,7 @@ export default function Pricing() {
                   {/* CTA */}
                   <button
                     onClick={() => openChat({ pack: pack.tier as Pack })}
-                    className={`mt-auto flex items-center justify-center gap-2 w-full py-4 rounded-xl font-semibold transition-all group ${
+                    className={`mt-auto flex items-center justify-center gap-2 w-full py-4 2xl:px-1 2xl:gap-1 2xl:text-[13px] rounded-xl font-semibold transition-all group ${
                       pack.highlight
                         ? "bg-gradient-to-r from-brand-500 to-brand-700 hover:from-brand-400 hover:to-brand-600 shadow-lg shadow-brand-900/50"
                         : "bg-white/5 hover:bg-white/10 border border-white/10 hover:border-brand-500/60"
@@ -347,29 +350,29 @@ export default function Pricing() {
               </motion.div>
             )
           })}
-        </div>
 
-        {/* Armado de PC: quinta tarjeta, ancha y en su propia fila. Es otro
-            tipo de servicio (sin sesión remota ni turno), así que no comparte
-            la grilla de las optimizaciones ni sus puntos. */}
+        {/* Armado de PC: quinta tarjeta. Es otro tipo de servicio (sin sesión
+            remota ni turno), así que no lleva los puntos de las optimizaciones.
+            En 2 columnas (lg) ocupa la fila entera; en 5 columnas (2xl) es una
+            tarjeta más de la fila. */}
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="relative glass-card rounded-3xl overflow-hidden mt-6 max-w-5xl lg:max-w-7xl 2xl:max-w-[1500px] mx-auto"
+          className="relative glass-card rounded-3xl overflow-hidden flex flex-col h-full lg:col-span-2 2xl:col-span-1"
         >
           <div className="absolute top-0 right-0 px-4 py-1.5 rounded-bl-xl bg-white/10 border-l border-b border-brand-300/30 text-brand-300 text-xs font-bold uppercase tracking-widest">
             Nuevo
           </div>
 
-          <div className="relative p-8 md:p-10 lg:p-8 grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-8 lg:gap-12">
+          <div className="relative p-8 md:p-10 lg:p-8 2xl:p-6 grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-8 lg:gap-12 2xl:flex 2xl:flex-col 2xl:flex-1 2xl:gap-8">
             <div className="flex flex-col">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br from-white/10 to-white/5 flex-shrink-0">
                   <Puzzle className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-display font-black text-3xl">{PACKS.armado.name}</h3>
+                <h3 className="font-display font-black text-3xl 2xl:text-2xl">{PACKS.armado.name}</h3>
               </div>
               <p className="text-white/50 text-sm mb-6">
                 ¿Todavía no tenés la PC, o querés mejorar la que tenés? Te digo qué comprar.
@@ -380,7 +383,7 @@ export default function Pricing() {
               </div>
 
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="font-display font-black text-5xl md:text-6xl lg:text-5xl text-white">
+                <span className="font-display font-black text-5xl md:text-6xl lg:text-5xl 2xl:text-4xl text-white">
                   ${prices.armado.ars.toLocaleString("es-AR")}
                 </span>
                 <span className="text-white/40 text-sm">ARS</span>
@@ -391,8 +394,8 @@ export default function Pricing() {
               </div>
             </div>
 
-            <div className="flex flex-col">
-              <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-3 mb-6">
+            <div className="flex flex-col 2xl:flex-1">
+              <ul className="grid sm:grid-cols-2 2xl:grid-cols-1 gap-x-6 gap-y-3 mb-6">
                 {ARMADO_FEATURES.map((feat) => (
                   <li key={feat} className="flex items-start gap-3">
                     <div className="mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 bg-white/10">
@@ -407,7 +410,7 @@ export default function Pricing() {
               </p>
               <button
                 onClick={() => openChat({ pack: "armado" })}
-                className="mt-auto flex items-center justify-center gap-2 w-full py-4 rounded-xl font-semibold transition-all group bg-white/5 hover:bg-white/10 border border-white/10 hover:border-brand-500/60"
+                className="mt-auto flex items-center justify-center gap-2 w-full py-4 2xl:px-1 2xl:gap-1 2xl:text-[13px] rounded-xl font-semibold transition-all group bg-white/5 hover:bg-white/10 border border-white/10 hover:border-brand-500/60"
               >
                 Pedir armado
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
@@ -415,6 +418,7 @@ export default function Pricing() {
             </div>
           </div>
         </motion.div>
+        </div>
 
         <motion.p
           initial={{ opacity: 0 }}
