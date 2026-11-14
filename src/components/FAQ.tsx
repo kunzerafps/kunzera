@@ -68,6 +68,10 @@ const faqs = [
     a: "Contame qué PC tenés y qué juegos jugás por WhatsApp antes de reservar, y te digo cuál te conviene. Si tenés dudas, arrancar con Platino siempre es una apuesta segura.",
   },
   {
+    q: "¿Me ayudás a elegir qué PC comprar?",
+    a: "Sí, con el servicio Armado de PC. Me contás tu presupuesto, para qué la querés y, si ya tenés una PC, qué componentes tiene. En 24 a 48 hs te mando por WhatsApp qué comprar, ya sea para armarla de cero o para mejorar la tuya. La lista se entrega una sola vez, sin ajustes.",
+  },
+  {
     q: "Si más adelante actualizo Windows o los drivers, ¿se pierde la optimización?",
     a: "Una actualización grande puede tocar alguna config puntual, pero no se pierde todo el trabajo. Si pasa dentro de los 10 días de soporte, escribime y lo vemos.",
   },

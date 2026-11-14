@@ -7,6 +7,7 @@ import { formatARS } from "../../lib/formatters"
 import { useSiteConfig } from "../../hooks/useWaMessages"
 import { randomId } from "../../lib/crypto"
 import { saveDraft } from "../../lib/storage"
+import { prepararArmado } from "../../lib/armado"
 import { mpTotal } from "../../lib/pricing"
 import { trackServerBackedEvent } from "../../lib/pixel"
 import { packEventParams } from "../../lib/prices"
@@ -249,7 +250,10 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
     // no reserva nada hasta que se sube el comprobante. Solo guardamos el
     // draft localmente para poder recuperar el estado del chat al volver del
     // checkout de Mercado Pago.
-    const draftWithKey = { ...draft, idempotencyKey }
+    // Armado de PC: fecha límite de entrega contada desde ahora (ver
+    // prepararArmado). Para los demás packs no cambia nada.
+    const listo = prepararArmado(draft)
+    const draftWithKey = { ...listo, idempotencyKey }
     saveDraft(draftWithKey, "payment")
 
     const controller = new AbortController()
@@ -259,11 +263,11 @@ export default function PaymentStep({ draft, onPaid, onBack, onKeyReady }: Props
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pack: draft.pack,
-          nombre: draft.nombre,
-          whatsapp: draft.whatsapp,
-          discord: draft.discord,
-          turno: draft.turno,
+          pack: listo.pack,
+          nombre: listo.nombre,
+          whatsapp: listo.whatsapp,
+          discord: listo.discord,
+          turno: listo.turno,
           idempotencyKey,
         }),
         signal: controller.signal,

@@ -25,17 +25,18 @@ import { PACKS } from "../../../src/lib/packs"
 const STORE_NAME = "site-config"
 const KEY = "site-config"
 
-export type PackSlug = "platino" | "diamante" | "formateo" | "notebooks"
+export type PackSlug = "platino" | "diamante" | "formateo" | "notebooks" | "armado"
 
 const DEFAULT_ARS: Record<PackSlug, number> = {
   platino: PACKS.platino.price,
   diamante: PACKS.diamante.price,
   formateo: PACKS.formateo.price,
   notebooks: PACKS.notebooks.price,
+  armado: PACKS.armado.price,
 }
 
 export function isPackSlug(v: unknown): v is PackSlug {
-  return v === "platino" || v === "diamante" || v === "formateo" || v === "notebooks"
+  return v === "platino" || v === "diamante" || v === "formateo" || v === "notebooks" || v === "armado"
 }
 
 function readArs(raw: unknown, fallback: number): number {
@@ -50,7 +51,7 @@ function readArs(raw: unknown, fallback: number): number {
 export async function getServerPackPricesArs(): Promise<Record<PackSlug, number>> {
   try {
     const raw = (await getStore(STORE_NAME).get(KEY, { type: "json" })) as
-      | { prices?: { platino?: unknown; diamante?: unknown; formateo?: unknown; notebooks?: unknown } }
+      | { prices?: { platino?: unknown; diamante?: unknown; formateo?: unknown; notebooks?: unknown; armado?: unknown } }
       | null
     if (!raw?.prices) return DEFAULT_ARS
     return {
@@ -58,6 +59,7 @@ export async function getServerPackPricesArs(): Promise<Record<PackSlug, number>
       diamante: readArs(raw.prices.diamante, DEFAULT_ARS.diamante),
       formateo: readArs(raw.prices.formateo, DEFAULT_ARS.formateo),
       notebooks: readArs(raw.prices.notebooks, DEFAULT_ARS.notebooks),
+      armado: readArs(raw.prices.armado, DEFAULT_ARS.armado),
     }
   } catch {
     return DEFAULT_ARS

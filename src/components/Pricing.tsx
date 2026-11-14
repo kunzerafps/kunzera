@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { Check, Gem, Zap, ArrowRight, Crown, Layers, ShieldCheck, PiggyBank, RefreshCw, Laptop } from "lucide-react"
+import { Check, Gem, Zap, ArrowRight, Crown, Layers, ShieldCheck, PiggyBank, RefreshCw, Laptop, Puzzle } from "lucide-react"
 import { useMemo } from "react"
 import { PACKS } from "../lib/packs"
 import { openChat } from "../lib/chatBus"
@@ -67,6 +67,14 @@ const PACK_FEATURES = {
     ],
   },
 } as const
+
+// Puntos de la tarjeta "Armado de PC" (servicio sin sesión remota).
+const ARMADO_FEATURES = [
+  "Te digo qué comprar, pieza por pieza, según tu presupuesto: lo mejor en precio-calidad",
+  "Sirve para armar una PC de cero o para mejorar la que ya tenés",
+  "Pensado para que puedas seguir mejorándola más adelante sin tirar lo que compraste",
+  "Te llega por WhatsApp en 24 a 48 hs",
+]
 
 const TRUST_MINI = [
   {
@@ -332,6 +340,73 @@ export default function Pricing() {
             )
           })}
         </div>
+
+        {/* Armado de PC: quinta tarjeta, ancha y en su propia fila. Es otro
+            tipo de servicio (sin sesión remota ni turno), así que no comparte
+            la grilla de las optimizaciones ni sus puntos. */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="relative glass-card rounded-3xl overflow-hidden mt-6 max-w-5xl lg:max-w-7xl 2xl:max-w-[1500px] mx-auto"
+        >
+          <div className="absolute top-0 right-0 px-4 py-1.5 rounded-bl-xl bg-white/10 border-l border-b border-brand-300/30 text-brand-300 text-xs font-bold uppercase tracking-widest">
+            Nuevo
+          </div>
+
+          <div className="relative p-8 md:p-10 lg:p-8 grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-8 lg:gap-12">
+            <div className="flex flex-col">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br from-white/10 to-white/5 flex-shrink-0">
+                  <Puzzle className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="font-display font-black text-3xl">{PACKS.armado.name}</h3>
+              </div>
+              <p className="text-white/50 text-sm mb-6">
+                ¿Todavía no tenés la PC, o querés mejorar la que tenés? Te digo qué comprar.
+              </p>
+
+              <div className="self-start px-3 py-1 rounded-md text-xs font-mono uppercase tracking-widest mb-6 bg-white/5 text-white/60 border border-white/10">
+                Sin sesión remota · Entrega en 24-48 hs
+              </div>
+
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="font-display font-black text-5xl md:text-6xl lg:text-5xl text-white">
+                  ${prices.armado.ars.toLocaleString("es-AR")}
+                </span>
+                <span className="text-white/40 text-sm">ARS</span>
+              </div>
+              <div className="text-white/40 text-sm mt-1">Pago único · Sin mensualidades</div>
+              <div className="text-white/40 text-xs font-mono mt-2">
+                💳 Transferencia · Mercado Pago
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-3 mb-6">
+                {ARMADO_FEATURES.map((feat) => (
+                  <li key={feat} className="flex items-start gap-3">
+                    <div className="mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 bg-white/10">
+                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                    </div>
+                    <span className="text-sm leading-relaxed text-white/80">{feat}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-white/50 text-xs mb-6">
+                La lista se entrega una sola vez, sin ajustes.
+              </p>
+              <button
+                onClick={() => openChat({ pack: "armado" })}
+                className="mt-auto flex items-center justify-center gap-2 w-full py-4 rounded-xl font-semibold transition-all group bg-white/5 hover:bg-white/10 border border-white/10 hover:border-brand-500/60"
+              >
+                Pedir armado
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+              </button>
+            </div>
+          </div>
+        </motion.div>
 
         <motion.p
           initial={{ opacity: 0 }}

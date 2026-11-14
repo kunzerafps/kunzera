@@ -24,6 +24,7 @@ const DEFAULTS = {
     diamante: { ars: PACKS.diamante.price, usd: PACKS.diamante.usdPrice } as PackPrices,
     formateo: { ars: PACKS.formateo.price, usd: PACKS.formateo.usdPrice } as PackPrices,
     notebooks: { ars: PACKS.notebooks.price, usd: PACKS.notebooks.usdPrice } as PackPrices,
+    armado: { ars: PACKS.armado.price, usd: PACKS.armado.usdPrice } as PackPrices,
   },
   blockedWindows: [] as BlockedWindow[],
   campaigns: [] as string[],
@@ -114,6 +115,7 @@ function sanitize(input: unknown): Config {
     diamante: sanitizePack(pricesIn.diamante, DEFAULTS.prices.diamante),
     formateo: sanitizePack(pricesIn.formateo, DEFAULTS.prices.formateo),
     notebooks: sanitizePack(pricesIn.notebooks, DEFAULTS.prices.notebooks),
+    armado: sanitizePack(pricesIn.armado, DEFAULTS.prices.armado),
   }
   const blockedWindows = sanitizeBlockedWindows(o.blockedWindows)
   const campaigns = sanitizeCampaigns(o.campaigns)

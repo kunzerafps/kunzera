@@ -49,6 +49,8 @@ export default function WaMessagesEditor() {
     "formateo-usd": String(DEFAULT_SITE_CONFIG.prices.formateo.usd),
     "notebooks-ars": String(DEFAULT_SITE_CONFIG.prices.notebooks.ars),
     "notebooks-usd": String(DEFAULT_SITE_CONFIG.prices.notebooks.usd),
+    "armado-ars": String(DEFAULT_SITE_CONFIG.prices.armado.ars),
+    "armado-usd": String(DEFAULT_SITE_CONFIG.prices.armado.usd),
   })
   const [hasCustomPassword, setHasCustomPassword] = useState(false)
   const [newPassword, setNewPassword] = useState("")
@@ -80,6 +82,8 @@ export default function WaMessagesEditor() {
         "formateo-usd": String(c.prices.formateo.usd),
         "notebooks-ars": String(c.prices.notebooks.ars),
         "notebooks-usd": String(c.prices.notebooks.usd),
+        "armado-ars": String(c.prices.armado.ars),
+        "armado-usd": String(c.prices.armado.usd),
       })
       setHasCustomPassword(c.hasCustomPassword)
       setBlockedWindows(c.blockedWindows)
@@ -111,10 +115,14 @@ export default function WaMessagesEditor() {
       ars: parsePrice(priceText["notebooks-ars"], prices.notebooks.ars),
       usd: parsePrice(priceText["notebooks-usd"], prices.notebooks.usd),
     },
+    armado: {
+      ars: parsePrice(priceText["armado-ars"], prices.armado.ars),
+      usd: parsePrice(priceText["armado-usd"], prices.armado.usd),
+    },
   }
 
   const anyPriceInvalid = (
-    ["platino-ars", "platino-usd", "diamante-ars", "diamante-usd", "formateo-ars", "formateo-usd", "notebooks-ars", "notebooks-usd"] as PriceField[]
+    ["platino-ars", "platino-usd", "diamante-ars", "diamante-usd", "formateo-ars", "formateo-usd", "notebooks-ars", "notebooks-usd", "armado-ars", "armado-usd"] as PriceField[]
   ).some((k) => !isValidPrice(priceText[k]))
 
   const passwordTouched = newPassword.length > 0 || confirmPassword.length > 0
@@ -229,6 +237,8 @@ export default function WaMessagesEditor() {
       "formateo-usd": String(DEFAULT_SITE_CONFIG.prices.formateo.usd),
       "notebooks-ars": String(DEFAULT_SITE_CONFIG.prices.notebooks.ars),
       "notebooks-usd": String(DEFAULT_SITE_CONFIG.prices.notebooks.usd),
+      "armado-ars": String(DEFAULT_SITE_CONFIG.prices.armado.ars),
+      "armado-usd": String(DEFAULT_SITE_CONFIG.prices.armado.usd),
     })
     setSaveState({ kind: "idle" })
   }
@@ -388,6 +398,13 @@ export default function WaMessagesEditor() {
                 usdValue={priceText["notebooks-usd"]}
                 onArsChange={(v) => updatePrice("notebooks-ars", v)}
                 onUsdChange={(v) => updatePrice("notebooks-usd", v)}
+              />
+              <PriceRow
+                label="🧩 Armado de PC"
+                arsValue={priceText["armado-ars"]}
+                usdValue={priceText["armado-usd"]}
+                onArsChange={(v) => updatePrice("armado-ars", v)}
+                onUsdChange={(v) => updatePrice("armado-usd", v)}
               />
             </tbody>
           </table>

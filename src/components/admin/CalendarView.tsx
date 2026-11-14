@@ -103,6 +103,8 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
           const hasPlatino = dayOrders.some((o) => o.plan === "platino")
           const hasFormateo = dayOrders.some((o) => o.plan === "formateo")
           const hasNotebooks = dayOrders.some((o) => o.plan === "notebooks")
+          // Armado de PC: no es un turno, es el día en que vence la entrega.
+          const hasArmado = dayOrders.some((o) => o.plan === "armado")
 
           return (
             <motion.button
@@ -156,7 +158,7 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
                         {allDone && <span className="mr-0.5">✓</span>}
                         {count} turno{count !== 1 ? "s" : ""}
                       </div>
-                      {(hasPlatino || hasDiamante || hasFormateo || hasNotebooks) && (
+                      {(hasPlatino || hasDiamante || hasFormateo || hasNotebooks || hasArmado) && (
                         <div className="flex items-center gap-1">
                           {hasPlatino && (
                             <span
@@ -180,6 +182,12 @@ export default function CalendarView({ orders, onSelectDay }: Props) {
                             <span
                               className="w-1.5 h-1.5 rounded-full bg-cyan-400"
                               title="Notebooks"
+                            />
+                          )}
+                          {hasArmado && (
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-amber-400"
+                              title="Armado de PC (vence la entrega)"
                             />
                           )}
                           {atendidos > 0 && !allDone && (

@@ -87,6 +87,14 @@ export function validateDiscord(value: string): string | null {
   return null
 }
 
+// Respuestas de texto libre del cuestionario de "Armado de PC".
+export function validateArmadoAnswer(value: string, max: number): string | null {
+  const v = value.trim()
+  if (v.length < 2) return "Completá este dato para seguir"
+  if (v.length > max) return `Demasiado largo (máximo ${max} caracteres)`
+  return null
+}
+
 export function validateFile(file: File): string | null {
   if (!ACCEPTED_MIME.includes(file.type)) {
     return "Solo imágenes (PNG, JPG, WebP) o PDF"

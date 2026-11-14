@@ -4,6 +4,7 @@ import { uploadComprobante } from "../lib/comprobante"
 import type { FlowEvent, OrderDraft } from "../types/order"
 import { randomId } from "../lib/crypto"
 import { canSubmit, markSubmitted } from "../lib/storage"
+import { enviarArmadoConReintento, prepararArmado } from "../lib/armado"
 
 type Return = {
   submit: (draft: OrderDraft) => Promise<void>
@@ -34,7 +35,15 @@ export function useOrderSubmit(dispatch: (ev: FlowEvent) => void): Return {
       dispatch({ type: "SUBMIT_START" })
       markSubmitted()
 
-      const result = await submitOrder(draft, key)
+      // Armado de PC: la fecha límite de entrega se cuenta desde AHORA, y si
+      // otro armado cayó en el mismo minuto se reintenta con el siguiente.
+      const listo = prepararArmado(draft)
+      const result =
+        listo.pack === "armado" && listo.turno
+          ? await enviarArmadoConReintento(listo.turno, (turno) =>
+              submitOrder({ ...listo, turno }, key),
+            )
+          : await submitOrder(listo, key)
       inFlightRef.current = false
       if (result.ok) {
         if (draft.file) {

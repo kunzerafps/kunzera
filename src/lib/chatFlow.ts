@@ -5,7 +5,8 @@ import type {
   OrderDraft,
   Pack,
 } from "../types/order"
-import { PACKS } from "./packs"
+import { PACKS, isPack } from "./packs"
+import { armadoDeadline, armadoResumen } from "./armado"
 import { formatARS, formatSlotLabel } from "./formatters"
 import { randomId } from "./crypto"
 import { MP_ALIAS, waLink, WHATSAPP_MESSAGE_GENERAL } from "./constants"
@@ -28,6 +29,11 @@ const EXPANDED_STATES: FlowState[] = [
   "askEmail",
   "askDiscord",
   "pickSlot",
+  "armadoTipo",
+  "armadoPresupuesto",
+  "armadoPcActual",
+  "armadoUso",
+  "armadoFuturo",
   "review",
   "payment",
   "uploadProof",
@@ -76,13 +82,14 @@ export const GREETING: ChatMessage[] = [
 const BOT_INFO: Record<string, ChatMessage[]> = {
   packs: [
     bot(
-      `Tenemos 4 packs:\n\n⚡ *Platino* — ${formatARS(getArs("platino"))}\n${PACKS.platino.tagline}\n\n💎 *Diamante* — ${formatARS(getArs("diamante"))}\n${PACKS.diamante.tagline}\n\n🔄 *Diamante + Formateo* — ${formatARS(getArs("formateo"))}\n${PACKS.formateo.tagline}\n\n💻 *Notebooks* — ${formatARS(getArs("notebooks"))}\n${PACKS.notebooks.tagline}`,
+      `Tenemos 4 packs:\n\n⚡ *Platino* — ${formatARS(getArs("platino"))}\n${PACKS.platino.tagline}\n\n💎 *Diamante* — ${formatARS(getArs("diamante"))}\n${PACKS.diamante.tagline}\n\n🔄 *Diamante + Formateo* — ${formatARS(getArs("formateo"))}\n${PACKS.formateo.tagline}\n\n💻 *Notebooks* — ${formatARS(getArs("notebooks"))}\n${PACKS.notebooks.tagline}\n\nY si todavía no tenés la PC o querés mejorarla:\n\n🧩 *Armado de PC* — ${formatARS(getArs("armado"))}\n${PACKS.armado.tagline}`,
       {
         chips: [
           { label: "Quiero Platino", payload: "platino" },
           { label: "Quiero Diamante", payload: "diamante" },
           { label: "Quiero Diamante + Formateo", payload: "formateo" },
           { label: "Quiero Notebooks", payload: "notebooks" },
+          { label: "Quiero Armado de PC", payload: "armado" },
         ],
       },
     ),
@@ -113,6 +120,19 @@ const BOT_INFO: Record<string, ChatMessage[]> = {
 
 function planPickedMessages(pack: Pack): ChatMessage[] {
   const p = PACKS[pack]
+  if (pack === "armado") {
+    return [
+      bot(
+        `${p.emoji} Elegiste *${p.name}* (${formatARS(getArs(pack))}).\nTe hago unas preguntas, pagás, y en 24 a 48 hs te mando por WhatsApp qué comprar. No hay sesión remota ni turno.\n¿Arrancamos?`,
+        {
+          chips: [
+            { label: "Sí, empezar", payload: "reservar" },
+            { label: "Ver los packs", payload: "packs" },
+          ],
+        },
+      ),
+    ]
+  }
   return [
     bot(
       `${p.emoji} Elegiste el pack *${p.name}* (${formatARS(getArs(pack))}).\n¿Querés reservar tu turno ahora?`,
@@ -153,7 +173,68 @@ function pickSlotMessages(): ChatMessage[] {
   ]
 }
 
+// ── Cuestionario de "Armado de PC" (va en lugar del selector de turnos) ──
+
+function armadoTipoMessages(): ChatMessage[] {
+  return [
+    bot("¿Vas a *armar una PC de cero* o querés *mejorar la que ya tenés*?", {
+      chips: [
+        { label: "Armar de cero", payload: "armado_cero" },
+        { label: "Mejorar la que tengo", payload: "armado_mejora" },
+      ],
+    }),
+  ]
+}
+
+function armadoPresupuestoMessages(): ChatMessage[] {
+  return [bot("¿Cuál es tu *presupuesto*? Poné el monto máximo que podés gastar.")]
+}
+
+function armadoPcActualMessages(): ChatMessage[] {
+  return [
+    bot(
+      "¿Qué *PC tenés hoy*? Pasame:\n• Procesador\n• Placa de video\n• Motherboard\n• Fuente\n• RAM (marca y velocidad)\n• Cooler del procesador, si le compraste uno aparte",
+    ),
+  ]
+}
+
+function armadoUsoMessages(): ChatMessage[] {
+  return [
+    bot("¿*Para qué la querés*? Contame qué juegos jugás, en qué resolución y cuántos FPS buscás."),
+  ]
+}
+
+function armadoFuturoMessages(): ChatMessage[] {
+  return [
+    bot("¿Pensás *seguir mejorándola* más adelante?", {
+      chips: [
+        { label: "Sí", payload: "armado_si" },
+        { label: "No, que quede así", payload: "armado_no" },
+      ],
+    }),
+  ]
+}
+
+function armadoReviewMessages(draft: OrderDraft): ChatMessage[] {
+  const lineas = [
+    `🧩 *${PACKS.armado.name}* — ${formatARS(draft.monto || 0)}`,
+    `👤 ${draft.nombre}`,
+    `📱 ${draft.whatsapp}`,
+    `🛠️ ${draft.armadoTipo === "mejora" ? "Mejorar la PC que tenés" : "Armar de cero"}`,
+    `💰 Presupuesto: ${draft.armadoPresupuesto || "-"}`,
+  ]
+  if (draft.armadoTipo === "mejora") lineas.push(`🖥️ PC actual: ${draft.armadoPcActual || "-"}`)
+  lineas.push(`🎮 ${draft.armadoUso || "-"}`)
+  lineas.push(`🔧 Seguir mejorándola: ${draft.armadoFuturo === "no" ? "no" : "sí"}`)
+  return [
+    bot(
+      `Revisá tu pedido:\n\n${lineas.join("\n")}\n\n📦 Te mando la lista por WhatsApp en 24 a 48 hs.\n📌 La lista se entrega una sola vez, sin ajustes.\n\n¿Confirmás?`,
+    ),
+  ]
+}
+
 function reviewMessages(draft: OrderDraft): ChatMessage[] {
+  if (draft.pack === "armado") return armadoReviewMessages(draft)
   return [
     bot(
       `Revisá tu pedido:\n\n${PACKS[draft.pack!].emoji} *${PACKS[draft.pack!].name}* — ${formatARS(draft.monto || 0)}\n👤 ${draft.nombre}\n📱 ${draft.whatsapp}\n📅 ${formatSlotLabel(draft.turno!)}\n\n📌 El turno se cambia una sola vez, avisando 24 hs antes.\n🛟 Incluye 10 días de soporte desde el día de la optimización. Pasado ese plazo, el trabajo se vuelve a cobrar.\n\n¿Confirmás?`,
@@ -180,6 +261,14 @@ function submittingMessages(): ChatMessage[] {
 }
 
 function confirmedMessages(draft: OrderDraft, _fileUrl: string): ChatMessage[] {
+  if (draft.pack === "armado") {
+    return [
+      bot(
+        "¡Listo! 🎉 Recibí tu pedido de *Armado de PC*.\n\nEn 24 a 48 hs te mando por WhatsApp qué comprar según tu presupuesto. La lista se entrega una sola vez, sin ajustes.",
+        { variant: "success" },
+      ),
+    ]
+  }
   return [
     bot(
       `¡Listo! 🎉 Tu turno quedó reservado para *${formatSlotLabel(draft.turno!)}*.\n\nTe escribo al WhatsApp 10 minutos antes de la hora pactada. Mientras tanto, descargá AnyDesk desde anydesk.com. Si tu pack incluye optimización de BIOS, al momento de configurarla te hago una videollamada por WhatsApp para que puedas enfocarme el monitor y la hacemos juntos.\n\nPodés cambiar el turno una sola vez, avisando por WhatsApp con al menos 24 horas de anticipación. Tenés 10 días de soporte por WhatsApp desde el día de la optimización.`,
@@ -193,16 +282,20 @@ function confirmedMessages(draft: OrderDraft, _fileUrl: string): ChatMessage[] {
 // todavía — la reserva recién se crea cuando el webhook ve el pago
 // aprobado — así que NO reutilizamos el mensaje de éxito acá.
 function pendingMessages(draft: OrderDraft): ChatMessage[] {
-  const waMsg =
-    `Hola! Pagué el pack ${PACKS[draft.pack!]?.name || ""} con Mercado Pago y quedó "pendiente". ` +
-    `Turno: ${draft.turno ? formatSlotLabel(draft.turno) : ""}. Nombre: ${draft.nombre || "-"}.`
+  const esArmado = draft.pack === "armado"
+  const waMsg = esArmado
+    ? `Hola! Pagué el Armado de PC con Mercado Pago y quedó "pendiente". Nombre: ${draft.nombre || "-"}.`
+    : `Hola! Pagué el pack ${PACKS[draft.pack!]?.name || ""} con Mercado Pago y quedó "pendiente". ` +
+      `Turno: ${draft.turno ? formatSlotLabel(draft.turno) : ""}. Nombre: ${draft.nombre || "-"}.`
   // A propósito NO se le suma acá el link de regreso de anuncio
   // (withAdReturnLink): la persona YA pagó, mandarle un "reservá directo"
   // invita a un doble pago. La atribución del pago pendiente se resuelve
   // igual server-side cuando el webhook de MP lo acredita.
   return [
     bot(
-      "Tu pago quedó *pendiente de confirmación* en Mercado Pago (puede pasar con algunos medios de pago). Todavía no está reservado el turno — en cuanto se acredite te confirmamos automáticamente. Si pasan más de unas horas y no tenés novedades, escribinos.",
+      esArmado
+        ? "Tu pago quedó *pendiente de confirmación* en Mercado Pago (puede pasar con algunos medios de pago). Tu pedido todavía no quedó registrado — en cuanto se acredite queda confirmado automáticamente. Si pasan más de unas horas y no tenés novedades, escribinos."
+        : "Tu pago quedó *pendiente de confirmación* en Mercado Pago (puede pasar con algunos medios de pago). Todavía no está reservado el turno — en cuanto se acredite te confirmamos automáticamente. Si pasan más de unas horas y no tenés novedades, escribinos.",
       { link: { label: "Ir a WhatsApp", href: waLink(waMsg) } },
     ),
   ]
@@ -210,8 +303,10 @@ function pendingMessages(draft: OrderDraft): ChatMessage[] {
 
 function errorMessages(_error: string, draft: OrderDraft): ChatMessage[] {
   const fallbackMsg =
-    `Hola! Quiero reservar el pack ${PACKS[draft.pack!]?.name || ""} — turno ${draft.turno ? formatSlotLabel(draft.turno) : ""}. ` +
-    `Nombre: ${draft.nombre || "-"}.`
+    draft.pack === "armado"
+      ? `Hola! Quiero pedir el Armado de PC. Nombre: ${draft.nombre || "-"}. ${armadoResumen(draft)}`
+      : `Hola! Quiero reservar el pack ${PACKS[draft.pack!]?.name || ""} — turno ${draft.turno ? formatSlotLabel(draft.turno) : ""}. ` +
+        `Nombre: ${draft.nombre || "-"}.`
   // La reserva NO se guardó, así que acá sí tiene sentido arrastrar el link
   // de regreso de anuncio: si la persona vino de una pauta y sigue por
   // WhatsApp, la compra que se cierre después (manual o web) mantiene la
@@ -255,6 +350,16 @@ function resumeMessages(state: FlowState, draft: OrderDraft): ChatMessage[] {
       return askEmailMessages()
     case "pickSlot":
       return pickSlotMessages()
+    case "armadoTipo":
+      return armadoTipoMessages()
+    case "armadoPresupuesto":
+      return armadoPresupuestoMessages()
+    case "armadoPcActual":
+      return armadoPcActualMessages()
+    case "armadoUso":
+      return armadoUsoMessages()
+    case "armadoFuturo":
+      return armadoFuturoMessages()
     case "review":
       return validPack && draft.turno ? reviewMessages(draft) : []
     case "payment":
@@ -275,6 +380,7 @@ export function detectPayload(text: string): string {
   // Antes que "diamante": "diamante + formateo" también matchea /diamante/.
   if (/(format)/.test(t)) return "formateo"
   if (/(diamante)/.test(t)) return "diamante"
+  if (/(armad|armar|qu[eé] comprar|upgrade)/.test(t)) return "armado"
   if (/(pack|precio|cuesta|vale|cuanto|cu[aá]nto)/.test(t)) return "packs"
   if (/(c[oó]mo|funciona|proceso|paso)/.test(t)) return "como"
   if (/(seguro|riesgo|romper|da[ñn]ar)/.test(t)) return "seguro"
@@ -382,8 +488,8 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
     case "exploring":
       if (ev.type === "SELECT_CHIP") {
         const { payload, label } = ev
-        if (payload === "platino" || payload === "diamante" || payload === "formateo" || payload === "notebooks") {
-          const pack = payload as Pack
+        if (isPack(payload)) {
+          const pack = payload
           const withUser = pushUser(ctx, label)
           const withBot = pushMessages(withUser, planPickedMessages(pack))
           return transition(
@@ -407,8 +513,8 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
       if (ev.type === "FREE_TEXT") {
         const withUser = pushUser(ctx, ev.text)
         const payload = detectPayload(ev.text)
-        if (payload === "platino" || payload === "diamante" || payload === "formateo" || payload === "notebooks") {
-          const pack = payload as Pack
+        if (isPack(payload)) {
+          const pack = payload
           const withBot = pushMessages(withUser, planPickedMessages(pack))
           return transition(
             {
@@ -444,7 +550,7 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
         if (payload === "reservar") {
           return startReservation(pushUser(ctx, label))
         }
-        if (payload === "packs" || payload === "platino" || payload === "diamante" || payload === "formateo" || payload === "notebooks") {
+        if (payload === "packs" || isPack(payload)) {
           return reduce(transition(ctx, "exploring"), ev)
         }
       }
@@ -487,6 +593,15 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
     case "askEmail":
       if (ev.type === "SET_EMAIL") {
         const withUser = pushUser(ctx, ev.value)
+        // Armado de PC no tiene turno: en vez del selector de horarios van
+        // las preguntas del cuestionario.
+        if (ctx.draft.pack === "armado") {
+          const withArmado = pushMessages(withUser, armadoTipoMessages())
+          return transition(
+            { ...withArmado, draft: { ...ctx.draft, email: ev.value }, error: undefined },
+            "armadoTipo",
+          )
+        }
         const withBot = pushMessages(withUser, pickSlotMessages())
         return transition(
           { ...withBot, draft: { ...ctx.draft, email: ev.value }, error: undefined },
@@ -506,12 +621,93 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
       if (ev.type === "BACK") return back(ctx, "askEmail")
       break
 
+    case "armadoTipo":
+      if (ev.type === "SELECT_CHIP" && (ev.payload === "armado_cero" || ev.payload === "armado_mejora")) {
+        const armadoTipo = ev.payload === "armado_mejora" ? "mejora" : "cero"
+        const withBot = pushMessages(pushUser(ctx, ev.label), armadoPresupuestoMessages())
+        return transition(
+          {
+            ...withBot,
+            draft: {
+              ...ctx.draft,
+              armadoTipo,
+              // Si cambió de "mejorar" a "de cero", la PC actual ya no aplica.
+              armadoPcActual: armadoTipo === "mejora" ? ctx.draft.armadoPcActual : undefined,
+            },
+          },
+          "armadoPresupuesto",
+        )
+      }
+      if (ev.type === "BACK") return back(ctx, "askEmail")
+      break
+
+    case "armadoPresupuesto":
+      if (ev.type === "ARMADO_ANSWER") {
+        const mejora = ctx.draft.armadoTipo === "mejora"
+        const withBot = pushMessages(
+          pushUser(ctx, ev.value),
+          mejora ? armadoPcActualMessages() : armadoUsoMessages(),
+        )
+        return transition(
+          { ...withBot, draft: { ...ctx.draft, armadoPresupuesto: ev.value } },
+          mejora ? "armadoPcActual" : "armadoUso",
+        )
+      }
+      if (ev.type === "BACK") return back(ctx, "armadoTipo")
+      break
+
+    case "armadoPcActual":
+      if (ev.type === "ARMADO_ANSWER") {
+        const withBot = pushMessages(pushUser(ctx, ev.value), armadoUsoMessages())
+        return transition(
+          { ...withBot, draft: { ...ctx.draft, armadoPcActual: ev.value } },
+          "armadoUso",
+        )
+      }
+      if (ev.type === "BACK") return back(ctx, "armadoPresupuesto")
+      break
+
+    case "armadoUso":
+      if (ev.type === "ARMADO_ANSWER") {
+        const withBot = pushMessages(pushUser(ctx, ev.value), armadoFuturoMessages())
+        return transition(
+          { ...withBot, draft: { ...ctx.draft, armadoUso: ev.value } },
+          "armadoFuturo",
+        )
+      }
+      if (ev.type === "BACK") {
+        return back(ctx, ctx.draft.armadoTipo === "mejora" ? "armadoPcActual" : "armadoPresupuesto")
+      }
+      break
+
+    case "armadoFuturo":
+      if (ev.type === "SELECT_CHIP" && (ev.payload === "armado_si" || ev.payload === "armado_no")) {
+        const conRespuesta: OrderDraft = {
+          ...ctx.draft,
+          armadoFuturo: ev.payload === "armado_no" ? "no" : "si",
+        }
+        // `turno` (fecha límite de entrega) y `discord` (las respuestas) se
+        // vuelven a calcular al mandar el pedido — ver prepararArmado. Acá
+        // quedan cargados para que el resumen y el pago tengan el pedido
+        // completo.
+        const draftNext: OrderDraft = {
+          ...conRespuesta,
+          turno: armadoDeadline(),
+          discord: armadoResumen(conRespuesta),
+        }
+        const withBot = pushMessages(pushUser(ctx, ev.label), reviewMessages(draftNext))
+        return transition({ ...withBot, draft: draftNext }, "review")
+      }
+      if (ev.type === "BACK") return back(ctx, "armadoUso")
+      break
+
     case "review":
       if (ev.type === "CONFIRM_REVIEW") {
         const withBot = pushMessages(ctx, paymentMessages(ctx.draft))
         return transition(withBot, "payment")
       }
       if (ev.type === "BACK") {
+        if (ctx.draft.pack === "armado") return back(ctx, "armadoFuturo")
         return back(
           { ...ctx, draft: { ...ctx.draft, turno: undefined } },
           "pickSlot",
@@ -555,7 +751,10 @@ export function reduce(ctx: FlowContext, ev: FlowEvent): FlowContext {
         return transition(withBot, "confirmed")
       }
       if (ev.type === "SUBMIT_ERR") {
-        if (ev.error === "slot_taken") {
+        // Un armado no elige turno: si igual llegara un "slot_taken" (ya se
+        // reintentó solo, ver enviarArmadoConReintento) va al error común en
+        // vez de mandarlo a un selector de horarios que no le corresponde.
+        if (ev.error === "slot_taken" && ctx.draft.pack !== "armado") {
           const withBot = pushMessages(ctx, [slotTakenMessage, ...pickSlotMessages()])
           return transition(
             { ...withBot, draft: { ...ctx.draft, turno: undefined } },
@@ -602,6 +801,7 @@ function startReservation(ctx: FlowContext): FlowContext {
           { label: `Diamante (${formatARS(getArs("diamante"))})`, payload: "diamante" },
           { label: `Diamante + Formateo (${formatARS(getArs("formateo"))})`, payload: "formateo" },
           { label: `Notebooks (${formatARS(getArs("notebooks"))})`, payload: "notebooks" },
+          { label: `Armado de PC (${formatARS(getArs("armado"))})`, payload: "armado" },
         ],
       }),
     ])

@@ -297,6 +297,7 @@ describe("DEEP_LINKS (referencia para pegar en los anuncios)", () => {
       reservarDiamante: "https://kunzera.com/reservar/diamante",
       reservarFormateo: "https://kunzera.com/reservar/formateo",
       reservarNotebooks: "https://kunzera.com/reservar/notebooks",
+      reservarArmado: "https://kunzera.com/reservar/armado",
     })
   })
 })

@@ -16,6 +16,7 @@ import { getStoredUtm } from "./utm"
 //   kunzera.com/packs/diamante    -> idem (alias)
 //   kunzera.com/reservar/formateo -> abre el chat con Diamante + Formateo
 //   kunzera.com/reservar/notebooks -> abre el chat con Notebooks
+//   kunzera.com/reservar/armado   -> abre el chat con Armado de PC
 //
 // Alias por query, por si un anuncio arma el link con ?pack= en vez de path:
 //   kunzera.com/?pack=platino  ·  kunzera.com/packs?plan=diamante
@@ -29,6 +30,7 @@ const PACK_SLUGS: Record<string, Pack> = {
   diamante: "diamante",
   formateo: "formateo",
   notebooks: "notebooks",
+  armado: "armado",
 }
 
 // Paths que llevan a la seccion de planes.
@@ -131,6 +133,7 @@ export const DEEP_LINKS = {
   reservarDiamante: `https://kunzera.com/reservar/${PACKS.diamante.id}`,
   reservarFormateo: `https://kunzera.com/reservar/${PACKS.formateo.id}`,
   reservarNotebooks: `https://kunzera.com/reservar/${PACKS.notebooks.id}`,
+  reservarArmado: `https://kunzera.com/reservar/${PACKS.armado.id}`,
 } as const
 
 // Saca el fbclid crudo (el que Meta necesita para reconstruir la cookie

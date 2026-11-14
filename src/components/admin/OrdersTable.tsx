@@ -12,7 +12,7 @@ type Props = {
   onRowClick?: (order: Order) => void
 }
 
-type Filter = "all" | "today" | "platino" | "diamante" | "formateo" | "notebooks"
+type Filter = "all" | "today" | "platino" | "diamante" | "formateo" | "notebooks" | "armado"
 
 export default function OrdersTable({ orders, highlightToday = true, onRowClick }: Props) {
   const [query, setQuery] = useState("")
@@ -27,6 +27,7 @@ export default function OrdersTable({ orders, highlightToday = true, onRowClick 
         if (filter === "diamante" && o.plan !== "diamante") return false
         if (filter === "formateo" && o.plan !== "formateo") return false
         if (filter === "notebooks" && o.plan !== "notebooks") return false
+        if (filter === "armado" && o.plan !== "armado") return false
         if (!q) return true
         return (
           String(o.nombre ?? "").toLowerCase().includes(q) ||
@@ -50,7 +51,7 @@ export default function OrdersTable({ orders, highlightToday = true, onRowClick 
           />
         </div>
         <div className="flex gap-1.5 overflow-x-auto">
-          {(["all", "today", "platino", "diamante", "formateo", "notebooks"] as Filter[]).map((f) => (
+          {(["all", "today", "platino", "diamante", "formateo", "notebooks", "armado"] as Filter[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -125,6 +126,8 @@ export default function OrdersTable({ orders, highlightToday = true, onRowClick 
                             ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
                             : o.plan === "notebooks"
                             ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                            : o.plan === "armado"
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
                             : "bg-brand-500/20 text-brand-300 border border-brand-500/30"
                         }`}
                       >
@@ -204,5 +207,7 @@ function labelFor(f: Filter): string {
       return "Diamante + Formateo"
     case "notebooks":
       return "Notebooks"
+    case "armado":
+      return "Armado de PC"
   }
 }

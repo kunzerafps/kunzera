@@ -127,7 +127,9 @@ export function useChatFlow(): FlowReturn {
       // mismo "¡Listo!" de siempre con el turno que viene en la URL.
       const turno = params.get("turno")
       if (mp !== "success" || !ref || !turno || Number.isNaN(new Date(turno).getTime())) return
-      rawDispatch({ type: "MP_RETURN", status: "success", draft: { turno, idempotencyKey: ref } })
+      // Armado de PC vuelve con &pack=armado: su "¡Listo!" no habla de turno.
+      const pack = params.get("pack") === "armado" ? ("armado" as const) : undefined
+      rawDispatch({ type: "MP_RETURN", status: "success", draft: { turno, idempotencyKey: ref, pack } })
       setOpen(true)
       setForceExpanded(true)
       return

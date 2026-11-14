@@ -1,5 +1,5 @@
 import type { Pack } from "../types/order"
-import { PACKS } from "./packs"
+import { PACKS, isPack } from "./packs"
 
 export type PackPrices = { ars: number; usd: number }
 export type Prices = Record<Pack, PackPrices>
@@ -9,6 +9,7 @@ export const DEFAULT_PRICES: Prices = {
   diamante: { ars: PACKS.diamante.price, usd: PACKS.diamante.usdPrice },
   formateo: { ars: PACKS.formateo.price, usd: PACKS.formateo.usdPrice },
   notebooks: { ars: PACKS.notebooks.price, usd: PACKS.notebooks.usdPrice },
+  armado: { ars: PACKS.armado.price, usd: PACKS.armado.usdPrice },
 }
 
 let current: Prices = DEFAULT_PRICES
@@ -19,6 +20,7 @@ export function setCurrentPrices(p: Prices) {
     diamante: { ars: p.diamante.ars, usd: p.diamante.usd },
     formateo: { ars: p.formateo.ars, usd: p.formateo.usd },
     notebooks: { ars: p.notebooks.ars, usd: p.notebooks.usd },
+    armado: { ars: p.armado.ars, usd: p.armado.usd },
   }
 }
 
@@ -42,7 +44,7 @@ export function getUsd(pack: Pack): number {
 // slug como `content_ids` (identificador estable para agrupar) y el nombre
 // visible como `content_name`.
 export function packEventParams(pack: Pack | string | undefined): Record<string, unknown> {
-  if (pack !== "platino" && pack !== "diamante" && pack !== "formateo" && pack !== "notebooks") return {}
+  if (!isPack(pack)) return {}
   return {
     value: getArs(pack),
     currency: "ARS",

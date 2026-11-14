@@ -33,6 +33,21 @@ export const PACKS: Record<Pack, PackInfo> = {
     tagline: "Máximo rendimiento para tu notebook, sin forzar el procesador",
     emoji: "💻",
   },
+  // Servicio sin sesión remota ni turno (ver src/lib/armado.ts). El precio en
+  // USD sigue la misma relación que los otros packs (~$1.100 por dólar).
+  armado: {
+    id: "armado",
+    name: "Armado de PC",
+    price: 30000,
+    usdPrice: 27,
+    tagline: "Te digo qué comprar según tu presupuesto",
+    emoji: "🧩",
+  },
 }
 
-export const PACK_LIST: PackInfo[] = [PACKS.platino, PACKS.diamante, PACKS.formateo, PACKS.notebooks]
+export const PACK_LIST: PackInfo[] = [PACKS.platino, PACKS.diamante, PACKS.formateo, PACKS.notebooks, PACKS.armado]
+
+/** true si el texto es el slug de un pack que existe. */
+export function isPack(v: unknown): v is Pack {
+  return typeof v === "string" && Object.prototype.hasOwnProperty.call(PACKS, v)
+}

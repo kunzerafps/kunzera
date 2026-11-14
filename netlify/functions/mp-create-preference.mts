@@ -6,7 +6,7 @@ import { mpTotal } from "../../src/lib/pricing"
 const SITE_CONFIG_STORE = "site-config"
 const SITE_CONFIG_KEY = "site-config"
 
-type Pack = "platino" | "diamante" | "formateo" | "notebooks"
+type Pack = "platino" | "diamante" | "formateo" | "notebooks" | "armado"
 
 // Este endpoint solo lo llama el propio front, siempre same-origin (fetch a
 // "/api/..."), así que no necesita headers CORS permisivos — evita que
@@ -60,7 +60,7 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     idempotencyKey?: unknown
   }
 
-  if (pack !== "platino" && pack !== "diamante" && pack !== "formateo" && pack !== "notebooks") {
+  if (pack !== "platino" && pack !== "diamante" && pack !== "formateo" && pack !== "notebooks" && pack !== "armado") {
     return Response.json({ ok: false, error: "invalid_pack" }, { status: 400, headers })
   }
   if (typeof idempotencyKey !== "string" || idempotencyKey.length < 6) {
@@ -81,6 +81,12 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     return Response.json({ ok: false, error: "missing_turno" }, { status: 400, headers })
   }
 
+  // En "Armado de PC" este campo trae las respuestas del cuestionario (ver
+  // src/lib/armado.ts): mismo criterio que con el nombre, un tope de largo.
+  if (typeof discord === "string" && discord.length > 700) {
+    return Response.json({ ok: false, error: "invalid_discord" }, { status: 400, headers })
+  }
+
   const ars = await getBasePriceArs(pack)
   const total = mpTotal(ars)
   const origin = new URL(req.url).origin
@@ -93,7 +99,10 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
   const preference = {
     items: [
       {
-        title: `Kunzera - Optimización PC (Pack ${PACKS[pack].name})`,
+        title:
+          pack === "armado"
+            ? "Kunzera - Armado de PC"
+            : `Kunzera - Optimización PC (Pack ${PACKS[pack].name})`,
         quantity: 1,
         unit_price: total,
         currency_id: "ARS",
@@ -113,7 +122,11 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
       // El turno viaja en la URL de regreso para poder mostrar el "¡Listo!"
       // aunque el navegador al que vuelve no tenga el pedido guardado
       // (iPhone: entró por el navegador de Instagram y MP lo devuelve a Safari).
-      success: `${origin}/?mp=success&ref=${encodeURIComponent(idempotencyKey)}&turno=${encodeURIComponent(turno)}`,
+      // En armado se suma el pack: ahí el "turno" es la fecha límite de
+      // entrega y el "¡Listo!" es otro (no hay turno que mostrar).
+      success:
+        `${origin}/?mp=success&ref=${encodeURIComponent(idempotencyKey)}&turno=${encodeURIComponent(turno)}` +
+        (pack === "armado" ? "&pack=armado" : ""),
       pending: `${origin}/?mp=pending&ref=${encodeURIComponent(idempotencyKey)}`,
       failure: `${origin}/?mp=failure&ref=${encodeURIComponent(idempotencyKey)}`,
     },

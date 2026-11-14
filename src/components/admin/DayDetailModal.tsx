@@ -59,11 +59,11 @@ export default function DayDetailModal({ dayKey, orders, onClose, onSelectOrder 
   const stats = useMemo(() => {
     let monto = 0
     let atendidos = 0
-    const byPlan: Record<Pack, number> = { platino: 0, diamante: 0, formateo: 0, notebooks: 0 }
+    const byPlan: Record<Pack, number> = { platino: 0, diamante: 0, formateo: 0, notebooks: 0, armado: 0 }
     for (const o of dayOrders) {
       monto += Number(o.monto) || 0
       if (String(o.estado || "").toLowerCase() === "atendido") atendidos++
-      if (o.plan === "platino" || o.plan === "diamante" || o.plan === "formateo" || o.plan === "notebooks") byPlan[o.plan]++
+      if (o.plan === "platino" || o.plan === "diamante" || o.plan === "formateo" || o.plan === "notebooks" || o.plan === "armado") byPlan[o.plan]++
     }
     return { monto, atendidos, byPlan }
   }, [dayOrders])
@@ -225,6 +225,8 @@ function SlotRow({ order, onClick }: { order: Order; onClick: () => void }) {
                 ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
                 : pack === "notebooks"
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                : pack === "armado"
+                ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
                 : "bg-brand-500/20 text-brand-300 border border-brand-500/30"
             }`}
           >

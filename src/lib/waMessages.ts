@@ -114,6 +114,7 @@ function sanitize(o: unknown): SiteConfig {
     diamante: sanitizePackPrices(pricesIn.diamante, DEFAULT_SITE_CONFIG.prices.diamante),
     formateo: sanitizePackPrices(pricesIn.formateo, DEFAULT_SITE_CONFIG.prices.formateo),
     notebooks: sanitizePackPrices(pricesIn.notebooks, DEFAULT_SITE_CONFIG.prices.notebooks),
+    armado: sanitizePackPrices(pricesIn.armado, DEFAULT_SITE_CONFIG.prices.armado),
   }
   const hasCustomPassword = obj.hasCustomPassword === true
   const blockedWindows = sanitizeBlockedWindows(obj.blockedWindows)

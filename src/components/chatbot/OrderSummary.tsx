@@ -37,7 +37,18 @@ export default function OrderSummary({ draft, onConfirm, onBack }: Props) {
       <div className="space-y-1.5 text-sm text-white/80 border-t border-white/5 pt-3">
         <Row label="Nombre" value={draft.nombre || "-"} />
         <Row label="WhatsApp" value={draft.whatsapp || "-"} />
-        <Row label="Turno" value={formatSlotLabel(draft.turno)} highlight />
+        {draft.pack === "armado" ? (
+          <>
+            <Row
+              label="Pedido"
+              value={draft.armadoTipo === "mejora" ? "Mejorar la PC que tenés" : "Armar de cero"}
+            />
+            <Row label="Presupuesto" value={draft.armadoPresupuesto || "-"} />
+            <Row label="Entrega" value="24 a 48 hs por WhatsApp" highlight />
+          </>
+        ) : (
+          <Row label="Turno" value={formatSlotLabel(draft.turno)} highlight />
+        )}
       </div>
 
       <div className="mt-4 flex gap-2">

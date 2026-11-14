@@ -2,6 +2,7 @@ import type { Context } from "@netlify/functions"
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { getStore } from "@netlify/blobs"
 import { submitOrder, updateOrderStatus } from "../../src/lib/appsScript"
+import { enviarArmadoConReintento } from "../../src/lib/armado"
 import type { Pack } from "../../src/types/order"
 import { sendMetaPurchaseEvent } from "./lib/metaCapi"
 import { sendConfirmedBookingScheduleEvent } from "./lib/metaCapiFunnel"
@@ -379,18 +380,29 @@ export default async (req: Request, _ctx: Context): Promise<Response> => {
     const meta = payment.metadata
 
     if (payment.status === "approved" && idempotencyKey && meta?.nombre && meta?.turno) {
-      const orderResult = await submitOrder(
-        {
-          nombre: meta.nombre,
-          whatsapp: meta.whatsapp || "",
-          discord: meta.discord || "-",
-          pack: (meta.plan as Pack) || undefined,
-          monto: Number(meta.monto) || 0,
-          turno: meta.turno,
+      const crearReserva = (turno: string) =>
+        submitOrder(
+          {
+            nombre: meta.nombre as string,
+            whatsapp: meta.whatsapp || "",
+            discord: meta.discord || "-",
+            pack: (meta.plan as Pack) || undefined,
+            monto: Number(meta.monto) || 0,
+            turno,
+            idempotencyKey,
+          },
           idempotencyKey,
-        },
-        idempotencyKey,
-      )
+        )
+      // Armado de PC: su "turno" es la fecha límite de entrega, no un horario
+      // que alguien eligió. Si otro armado cayó en el mismo minuto la planilla
+      // contesta "slot_taken" — se reintenta con el minuto siguiente en vez
+      // de dejar un pago acreditado sin pedido. Es seguro frente a una
+      // notificación duplicada: la planilla mira primero la clave del pedido
+      // y, si la fila ya existe, contesta "ok" sin crear otra.
+      const orderResult =
+        meta.plan === "armado"
+          ? await enviarArmadoConReintento(meta.turno as string, crearReserva)
+          : await crearReserva(meta.turno as string)
 
       if (!orderResult.ok && orderResult.error === "slot_taken") {
         // Mercado Pago puede reenviar la misma notificación dos veces casi

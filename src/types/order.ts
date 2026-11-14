@@ -1,4 +1,4 @@
-export type Pack = "platino" | "diamante" | "formateo" | "notebooks"
+export type Pack = "platino" | "diamante" | "formateo" | "notebooks" | "armado"
 
 export type PackInfo = {
   id: Pack
@@ -23,6 +23,13 @@ export type FlowState =
   | "askEmail"
   | "askDiscord"
   | "pickSlot"
+  // Cuestionario del servicio "Armado de PC" (ver src/lib/armado.ts): va en
+  // lugar de "pickSlot", porque ese servicio no tiene turno.
+  | "armadoTipo"
+  | "armadoPresupuesto"
+  | "armadoPcActual"
+  | "armadoUso"
+  | "armadoFuturo"
   | "review"
   | "payment"
   | "uploadProof"
@@ -43,6 +50,13 @@ export type OrderDraft = {
   email?: string
   discord?: string
   turno?: string
+  // Respuestas del cuestionario de "Armado de PC". Al mandar el pedido se
+  // juntan en una línea dentro de `discord` (ver armadoResumen).
+  armadoTipo?: "cero" | "mejora"
+  armadoPresupuesto?: string
+  armadoPcActual?: string
+  armadoUso?: string
+  armadoFuturo?: "si" | "no"
   file?: {
     base64: string
     mime: string
@@ -102,6 +116,7 @@ export type FlowEvent =
   | { type: "SET_EMAIL"; value: string }
   | { type: "SET_DISCORD"; value: string }
   | { type: "PICK_SLOT"; slotIso: string }
+  | { type: "ARMADO_ANSWER"; value: string }
   | { type: "CONFIRM_REVIEW" }
   | { type: "CONFIRM_PAYMENT" }
   | { type: "UPLOAD_FILE"; file: NonNullable<OrderDraft["file"]> }

@@ -9,11 +9,13 @@ import FileUploader from "./FileUploader"
 import {
   normalizeEmail,
   normalizeWhatsapp,
+  validateArmadoAnswer,
   validateDiscord,
   validateEmail,
   validateName,
   validateWhatsapp,
 } from "../../lib/validators"
+import { ARMADO_MAX_PC, ARMADO_MAX_PRESUPUESTO, ARMADO_MAX_TEXTO } from "../../lib/armado"
 import { useTakenSlots } from "../../hooks/useTakenSlots"
 import { trackServerBackedEvent } from "../../lib/pixel"
 import { packEventParams } from "../../lib/prices"
@@ -161,6 +163,57 @@ export default function FlowRenderer({ ctx, dispatch, onSubmit }: Props) {
             dispatch({ type: "PICK_SLOT", slotIso: iso })
           }}
           onRefresh={slotsState.refresh}
+        />
+      )
+
+    // Cuestionario de "Armado de PC". Las dos preguntas de botones
+    // (armadoTipo / armadoFuturo) no dibujan nada acá: sus botones van en el
+    // mensaje del bot.
+    case "armadoPresupuesto":
+      return (
+        <FormField
+          key="armadoPresupuesto"
+          label="Presupuesto"
+          placeholder="Ej: $1.500.000"
+          initialValue={ctx.draft.armadoPresupuesto || ""}
+          onSubmit={(v) => {
+            const err = validateArmadoAnswer(v, ARMADO_MAX_PRESUPUESTO)
+            if (err) return err
+            dispatch({ type: "ARMADO_ANSWER", value: v.trim() })
+            return null
+          }}
+        />
+      )
+
+    case "armadoPcActual":
+      return (
+        <FormField
+          key="armadoPcActual"
+          label="Tu PC actual"
+          placeholder="Ej: Ryzen 5 3600, GTX 1660, B450M, 550 W, Corsair 16 GB 3200, cooler de fábrica"
+          initialValue={ctx.draft.armadoPcActual || ""}
+          onSubmit={(v) => {
+            const err = validateArmadoAnswer(v, ARMADO_MAX_PC)
+            if (err) return err
+            dispatch({ type: "ARMADO_ANSWER", value: v.trim() })
+            return null
+          }}
+        />
+      )
+
+    case "armadoUso":
+      return (
+        <FormField
+          key="armadoUso"
+          label="Juegos y qué buscás"
+          placeholder="Ej: CS2 y Valorant, 1080p, 240 FPS"
+          initialValue={ctx.draft.armadoUso || ""}
+          onSubmit={(v) => {
+            const err = validateArmadoAnswer(v, ARMADO_MAX_TEXTO)
+            if (err) return err
+            dispatch({ type: "ARMADO_ANSWER", value: v.trim() })
+            return null
+          }}
         />
       )
 
