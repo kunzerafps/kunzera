@@ -4,6 +4,7 @@ import { createHash } from "node:crypto"
 import { getSheetOrders } from "./lib/sheetOrders"
 import { notifyDiscord } from "./lib/discordAlert"
 import { todayInArgentina } from "./lib/argentinaTime"
+import { sendConfirmedSale } from "./lib/confirmedSale"
 import {
   incomingTransfers,
   matchTransfers,
@@ -14,10 +15,15 @@ import {
 } from "./lib/transferCheck"
 import type { Order } from "../../src/types/order"
 
-// Control de transferencias: SOLO AVISA por Discord. No cambia ninguna reserva
-// ni le manda nada a Meta. Cada 2 minutos:
-//  1. Reserva por transferencia sin un pago de ese monto en Mercado Pago:
-//     "Transferencia sospechosa". Una foto cualquiera cae acá.
+// Control de transferencias. No cambia ninguna reserva. Cada 2 minutos:
+//  1. Reserva por transferencia CON un pago de ese monto en Mercado Pago:
+//     le avisa la venta a Meta en ese momento (Compra + Reserva), sin esperar
+//     al "Marcar como atendido" del panel, que llegaba ~12 h después (mediana
+//     medida 10-24/11/2026). Así la campaña aprende de la venta el mismo día.
+//     El "Marcar como atendido" sigue mandando el mismo evento: Meta lo
+//     deduplica por eventId y no cuenta la venta dos veces.
+//     SIN un pago de ese monto: "Transferencia sospechosa" por Discord y a
+//     Meta no se le avisa nada (queda para el "Marcar como atendido").
 //  2. Comprobante idéntico (mismo archivo) al de otra reserva: "repetido".
 //     No lee la imagen: una captura nueva del mismo comprobante no coincide,
 //     pero esa la agarra el punto 1 porque el pago ya se usó.
@@ -36,6 +42,10 @@ const FILES_BUDGET_MS = 15000
 const RECENT_ORDER_MS = 15 * 60 * 1000
 const ALERT_REPEAT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const VERDICT_KEEP_MS = 7 * 24 * 60 * 60 * 1000
+// Cada aviso a Meta tarda ~4 s y la función programada tiene ~30 s. Si en una
+// corrida aparecen más pagos que esto, los que sobran se revisan en la
+// siguiente (2 minutos después).
+const MAX_META_PER_RUN = 4
 
 // Prueba del 6/11: también avisa las que dieron bien, para ver el sistema
 // andando. En false solo quedan los avisos de problemas.
@@ -104,16 +114,29 @@ async function checkTransfers(orders: Order[], state: State, now: number): Promi
   const matched = matchTransfers(recent, transfers)
   const transferKeys = new Set(recent.map((o) => o.idempotencykey))
 
+  let metaSent = 0
   for (const o of candidates) {
     const key = o.idempotencykey as string
     if (!transferKeys.has(key)) continue
     const payment = matched.get(key)
     if (payment) {
+      if (metaSent >= MAX_META_PER_RUN) continue
+      metaSent++
       state.verdicts[key] = { result: "ok", at: now }
+      // Si falla, ya avisa por Discord adentro y el "Marcar como atendido"
+      // del panel lo vuelve a mandar.
+      const meta = await sendConfirmedSale({
+        idempotencyKey: key,
+        nombre: o.nombre,
+        whatsapp: o.whatsapp,
+        plan: o.plan,
+        monto: o.monto,
+        reservaTimestamp: o.timestamp,
+      }).catch((err) => ({ ok: false, error: String(err) }))
       if (NOTIFY_OK) {
         await notifyDiscord(
           `transfer-ok-${key}`,
-          `✅ Transferencia encontrada: ${describe(o)} · pago de ${argTime(payment.time)}`,
+          `✅ Transferencia encontrada: ${describe(o)} · pago de ${argTime(payment.time)}${meta.ok ? " · venta avisada a Meta" : ""}`,
         )
       }
     } else {

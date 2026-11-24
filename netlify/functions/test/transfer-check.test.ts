@@ -18,6 +18,14 @@ vi.mock("../lib/discordAlert", () => ({
   },
 }))
 
+const meta = vi.hoisted(() => ({ sales: [] as Array<Record<string, unknown>>, ok: true }))
+vi.mock("../lib/confirmedSale", () => ({
+  sendConfirmedSale: async (sale: Record<string, unknown>) => {
+    meta.sales.push(sale)
+    return { ok: meta.ok }
+  },
+}))
+
 import handler from "../transfer-check.mts"
 import statusHandler from "../transfer-status.mts"
 
@@ -64,6 +72,8 @@ beforeEach(() => {
   resetBlobsMock()
   discord.sent = []
   discord.keys.clear()
+  meta.sales = []
+  meta.ok = true
   sheet.orders = []
   process.env.MP_ACCESS_TOKEN = "test"
   mockMp([])
@@ -131,6 +141,7 @@ describe("transfer-check", () => {
     await handler()
     await handler()
     expect(said("Transferencia sospechosa")).toHaveLength(1)
+    expect(meta.sales).toHaveLength(0)
     const calls = vi.mocked(fetch).mock.calls.map((c) => String(c[0]))
     expect(calls.every((u) => u.includes("api.mercadopago.com"))).toBe(true)
   })
@@ -141,6 +152,54 @@ describe("transfer-check", () => {
     await handler()
     expect(said("Transferencia encontrada")).toHaveLength(1)
     expect(said("sospechosa")).toHaveLength(0)
+  })
+
+  it("con el pago encontrado le avisa la venta a Meta una sola vez, con la hora de la reserva", async () => {
+    const o = order("real", 6)
+    sheet.orders = [o]
+    mockMp([payment(1, 7)])
+    await handler()
+    await handler()
+    expect(meta.sales).toEqual([
+      {
+        idempotencyKey: "real",
+        nombre: "Cliente real",
+        whatsapp: "1123456789",
+        plan: "diamante",
+        monto: 70000,
+        reservaTimestamp: o.timestamp,
+      },
+    ])
+    expect(said("venta avisada a Meta")).toHaveLength(1)
+  })
+
+  it("si Meta falla igual queda como encontrada y no lo reintenta (lo levanta el panel)", async () => {
+    sheet.orders = [order("real", 6)]
+    mockMp([payment(1, 7)])
+    meta.ok = false
+    await handler()
+    await handler()
+    expect(meta.sales).toHaveLength(1)
+    expect(said("Transferencia encontrada")).toHaveLength(1)
+    expect(said("venta avisada a Meta")).toHaveLength(0)
+  })
+
+  it("con muchos pagos juntos avisa de a 4 por corrida y el resto en la siguiente", async () => {
+    sheet.orders = ["a", "b", "c", "d", "e", "f"].map((k, i) => order(k, 6 + i))
+    mockMp([1, 2, 3, 4, 5, 6].map((id, i) => payment(id, 30 + i)))
+    await handler()
+    expect(meta.sales).toHaveLength(4)
+    await handler()
+    expect(meta.sales).toHaveLength(6)
+    expect(new Set(meta.sales.map((s) => s.idempotencyKey)).size).toBe(6)
+  })
+
+  it("una reserva de Mercado Pago no pasa por acá (ya avisa mp-webhook)", async () => {
+    sheet.orders = [order("mp", 6)]
+    await fakeGetStore("payment-methods").set("mp", "mercadopago")
+    mockMp([payment(1, 7)])
+    await handler()
+    expect(meta.sales).toHaveLength(0)
   })
 
   it("una reserva de Binance no se juzga", async () => {
