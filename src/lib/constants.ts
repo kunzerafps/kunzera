@@ -70,6 +70,13 @@ export const SLOT_END_HOUR = 20 // 20:00 exclusivo → último turno 19:40
 // Se atiende de lunes a sábado. Los bloqueos puntuales (viaje, feriado)
 // se siguen cargando desde el panel admin, no acá.
 export const SLOT_CLOSED_WEEKDAYS: number[] = [0]
+// Turnos que NO se dan ciertos días (hora AR "HH:MM"). Desde 24/11/2026:
+// lunes, miércoles y viernes sin el de 19:40 porque a las 20 Eze va al gym.
+export const SLOT_SKIPPED_BY_WEEKDAY: Record<number, string[]> = {
+  1: ["19:40"],
+  3: ["19:40"],
+  5: ["19:40"],
+}
 export const TIMEZONE = "America/Argentina/Buenos_Aires"
 
 // ────────────────────────────────────────────────────────────

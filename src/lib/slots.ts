@@ -1,6 +1,7 @@
 import {
   SLOT_CLOSED_WEEKDAYS,
   SLOT_END_HOUR,
+  SLOT_SKIPPED_BY_WEEKDAY,
   SLOT_START_HOUR,
   SLOT_STEP_MIN,
   TIMEZONE,
@@ -119,8 +120,17 @@ export function generateSlots(
 
   // Los días cerrados (domingo) no generan bloque: quedan sin turnos y no
   // aparecen como pastilla en el selector.
-  const blockFor = (dayKey: string): DayBlock =>
-    isClosedDay(dayKey) ? { dayKey, slots: [] } : generateDayBlock(dayKey)
+  // Además, ciertos días se saltean turnos puntuales (SLOT_SKIPPED_BY_WEEKDAY).
+  const blockFor = (dayKey: string): DayBlock => {
+    if (isClosedDay(dayKey)) return { dayKey, slots: [] }
+    const block = generateDayBlock(dayKey)
+    const skipped = SLOT_SKIPPED_BY_WEEKDAY[weekdayAR(dayKey)]
+    if (!skipped?.length) return block
+    return {
+      dayKey,
+      slots: block.slots.filter((d) => !skipped.includes(formatTimeAR(d))),
+    }
+  }
 
   const blocks: DayBlock[] = [blockFor(yesterdayKey)]
   for (let i = 0; i <= RESERVATION_HORIZON_DAYS; i++) {
